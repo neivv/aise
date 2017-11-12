@@ -1,0 +1,32 @@
+[package]
+name = "ais_attackto"
+version = "1.0.2"
+authors = ["Markus Heikkinen <ittevien@gmail.com>"]
+
+[lib]
+name = "ais_attackto"
+crate-type = ["cdylib"]
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+debug = true
+panic = "abort"
+overflow-checks = true
+
+[dependencies]
+backtrace = "0.3"
+byteorder = "1.1"
+chrono = "0.4"
+fern = "0.4"
+kernel32-sys = "0.2.2"
+lazy_static = "0.2"
+libc = "0.2"
+log = "0.3"
+scopeguard = "0.3.2"
+user32-sys = "0.2"
+winapi = "0.2.5"
+
+[dependencies.whack]
+git = "https://github.com/neivv/whack/"
