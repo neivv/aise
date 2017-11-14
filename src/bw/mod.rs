@@ -1,10 +1,15 @@
 #![allow(non_upper_case_globals)]
+#![allow(non_camel_case_types)]
 
 use libc::c_void;
 
 pub mod structs;
 
 pub use self::structs::*;
+
+whack_hooks!(stdcall, 0x00400000,
+    0x00447090 => Ai_IsAttackTimedOut(@ecx u32) -> u32;
+);
 
 whack_funcs!(stdcall, init_funcs, 0x00400000,
     0x0048D1C0 => print_text(*const u8, u32, @eax u32);

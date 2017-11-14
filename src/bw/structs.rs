@@ -22,7 +22,9 @@ pub struct AiRegion {
 
 #[repr(C, packed)]
 pub struct PlayerAiData {
-    pub dc0: [u8; 0x21e],
+    pub dc0: [u8; 0x218],
+    pub flags: u16,
+    pub dc21a: [u8; 0x4],
     pub attack_grouping_region: u16,
     pub dc220: [u8; 0x8],
     pub last_attack_second: u32,

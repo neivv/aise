@@ -1,6 +1,7 @@
 use std::io::Write;
 use std::mem;
 use std::slice;
+use std::sync::Mutex;
 
 use byteorder::{WriteBytesExt, LittleEndian};
 use kernel32;
@@ -23,6 +24,7 @@ lazy_static! {
     static ref EXEC_HEAP: usize = unsafe {
         kernel32::HeapCreate(winapi::HEAP_CREATE_ENABLE_EXECUTE, 0, 0) as usize
     };
+    static ref ATTACK_TIMEOUTS: Mutex<[u32; 8]> = Mutex::new([!0; 8]);
 }
 
 unsafe fn exec_alloc(size: usize) -> *mut u8 {
@@ -93,6 +95,8 @@ impl AiScriptOpcodes {
 pub unsafe fn add_aiscript_opcodes(patcher: &mut whack::ModulePatcher) {
     let mut hooks = AiScriptOpcodes::new();
     hooks.add_hook(0x71, attack_to);
+    hooks.add_hook(0x72, attack_timeout);
+    patcher.hook_opt(bw::Ai_IsAttackTimedOut, is_attack_timed_out);
     hooks.apply(patcher);
 }
 
@@ -133,6 +137,34 @@ unsafe extern fn attack_to(script: *mut bw::AiScript) {
     (*region).target_region_id = target_region; // Yes, 0-based
 }
 
+unsafe extern fn attack_timeout(script: *mut bw::AiScript) {
+    let timeout = read_u32(script);
+    ATTACK_TIMEOUTS.lock().unwrap()[(*script).player as usize] = timeout;
+}
+
+unsafe fn is_attack_timed_out(player: u32, orig: &Fn(u32) -> u32) -> u32 {
+    let ai_data = &mut bw::player_ai[player as usize] as *mut bw::PlayerAiData;
+    let last_attack_second = (*ai_data).last_attack_second;
+    if last_attack_second == 0 {
+        return 1;
+    }
+
+    let timeout = ATTACK_TIMEOUTS.lock().unwrap()[player as usize];
+    if timeout == !0 {
+        orig(player)
+    } else {
+        let ai_data = &mut bw::player_ai[player as usize] as *mut bw::PlayerAiData;
+        let timeout_second = last_attack_second.saturating_add(timeout);
+        if *bw::elapsed_seconds > timeout_second {
+            ATTACK_TIMEOUTS.lock().unwrap()[player as usize] = !0;
+            (*ai_data).last_attack_second = 0;
+            1
+        } else {
+            0
+        }
+    }
+}
+
 unsafe fn region_id(x: u16, y: u16) -> Option<u16> {
     if x >= *bw::map_width || y >= *bw::map_height {
         None
@@ -152,6 +184,16 @@ unsafe fn read_u16(script: *mut bw::AiScript) -> u16 {
     };
     let val = *(script_bytes.offset((*script).pos as isize) as *const u16);
     (*script).pos += 2;
+    val
+}
+
+unsafe fn read_u32(script: *mut bw::AiScript) -> u32 {
+    let script_bytes = match (*script).flags & 0x1 != 0 {
+        false => *bw::aiscript_bin,
+        true => *bw::bwscript_bin,
+    };
+    let val = *(script_bytes.offset((*script).pos as isize) as *const u32);
+    (*script).pos += 4;
     val
 }
 
