@@ -31,6 +31,15 @@ pub struct PlayerAiData {
     pub dc22c: [u8; 0x2bc],
 }
 
+#[repr(C, packed)]
+pub struct Game {
+    pub dc0: [u8; 0xe4],
+    pub map_width_tiles: u16,
+    pub map_height_tiles: u16,
+    pub dce8: [u8; 0xe520],
+    pub elapsed_seconds: u32,
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -40,5 +49,6 @@ mod test {
         assert_eq!(mem::size_of::<AiScript>(), 0x34);
         assert_eq!(mem::size_of::<AiRegion>(), 0x34);
         assert_eq!(mem::size_of::<PlayerAiData>(), 0x4e8);
+        assert_eq!(mem::size_of::<Game>(), 0xe60c);
     }
 }

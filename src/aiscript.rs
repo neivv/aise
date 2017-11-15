@@ -52,7 +52,7 @@ impl AiScriptOpcodes {
             0x61, // popad
             0xc7, 0x44, 0xe4, 0xfc, // Mov [esp - 4], dword ...
         ]).unwrap();
-        asm.write_u32::<LittleEndian>(bw::ProgressAiScript_Loop as u32).unwrap();
+        asm.write_u32::<LittleEndian>(bw::v1161::ProgressAiScript_Loop as u32).unwrap();
         // jmp dword [esp - 4]
         asm.write_all(&[0xff, 0x64, 0xe4, 0xfc]).unwrap();
         self.opcodes.push(OpcodeHook {
@@ -65,16 +65,16 @@ impl AiScriptOpcodes {
         let largest_opcode = self.opcodes.iter().map(|x| x.id).max().unwrap_or(0) as u8;
         let mem_size: usize = self.opcodes.iter().map(|x| x.asm.len()).sum();
         assert!(largest_opcode <= 0x7f, "Opcodes larger than 0x7f are not supported");
-        let old_largest_opcode = *(bw::ProgressAiScript_SwitchLimit as *const u8);
+        let old_largest_opcode = *(bw::v1161::ProgressAiScript_SwitchLimit as *const u8);
         if old_largest_opcode < largest_opcode {
-            patcher.replace_val(bw::ProgressAiScript_SwitchLimit, largest_opcode);
+            patcher.replace_val(bw::v1161::ProgressAiScript_SwitchLimit, largest_opcode);
         }
 
         // Always redirect the switch table to avoid having to worry about write access w/ bw's
         // .rdata
         let mut new_switch_table = vec![0; largest_opcode as usize + 1];
         let old_table = slice::from_raw_parts(
-            *(bw::ProgressAiScript_SwitchTable as *mut *mut usize),
+            *(bw::v1161::ProgressAiScript_SwitchTable as *mut *mut usize),
             old_largest_opcode as usize + 1,
         );
 
@@ -87,7 +87,7 @@ impl AiScriptOpcodes {
             memory = &mut {memory}[hook.asm.len()..];
         }
 
-        patcher.replace_val(bw::ProgressAiScript_SwitchTable, new_switch_table.as_mut_ptr());
+        patcher.replace_val(bw::v1161::ProgressAiScript_SwitchTable, new_switch_table.as_mut_ptr());
         mem::forget(new_switch_table);
     }
 }
@@ -96,19 +96,19 @@ pub unsafe fn add_aiscript_opcodes(patcher: &mut whack::ModulePatcher) {
     let mut hooks = AiScriptOpcodes::new();
     hooks.add_hook(0x71, attack_to);
     hooks.add_hook(0x72, attack_timeout);
-    patcher.hook_opt(bw::Ai_IsAttackTimedOut, is_attack_timed_out);
+    patcher.hook_opt(bw::v1161::Ai_IsAttackTimedOut, is_attack_timed_out);
     hooks.apply(patcher);
 }
 
-unsafe extern fn attack_to(script: *mut bw::AiScript) {
+pub unsafe extern fn attack_to(script: *mut bw::AiScript) {
     let grouping_x = read_u16(script);
     let grouping_y = read_u16(script);
     let target_x = read_u16(script);
     let target_y = read_u16(script);
-    let grouping_region = match region_id(grouping_x, grouping_y) {
+    let grouping_region = match bw::get_region(grouping_x, grouping_y) {
         Some(s) => s,
         None => {
-            print_text(&format!(
+            bw::print_text(&format!(
                 "Aiscript attackto (player {}): invalid grouping coordinates {}, {}",
                 (*script).player,
                 grouping_x,
@@ -117,10 +117,10 @@ unsafe extern fn attack_to(script: *mut bw::AiScript) {
             return;
         }
     };
-    let target_region = match region_id(target_x, target_y) {
+    let target_region = match bw::get_region(target_x, target_y) {
         Some(s) => s,
         None => {
-            print_text(&format!(
+            bw::print_text(&format!(
                 "Aiscript attackto (player {}): invalid target coordinates {}, {}",
                 (*script).player,
                 target_x,
@@ -129,21 +129,21 @@ unsafe extern fn attack_to(script: *mut bw::AiScript) {
             return;
         }
     };
-    let ai_data = &mut bw::player_ai[(*script).player as usize] as *mut bw::PlayerAiData;
-    (*ai_data).last_attack_second = *bw::elapsed_seconds;
+    let ai_data = bw::player_ai((*script).player);
+    (*ai_data).last_attack_second = bw::elapsed_seconds();
     (*ai_data).attack_grouping_region = grouping_region + 1;
     let region = ai_region((*script).player, grouping_region);
     bw::change_ai_region_state(region, 8);
     (*region).target_region_id = target_region; // Yes, 0-based
 }
 
-unsafe extern fn attack_timeout(script: *mut bw::AiScript) {
+pub unsafe extern fn attack_timeout(script: *mut bw::AiScript) {
     let timeout = read_u32(script);
     ATTACK_TIMEOUTS.lock().unwrap()[(*script).player as usize] = timeout;
 }
 
 unsafe fn is_attack_timed_out(player: u32, orig: &Fn(u32) -> u32) -> u32 {
-    let ai_data = &mut bw::player_ai[player as usize] as *mut bw::PlayerAiData;
+    let ai_data = bw::player_ai(player);
     let last_attack_second = (*ai_data).last_attack_second;
     if last_attack_second == 0 {
         return 1;
@@ -153,9 +153,9 @@ unsafe fn is_attack_timed_out(player: u32, orig: &Fn(u32) -> u32) -> u32 {
     if timeout == !0 {
         orig(player)
     } else {
-        let ai_data = &mut bw::player_ai[player as usize] as *mut bw::PlayerAiData;
+        let ai_data = bw::player_ai(player);
         let timeout_second = last_attack_second.saturating_add(timeout);
-        if *bw::elapsed_seconds > timeout_second {
+        if bw::elapsed_seconds() > timeout_second {
             ATTACK_TIMEOUTS.lock().unwrap()[player as usize] = !0;
             (*ai_data).last_attack_second = 0;
             1
@@ -165,22 +165,14 @@ unsafe fn is_attack_timed_out(player: u32, orig: &Fn(u32) -> u32) -> u32 {
     }
 }
 
-unsafe fn region_id(x: u16, y: u16) -> Option<u16> {
-    if x >= *bw::map_width || y >= *bw::map_height {
-        None
-    } else {
-        Some(bw::get_region(x as u32, y as u32) as u16)
-    }
-}
-
 unsafe fn ai_region(player: u32, region: u16) -> *mut bw::AiRegion {
-    bw::ai_regions[player as usize].offset(region as isize)
+    bw::ai_regions(player).offset(region as isize)
 }
 
 unsafe fn read_u16(script: *mut bw::AiScript) -> u16 {
     let script_bytes = match (*script).flags & 0x1 != 0 {
-        false => *bw::aiscript_bin,
-        true => *bw::bwscript_bin,
+        false => bw::aiscript_bin(),
+        true => bw::bwscript_bin(),
     };
     let val = *(script_bytes.offset((*script).pos as isize) as *const u16);
     (*script).pos += 2;
@@ -189,16 +181,10 @@ unsafe fn read_u16(script: *mut bw::AiScript) -> u16 {
 
 unsafe fn read_u32(script: *mut bw::AiScript) -> u32 {
     let script_bytes = match (*script).flags & 0x1 != 0 {
-        false => *bw::aiscript_bin,
-        true => *bw::bwscript_bin,
+        false => bw::aiscript_bin(),
+        true => bw::bwscript_bin(),
     };
     let val = *(script_bytes.offset((*script).pos as isize) as *const u32);
     (*script).pos += 4;
     val
-}
-
-unsafe fn print_text(msg: &str) {
-    let mut buf: Vec<u8> = msg.as_bytes().into();
-    buf.push(0);
-    bw::print_text(buf.as_ptr(), 0, 8);
 }

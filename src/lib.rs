@@ -14,14 +14,16 @@ extern crate user32;
 extern crate winapi;
 
 pub mod mpqdraft;
+pub mod samase;
 
 mod aiscript;
 mod bw;
 mod windows;
 
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, ATOMIC_BOOL_INIT, Ordering};
 
-fn init() {
+fn init(samase: bool) {
     if cfg!(debug_assertions) {
         let _ = fern::Dispatch::new()
             .format(|out, message, record| {
@@ -91,13 +93,18 @@ fn init() {
         unsafe { kernel32::TerminateProcess(kernel32::GetCurrentProcess(), 0x4230daef); }
     }));
 
-    patch();
+    SAMASE_INIT.store(samase, Ordering::Release);
+    if !samase {
+        patch();
+    }
 }
+
+static SAMASE_INIT: AtomicBool = ATOMIC_BOOL_INIT;
 
 #[no_mangle]
 #[allow(non_snake_case)]
 pub extern fn Initialize() {
-    init();
+    init(false);
 }
 
 lazy_static! {
@@ -111,8 +118,8 @@ fn patch() {
         {
             let mut exe = active_patcher.patch_exe(0x00400000);
 
-            bw::init_funcs(&mut exe);
-            bw::init_vars(&mut exe);
+            bw::v1161::init_funcs(&mut exe);
+            bw::v1161::init_vars(&mut exe);
             aiscript::add_aiscript_opcodes(&mut exe);
         }
     }
