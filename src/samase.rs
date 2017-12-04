@@ -5,6 +5,8 @@ use kernel32;
 use libc::c_void;
 
 use bw;
+use order::OrderId;
+use unit::UnitId;
 use windows;
 
 #[repr(C, packed)]
@@ -23,6 +25,11 @@ pub struct PluginApi {
     player_ai: unsafe extern fn() -> Option<unsafe extern fn() -> *mut c_void>,
     get_region: unsafe extern fn() -> Option<unsafe extern fn(u32, u32) -> u32>,
     change_ai_region_state: unsafe extern fn() -> Option<unsafe extern fn(*mut c_void, u32)>,
+    first_active_unit: unsafe extern fn() -> Option<unsafe extern fn() -> *mut c_void>,
+    first_hidden_unit: unsafe extern fn() -> Option<unsafe extern fn() -> *mut c_void>,
+    // self, order, x, y, target, fow_unit
+    issue_order: unsafe extern fn() ->
+        Option<unsafe extern fn(*mut bw::Unit, u32, u32, u32, *mut bw::Unit, u32)>,
 }
 
 struct GlobalFunc<T: Copy>(Option<T>);
@@ -67,6 +74,11 @@ pub fn player_ai(player: u32) -> *mut bw::PlayerAiData {
     unsafe { (PLAYER_AI.get()()).offset(player as isize) }
 }
 
+static mut FIRST_ACTIVE_UNIT: GlobalFunc<fn() -> *mut bw::Unit> = GlobalFunc(None);
+pub fn first_active_unit() -> *mut bw::Unit {
+    unsafe { FIRST_ACTIVE_UNIT.0.map(|x| x()).unwrap_or(null_mut()) }
+}
+
 static mut GET_REGION: GlobalFunc<fn(u32, u32) -> u32> = GlobalFunc(None);
 pub fn get_region(x: u32, y: u32) -> u32 {
     unsafe { GET_REGION.get()(x, y) }
@@ -75,6 +87,24 @@ pub fn get_region(x: u32, y: u32) -> u32 {
 static mut CHANGE_AI_REGION_STATE: GlobalFunc<fn(*mut bw::AiRegion, u32)> = GlobalFunc(None);
 pub fn change_ai_region_state(region: *mut bw::AiRegion, state: u32) {
     unsafe { CHANGE_AI_REGION_STATE.get()(region, state) }
+}
+
+static mut ISSUE_ORDER: GlobalFunc<
+    unsafe extern fn(*mut bw::Unit, u32, u32, u32, *mut bw::Unit, u32)
+> = GlobalFunc(None);
+
+pub fn issue_order(
+    unit: *mut bw::Unit,
+    order: OrderId,
+    x: u32,
+    y: u32,
+    target: *mut bw::Unit,
+    fow_unit: UnitId,
+) {
+    assert!(x < 0x10000);
+    assert!(y < 0x10000);
+    assert!(unit != null_mut());
+    unsafe { ISSUE_ORDER.get()(unit, order.0 as u32, x, y, target, fow_unit.0 as u32) }
 }
 
 static mut READ_FILE: GlobalFunc<fn(*const u8) -> *mut u8> = GlobalFunc(None);
@@ -99,10 +129,22 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
     if ok == 0 {
         fatal("Unable to hook aiscript opcodes");
     }
+    let ok = ((*api).hook_aiscript_opcode)(0x73, ::aiscript::issue_order);
+    if ok == 0 {
+        fatal("Unable to hook aiscript opcodes");
+    }
     GAME.init(((*api).game)().map(|x| mem::transmute(x)), "Game object");
     AI_REGIONS.init(((*api).ai_regions)().map(|x| mem::transmute(x)), "AI regions");
     PLAYER_AI.init(((*api).player_ai)().map(|x| mem::transmute(x)), "Player AI");
     GET_REGION.init(((*api).get_region)().map(|x| mem::transmute(x)), "get_region");
+    match ((*api).first_active_unit)() {
+        None => ((*api).warn_unsupported_feature)(b"Ai script issue_order\0".as_ptr()),
+        Some(s) => FIRST_ACTIVE_UNIT.0 = Some(mem::transmute(s)),
+    }
+    match ((*api).issue_order)() {
+        None => ((*api).warn_unsupported_feature)(b"Ai script issue_order\0".as_ptr()),
+        Some(s) => ISSUE_ORDER.0 = Some(mem::transmute(s)),
+    }
     let read_file = ((*api).read_file)();
     READ_FILE.0 = Some(mem::transmute(read_file));
     CHANGE_AI_REGION_STATE.init(

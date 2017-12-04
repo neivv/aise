@@ -18,6 +18,8 @@ pub mod samase;
 
 mod aiscript;
 mod bw;
+mod unit;
+mod order;
 mod windows;
 
 use std::path::Path;
