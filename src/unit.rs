@@ -1,6 +1,7 @@
 use std::ptr::null_mut;
 
 use bw;
+use order::OrderId;
 
 pub struct Unit(pub *mut bw::Unit);
 
@@ -43,6 +44,17 @@ impl Unit {
             right: position.x + collision_rect.right + 1,
             top: position.y - collision_rect.top,
             bottom: position.y + collision_rect.bottom + 1,
+        }
+    }
+
+    pub unsafe fn issue_secondary_order(&self, order: OrderId) {
+        if (*self.0).secondary_order != order.0 {
+            (*self.0).secondary_order = order.0;
+            (*self.0).secondary_order_state = 0;
+            // Uhh.. Is this sensible to allow to be done from AI scripts?
+            (*self.0).currently_building = null_mut();
+            (*self.0).unke8 = 0;
+            (*self.0).unkea = 0;
         }
     }
 }

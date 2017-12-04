@@ -234,26 +234,32 @@ pub unsafe extern fn issue_order(script: *mut bw::AiScript) {
     }
     let mut target_pos = 0;
     for unit in units {
-        if let Some(ref targets) = targets {
-            if target_pos == targets.len() {
-                if flags & 0x10 != 0 {
-                    break;
-                }
-                target_pos = 0;
-            }
-            let target = &targets[target_pos];
-            target_pos += 1;
-            bw::issue_order(unit.0, order, target.position(), target.0, unit::id::NONE);
+        if order.is_secondary() {
+            // Not sure how to handle cases where a train overrides another train in queue.
+            unit.issue_secondary_order(order);
         } else {
-            bw::issue_order(unit.0, order, target.center, null_mut(), unit::id::NONE);
+            if let Some(ref targets) = targets {
+                if target_pos == targets.len() {
+                    if flags & 0x10 != 0 {
+                        break;
+                    }
+                    target_pos = 0;
+                }
+                let target = &targets[target_pos];
+                target_pos += 1;
+                bw::issue_order(unit.0, order, target.position(), target.0, unit::id::NONE);
+            } else {
+                bw::issue_order(unit.0, order, target.center, null_mut(), unit::id::NONE);
+            }
         }
         match order {
-            order::id::PLACE_ADDON => {
+            order::id::PLACE_ADDON | order::id::BUILD_ADDON => {
                 (&mut (*unit.0).unit_specific[4..])
                     .write_u16::<LittleEndian>(target_misc).unwrap();
             }
             order::id::DRONE_BUILD | order::id::SCV_BUILD | order::id::PROBE_BUILD |
-                order::id::UNIT_MORPH | order::id::BUILDING_MORPH =>
+                order::id::UNIT_MORPH | order::id::BUILDING_MORPH | order::id::TRAIN |
+                order::id::TRAIN_FIGHTER | order::id::BUILD_NYDUS_EXIT =>
             {
                 (*unit.0).build_queue[(*unit.0).current_build_slot as usize] = target_misc;
             }
