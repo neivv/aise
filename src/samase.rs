@@ -133,6 +133,10 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
     if ok == 0 {
         fatal("Unable to hook aiscript opcodes");
     }
+    let ok = ((*api).hook_aiscript_opcode)(0x74, ::aiscript::if_deaths);
+    if ok == 0 {
+        fatal("Unable to hook aiscript opcodes");
+    }
     GAME.init(((*api).game)().map(|x| mem::transmute(x)), "Game object");
     AI_REGIONS.init(((*api).ai_regions)().map(|x| mem::transmute(x)), "AI regions");
     PLAYER_AI.init(((*api).player_ai)().map(|x| mem::transmute(x)), "Player AI");

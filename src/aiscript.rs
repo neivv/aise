@@ -101,6 +101,7 @@ pub unsafe fn add_aiscript_opcodes(patcher: &mut whack::ModulePatcher) {
     hooks.add_hook(0x71, attack_to);
     hooks.add_hook(0x72, attack_timeout);
     hooks.add_hook(0x73, issue_order);
+    hooks.add_hook(0x74, if_deaths);
     patcher.hook_opt(bw::v1161::Ai_IsAttackTimedOut, is_attack_timed_out);
     hooks.apply(patcher);
 }
@@ -257,6 +258,49 @@ pub unsafe extern fn issue_order(script: *mut bw::AiScript) {
                 (*unit.0).build_queue[(*unit.0).current_build_slot as usize] = target_misc;
             }
             _ => (),
+        }
+    }
+}
+
+pub unsafe extern fn if_deaths(script: *mut bw::AiScript) {
+    enum Compare {
+        AtLeast,
+        AtMost,
+        Exactly,
+    }
+    // if_deaths(player, compare, amount, unit, dest)
+    let player = read_u8(script);
+    let compare = read_u8(script);
+    let amount = read_u32(script);
+    let unit_id = read_u16(script);
+    let dest = read_u16(script);
+    let player = match player {
+        x @ 0 ... 11 => x,
+        13 => (*script).player as u8,
+        x => {
+            bw::print_text(format!("Unsupported player in if_deaths: {:x}", x));
+            return;
+        }
+    };
+    let compare = match compare {
+        // Matching trigger conditions
+        0 => Compare::AtLeast,
+        1 => Compare::AtMost,
+        10 => Compare::Exactly,
+        x => {
+            bw::print_text(format!("Unsupported compare in if_deaths: {:x}", x));
+            return;
+        }
+    };
+    let deaths = (*bw::game()).deaths.get(unit_id as usize).and_then(|x| x.get(player as usize));
+    if let Some(&deaths) = deaths {
+        let jump = match compare {
+            Compare::AtLeast => deaths >= amount,
+            Compare::AtMost => deaths <= amount,
+            Compare::Exactly => deaths == amount,
+        };
+        if jump {
+            (*script).pos = dest as u32;
         }
     }
 }
