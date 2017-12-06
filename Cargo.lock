@@ -1,6 +1,6 @@
 [[package]]
 name = "ais_attackto"
-version = "2.2.0"
+version = "2.2.1"
 dependencies = [
  "backtrace 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "byteorder 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",

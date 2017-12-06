@@ -133,7 +133,7 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
     if ok == 0 {
         fatal("Unable to hook aiscript opcodes");
     }
-    let ok = ((*api).hook_aiscript_opcode)(0x74, ::aiscript::if_deaths);
+    let ok = ((*api).hook_aiscript_opcode)(0x74, ::aiscript::deaths);
     if ok == 0 {
         fatal("Unable to hook aiscript opcodes");
     }

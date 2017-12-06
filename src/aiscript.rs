@@ -101,7 +101,7 @@ pub unsafe fn add_aiscript_opcodes(patcher: &mut whack::ModulePatcher) {
     hooks.add_hook(0x71, attack_to);
     hooks.add_hook(0x72, attack_timeout);
     hooks.add_hook(0x73, issue_order);
-    hooks.add_hook(0x74, if_deaths);
+    hooks.add_hook(0x74, deaths);
     patcher.hook_opt(bw::v1161::Ai_IsAttackTimedOut, is_attack_timed_out);
     hooks.apply(patcher);
 }
@@ -262,15 +262,18 @@ pub unsafe extern fn issue_order(script: *mut bw::AiScript) {
     }
 }
 
-pub unsafe extern fn if_deaths(script: *mut bw::AiScript) {
-    enum Compare {
+pub unsafe extern fn deaths(script: *mut bw::AiScript) {
+    enum Modifier {
         AtLeast,
         AtMost,
+        Set,
+        Add,
+        Subtract,
         Exactly,
     }
-    // if_deaths(player, compare, amount, unit, dest)
+    // deaths(player, modifier, amount, unit, dest)
     let player = read_u8(script);
-    let compare = read_u8(script);
+    let modifier = read_u8(script);
     let amount = read_u32(script);
     let unit_id = read_u16(script);
     let dest = read_u16(script);
@@ -278,28 +281,44 @@ pub unsafe extern fn if_deaths(script: *mut bw::AiScript) {
         x @ 0 ... 11 => x,
         13 => (*script).player as u8,
         x => {
-            bw::print_text(format!("Unsupported player in if_deaths: {:x}", x));
+            bw::print_text(format!("Unsupported player in deaths: {:x}", x));
             return;
         }
     };
-    let compare = match compare {
+    let modifier = match modifier {
         // Matching trigger conditions
-        0 => Compare::AtLeast,
-        1 => Compare::AtMost,
-        10 => Compare::Exactly,
+        0 => Modifier::AtLeast,
+        1 => Modifier::AtMost,
+        7 => Modifier::Set,
+        8 => Modifier::Add,
+        9 => Modifier::Subtract,
+        10 => Modifier::Exactly,
         x => {
-            bw::print_text(format!("Unsupported compare in if_deaths: {:x}", x));
+            bw::print_text(format!("Unsupported modifier in deaths: {:x}", x));
             return;
         }
     };
-    let deaths = (*bw::game()).deaths.get(unit_id as usize).and_then(|x| x.get(player as usize));
-    if let Some(&deaths) = deaths {
-        let jump = match compare {
-            Compare::AtLeast => deaths >= amount,
-            Compare::AtMost => deaths <= amount,
-            Compare::Exactly => deaths == amount,
+    let deaths = (*bw::game())
+        .deaths.get_mut(unit_id as usize).and_then(|x| x.get_mut(player as usize));
+    if let Some(deaths) = deaths {
+        let jump = match modifier {
+            Modifier::AtLeast => Some(*deaths >= amount),
+            Modifier::AtMost => Some(*deaths <= amount),
+            Modifier::Exactly => Some(*deaths == amount),
+            Modifier::Set => {
+                *deaths = amount;
+                None
+            }
+            Modifier::Add => {
+                *deaths = deaths.saturating_add(amount);
+                None
+            }
+            Modifier::Subtract => {
+                *deaths = deaths.saturating_sub(amount);
+                None
+            }
         };
-        if jump {
+        if jump == Some(true) {
             (*script).pos = dest as u32;
         }
     }
