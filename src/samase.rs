@@ -19,7 +19,7 @@ pub struct PluginApi {
     read_file: unsafe extern fn() -> unsafe extern fn(*const u8, *mut usize) -> *mut u8,
     game: unsafe extern fn() -> Option<unsafe extern fn() -> *mut c_void>,
     rng_seed: unsafe extern fn() -> Option<unsafe extern fn() -> u32>,
-    hook_step_objects: unsafe extern fn(unsafe extern fn()) -> u32,
+    hook_step_objects: unsafe extern fn(unsafe extern fn(), u32) -> u32,
     hook_aiscript_opcode: unsafe extern fn(u32, unsafe extern fn(*mut bw::AiScript)) -> u32,
     ai_regions: unsafe extern fn() -> Option<unsafe extern fn() -> *mut c_void>,
     player_ai: unsafe extern fn() -> Option<unsafe extern fn() -> *mut c_void>,
@@ -30,6 +30,14 @@ pub struct PluginApi {
     // self, order, x, y, target, fow_unit
     issue_order: unsafe extern fn() ->
         Option<unsafe extern fn(*mut bw::Unit, u32, u32, u32, *mut bw::Unit, u32)>,
+    print_text: unsafe extern fn() -> Option<unsafe extern fn(*const u8)>,
+    hook_on_first_file_access: unsafe extern fn(unsafe extern fn()),
+    hook_step_order: unsafe extern fn(
+        unsafe extern fn(*mut c_void, unsafe extern fn(*mut c_void))
+    ) -> u32,
+    hook_step_order_hidden: unsafe extern fn(
+        unsafe extern fn(*mut c_void, unsafe extern fn(*mut c_void))
+    ) -> u32,
 }
 
 struct GlobalFunc<T: Copy>(Option<T>);
@@ -107,11 +115,12 @@ pub fn issue_order(
     unsafe { ISSUE_ORDER.get()(unit, order.0 as u32, x, y, target, fow_unit.0 as u32) }
 }
 
-static mut READ_FILE: GlobalFunc<fn(*const u8) -> *mut u8> = GlobalFunc(None);
+static mut READ_FILE: GlobalFunc<fn(*const u8, *mut usize) -> *mut u8> = GlobalFunc(None);
 pub fn read_file(name: &str) -> Option<*mut u8> {
     // Uh, should work fine
     let cstring = format!("{}\0", name);
-    let result = unsafe { READ_FILE.get()(cstring.as_ptr()) };
+    let mut size = 0usize;
+    let result = unsafe { READ_FILE.get()(cstring.as_ptr(), &mut size) };
     if result == null_mut() {
         None
     } else {
