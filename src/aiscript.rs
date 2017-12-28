@@ -377,13 +377,12 @@ impl Position {
 
 impl fmt::Display for Position {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if self.area.left == self.area.right - 1 && self.area.top == self.area.bottom - 1 {
-            write!(f, "{}, {}", self.area.left, self.area.right)
+        let bw::Rect { left, right, top, bottom } = self.area;
+
+        if left == right - 1 && top == bottom - 1 {
+            write!(f, "{}, {}", left, right)
         } else {
-            write!(
-                f, "{}, {}, {}, {}",
-                self.area.left, self.area.top, self.area.right, self.area.bottom,
-            )
+            write!(f, "{}, {}, {}, {}", left, top, right, bottom)
         }
     }
 }
