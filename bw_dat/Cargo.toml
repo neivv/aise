@@ -1,0 +1,10 @@
+[package]
+name = "bw_dat"
+version = "0.1.0"
+authors = ["Markus Heikkinen <ittevien@gmail.com>"]
+
+[dependencies]
+libc = "0.2"
+
+[dependencies.whack]
+git = "https://github.com/neivv/whack/"

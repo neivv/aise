@@ -1,8 +1,9 @@
 [[package]]
 name = "ais_attackto"
-version = "2.2.2"
+version = "2.3.0"
 dependencies = [
  "backtrace 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bw_dat 0.1.0",
  "byteorder 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "chrono 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "fern 0.4.3 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -37,6 +38,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "cc 1.0.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc 0.2.33 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "bw_dat"
+version = "0.1.0"
+dependencies = [
+ "libc 0.2.33 (registry+https://github.com/rust-lang/crates.io-index)",
+ "whack 0.2.0 (git+https://github.com/neivv/whack/)",
 ]
 
 [[package]]

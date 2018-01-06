@@ -1,6 +1,6 @@
 [package]
 name = "ais_attackto"
-version = "2.2.2"
+version = "2.3.0"
 authors = ["Markus Heikkinen <ittevien@gmail.com>"]
 
 [lib]
@@ -30,3 +30,6 @@ winapi = "0.2.5"
 
 [dependencies.whack]
 git = "https://github.com/neivv/whack/"
+
+[dependencies.bw_dat]
+path = "bw_dat"

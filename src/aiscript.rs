@@ -3,6 +3,7 @@ use std::fmt;
 use std::mem;
 use std::ptr::null_mut;
 use std::slice;
+use std::sync::atomic::{Ordering, AtomicBool, ATOMIC_BOOL_INIT};
 use std::sync::Mutex;
 
 use byteorder::{WriteBytesExt, LittleEndian};
@@ -12,7 +13,9 @@ use whack;
 
 use bw;
 use order::{self, OrderId};
-use unit::{self, UnitId};
+use unit::{self, Unit, UnitId};
+
+pub const IDLE_ORDERS_DISABLED: AtomicBool = ATOMIC_BOOL_INIT;
 
 struct AiScriptOpcodes {
     opcodes: Vec<OpcodeHook>,
@@ -29,6 +32,7 @@ lazy_static! {
         kernel32::HeapCreate(winapi::HEAP_CREATE_ENABLE_EXECUTE, 0, 0) as usize
     };
     static ref ATTACK_TIMEOUTS: Mutex<[u32; 8]> = Mutex::new([!0; 8]);
+    static ref IDLE_ORDERS: Mutex<Vec<(IdleOrder, IdleOrderState)>> = Mutex::new(Vec::new());
 }
 
 unsafe fn exec_alloc(size: usize) -> *mut u8 {
@@ -102,6 +106,7 @@ pub unsafe fn add_aiscript_opcodes(patcher: &mut whack::ModulePatcher) {
     hooks.add_hook(0x72, attack_timeout);
     hooks.add_hook(0x73, issue_order);
     hooks.add_hook(0x74, deaths);
+    hooks.add_hook(0x75, idle_orders);
     patcher.hook_opt(bw::v1161::Ai_IsAttackTimedOut, is_attack_timed_out);
     hooks.apply(patcher);
 }
@@ -266,6 +271,258 @@ pub unsafe extern fn issue_order(script: *mut bw::AiScript) {
             _ => (),
         }
     }
+}
+
+pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
+    // idle_orders(order, rate, count, unit_id, radius, target_id, priority, flags)
+    // Flag 0x1 = Don't target enemies,
+    //      0x2 = Target own,
+    //      0x4 = Target allies,
+    //      0x8 = Pick unseen targets
+    //      0x10 = Pick invisible targets
+    //      0x4000 = Remove matching, no error on mismatch
+    //      0x8000 = Remove matching
+    let order = OrderId(read_u8(script));
+    let rate = read_u16(script);
+    let limit = read_u16(script);
+    let unit_id = UnitId(read_u16(script));
+    let radius = read_u16(script);
+    let target_unit_id = UnitId(read_u16(script));
+    let priority = read_u8(script);
+    let flags = read_u16(script);
+    if IDLE_ORDERS_DISABLED.load(Ordering::Acquire) == true {
+        return;
+    }
+    if order.0 >= 254 {
+        if order.0 == 255 {
+            // Disable default spellcasting
+            (*bw::player_ai((*script).player)).spell_cooldown = 250;
+        } else {
+            // Enable
+            (*bw::player_ai((*script).player)).spell_cooldown = 0;
+        }
+        return;
+    }
+    let mut idle_order_list = IDLE_ORDERS.lock().unwrap();
+    if flags & 0xc000 != 0 {
+        let silent_fail = flags & 0x4000 != 0;
+        let flags = flags & 0x3fff;
+        let matchee = IdleOrder {
+            order,
+            limit,
+            unit_id,
+            target_unit_id,
+            radius,
+            priority,
+            flags,
+            rate,
+            player: (*script).player as u8,
+        };
+        match idle_order_list.iter().position(|x| x.0 == matchee) {
+            Some(s) => {
+                idle_order_list.remove(s);
+            }
+            None => if !silent_fail {
+                bw::print_text(
+                    &format!("idle_orders: Unable to find match to remove for {:#?}", matchee),
+                );
+            },
+        }
+    } else {
+        let pos = idle_order_list.binary_search_by_key(&priority, |x| x.0.priority)
+            .unwrap_or_else(|x| x);
+        idle_order_list.insert(pos, (IdleOrder {
+            order,
+            limit,
+            unit_id,
+            target_unit_id,
+            radius,
+            priority,
+            flags,
+            rate,
+            player: (*script).player as u8,
+        }, IdleOrderState::new()));
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct IdleOrder {
+    priority: u8,
+    order: OrderId,
+    limit: u16,
+    unit_id: UnitId,
+    target_unit_id: UnitId,
+    radius: u16,
+    flags: u16,
+    rate: u16,
+    player: u8,
+}
+
+#[derive(Debug)]
+struct IdleOrderState {
+    // user, target, return point
+    ongoing: Vec<(*mut bw::Unit, *mut bw::Unit, bw::Point)>,
+    next_frame: u32,
+}
+
+unsafe impl Send for IdleOrderState {}
+
+impl IdleOrderState {
+    fn new() -> IdleOrderState {
+        IdleOrderState {
+            ongoing: Vec::new(),
+            next_frame: 0,
+        }
+    }
+}
+
+impl IdleOrder {
+    fn unit_valid(&self, user: &Unit) -> bool {
+        let energy_cost = self.order.tech()
+            .map(|x| x.energy_cost() << 8)
+            .unwrap_or(0);
+        user.player() == self.player &&
+            user.matches_id(self.unit_id) &&
+            user.order() != self.order &&
+            user.energy() as u32 >= energy_cost
+    }
+}
+
+pub fn remove_from_idle_orders(unit: &Unit) {
+    let mut orders = IDLE_ORDERS.lock().unwrap();
+    for &mut (ref _decl, ref mut state) in orders.iter_mut().rev() {
+        for &(user, _target, home) in state.ongoing.iter().filter(|x| x.1 == unit.0) {
+            unsafe {
+                bw::issue_order(user, order::id::MOVE, home, null_mut(), unit::id::NONE);
+            }
+        }
+        state.ongoing.retain(|&(user, target, _)| unit.0 != user && unit.0 != target);
+    }
+}
+
+pub unsafe fn step_idle_orders() {
+    for i in 0..8 {
+        let ai = bw::player_ai(i);
+        if (*ai).spell_cooldown > 200 {
+            // Keep spell cooldown active if default spellcasting was disabled
+            (*ai).spell_cooldown = 250;
+        }
+    }
+    let current_frame = (*bw::game()).frame_count;
+    let mut orders = IDLE_ORDERS.lock().unwrap();
+    for &mut (ref decl, ref mut state) in orders.iter_mut().rev() {
+        // Yes, it may consider an order ongoing even if the unit is targeting the
+        // target for other reasons. Acceptable?
+        state.ongoing.retain(|&(user, target, home)| {
+            let user = Unit(user);
+            let retain = match target == null_mut() {
+                true => user.orders().any(|x| x.id == decl.order),
+                false => user.orders().filter_map(|x| x.target).any(|x| x.0 == target),
+            };
+            if !retain {
+                bw::issue_order(user.0, order::id::MOVE, home, null_mut(), unit::id::NONE);
+            }
+            retain
+        });
+        if state.next_frame <= current_frame {
+            let unit = unit::active_units()
+                .find(|u| decl.unit_valid(u) && !state.ongoing.iter().any(|x| x.0 == u.0));
+            if let Some(unit) = unit {
+                // Instead of a *perfect* solution of trying to find closest user-target pair,
+                // find closest target for the first unit, and then find closest user for
+                // the target (if the distance is large enough for it to matter)
+                let (target, distance) = match find_idle_order_target(&unit, decl, state) {
+                    None => continue,
+                    Some(s) => s,
+                };
+                let (user, distance) = {
+                    if distance > 16 * 32 || distance > decl.radius as u32 {
+                        match find_idle_order_user(&target, decl, state) {
+                            None => (unit, distance),
+                            Some(s) => s,
+                        }
+                    } else {
+                        (unit, distance)
+                    }
+                };
+                if distance < decl.radius as u32 {
+                    let pos = target.position();
+                    let no_detection = target.is_invisible() &&
+                        (*target.0).detection_status & (1 << decl.player) as u32 == 0;
+                    let order_target = if no_detection {
+                        null_mut()
+                    } else {
+                        target.0
+                    };
+                    let home = match user.order() {
+                        order::id::MOVE => (*user.0).order_target_pos,
+                        _ => user.position(),
+                    };
+                    bw::issue_order(user.0, decl.order, pos, order_target, unit::id::NONE);
+                    state.ongoing.push((user.0, order_target, home));
+                    // Round to multiple of decl.rate so that priority is somewhat useful
+                    let rate = decl.rate as u32;
+                    state.next_frame =
+                        current_frame.checked_div(rate).unwrap_or(current_frame) * (rate + 1);
+                } else {
+                    state.next_frame = current_frame + 24 * 10;
+                }
+            }
+        }
+    }
+}
+
+unsafe fn find_idle_order_target(
+    user: &Unit,
+    decl: &IdleOrder,
+    state: &mut IdleOrderState,
+) -> Option<(Unit, u32)> {
+    let accept_enemies = decl.flags & 0x2 == 0;
+    let accept_own = decl.flags & 0x2 != 0;
+    let accept_allies = decl.flags & 0x4 != 0;
+    let accept_unseen = decl.flags & 0x8 != 0;
+    let accept_invisible = decl.flags & 0x10 != 0;
+    let player_mask = 1 << decl.player;
+    let mut acceptable_players = [false; 12];
+    let game = bw::game();
+    for i in 0..12 {
+        if i == decl.player {
+            acceptable_players[i as usize] = accept_own;
+        } else {
+            if (*game).alliances[decl.player as usize][i as usize] == 0 {
+                acceptable_players[i as usize] = accept_enemies;
+            } else {
+                acceptable_players[i as usize] = accept_allies;
+            }
+        }
+    }
+    unit::find_nearest(user.position(), |unit| {
+        if !unit.matches_id(decl.target_unit_id) || !acceptable_players[unit.player() as usize] {
+            return false;
+        }
+        if !accept_unseen {
+            if unit.sprite().map(|s| (*s).visibility_mask & player_mask == 0).unwrap_or(true) {
+                return false;
+            }
+        }
+        if !accept_invisible {
+            if unit.is_invisible() && (*unit.0).detection_status & player_mask as u32 == 0 {
+                return false;
+            }
+        }
+        let already_targeted_count = state.ongoing.iter().filter(|x| x.1 == unit.0).count();
+        already_targeted_count < decl.limit as usize
+    })
+}
+
+fn find_idle_order_user(
+    target: &Unit,
+    decl: &IdleOrder,
+    state: &mut IdleOrderState,
+) -> Option<(Unit, u32)> {
+    unit::find_nearest(target.position(), |unit| {
+        decl.unit_valid(unit) && !state.ongoing.iter().any(|x| x.0 == unit.0)
+    })
 }
 
 pub unsafe extern fn deaths(script: *mut bw::AiScript) {

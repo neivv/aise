@@ -14,6 +14,8 @@ pub mod v1161 {
     use super::structs::*;
     whack_hooks!(stdcall, 0x00400000,
         0x00447090 => Ai_IsAttackTimedOut(@ecx u32) -> u32;
+        0x004D94B0 => StepObjects();
+        0x004EC4D0 => StepOrder(@eax *mut Unit);
     );
 
     whack_funcs!(stdcall, init_funcs, 0x00400000,

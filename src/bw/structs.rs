@@ -28,7 +28,9 @@ pub struct PlayerAiData {
     pub attack_grouping_region: u16,
     pub dc220: [u8; 0x8],
     pub last_attack_second: u32,
-    pub dc22c: [u8; 0x2bc],
+    pub strategic_suicide_mission_cooldown: u8,
+    pub spell_cooldown: u8,
+    pub dc22e: [u8; 0x2ba],
 }
 
 #[repr(C, packed)]
@@ -36,7 +38,11 @@ pub struct Game {
     pub dc0: [u8; 0xe4],
     pub map_width_tiles: u16,
     pub map_height_tiles: u16,
-    pub dce8: [u8; 0xb18c],
+    pub dce8: [u8; 0x64],
+    pub frame_count: u32,
+    pub dc150: [u8; 0x5ba4],
+    pub completed_units_count: [[u32; 0xc]; 0xe4],
+    pub unit_kills: [[u32; 0xc]; 0xe4],
     pub deaths: [[u32; 0xc]; 0xe4],
     pub dcdd34: [u8; 0x810],
     pub alliances: [[u8; 0xc]; 0xc],
@@ -54,8 +60,38 @@ pub struct Location {
     pub flags: u16,
 }
 
-pub struct Sprite;
-pub struct Order;
+pub struct Image;
+
+#[repr(C, packed)]
+pub struct Sprite {
+    pub prev: *mut Sprite,
+    pub next: *mut Sprite,
+    pub sprite_id: u16,
+    pub player: u8,
+    pub selection_index: u8,
+    pub visibility_mask: u8,
+    pub elevation_level: u8,
+    pub flags: u8,
+    pub selection_flash_timer: u8,
+    pub index: u16,
+    pub width: u8,
+    pub height: u8,
+    pub position: Point,
+    pub main_image: *mut Image,
+    pub first_image: *mut Image,
+    pub last_image: *mut Image,
+}
+
+#[repr(C, packed)]
+pub struct Order {
+    pub prev: *mut Order,
+    pub next: *mut Order,
+    pub order_id: u8,
+    pub padding: u8,
+    pub unit_id: u16,
+    pub position: Point,
+    pub target: *mut Unit,
+}
 
 #[repr(C, packed)]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -221,5 +257,6 @@ mod test {
         assert_eq!(mem::size_of::<PlayerAiData>(), 0x4e8);
         assert_eq!(mem::size_of::<Game>(), 0xff5c);
         assert_eq!(mem::size_of::<Unit>(), 0x150);
+        assert_eq!(mem::size_of::<Sprite>(), 0x24);
     }
 }

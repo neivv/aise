@@ -5,6 +5,7 @@ use kernel32;
 use libc::c_void;
 
 use bw;
+use bw_dat;
 use order::OrderId;
 use unit::UnitId;
 use windows;
@@ -38,6 +39,7 @@ pub struct PluginApi {
     hook_step_order_hidden: unsafe extern fn(
         unsafe extern fn(*mut c_void, unsafe extern fn(*mut c_void))
     ) -> u32,
+    dat: unsafe extern fn(u32) -> Option<unsafe extern fn() -> *mut bw_dat::DatTable>,
 }
 
 struct GlobalFunc<T: Copy>(Option<T>);
@@ -47,13 +49,23 @@ impl<T: Copy> GlobalFunc<T> {
         self.0.unwrap()
     }
 
-    fn init(&mut self, val: Option<*mut c_void>, desc: &str) {
-        let val = val.unwrap_or_else(|| fatal(&format!("Can't get {}", desc)));
+    fn try_init(&mut self, val: Option<*mut c_void>) -> bool {
+        let val = match val {
+            Some(s) => s,
+            None => return false,
+        };
         unsafe {
             assert_eq!(mem::size_of::<T>(), 4);
             let mut typecast_hack: T = mem::uninitialized();
             *(&mut typecast_hack as *mut T as *mut *mut c_void) = val;
             self.0 = Some(typecast_hack);
+        }
+        true
+    }
+
+    fn init(&mut self, val: Option<*mut c_void>, desc: &str) {
+        if !self.try_init(val) {
+            fatal(&format!("Can't get {}", desc));
         }
     }
 }
@@ -85,6 +97,21 @@ pub fn player_ai(player: u32) -> *mut bw::PlayerAiData {
 static mut FIRST_ACTIVE_UNIT: GlobalFunc<fn() -> *mut bw::Unit> = GlobalFunc(None);
 pub fn first_active_unit() -> *mut bw::Unit {
     unsafe { FIRST_ACTIVE_UNIT.0.map(|x| x()).unwrap_or(null_mut()) }
+}
+
+static mut UNITS_DAT: GlobalFunc<fn() -> *mut bw_dat::DatTable> = GlobalFunc(None);
+pub fn units_dat() -> *mut bw_dat::DatTable {
+    unsafe { UNITS_DAT.get()() }
+}
+
+static mut TECHDATA_DAT: GlobalFunc<fn() -> *mut bw_dat::DatTable> = GlobalFunc(None);
+pub fn techdata_dat() -> *mut bw_dat::DatTable {
+    unsafe { TECHDATA_DAT.get()() }
+}
+
+static mut ORDERS_DAT: GlobalFunc<fn() -> *mut bw_dat::DatTable> = GlobalFunc(None);
+pub fn orders_dat() -> *mut bw_dat::DatTable {
+    unsafe { ORDERS_DAT.get()() }
 }
 
 static mut GET_REGION: GlobalFunc<fn(u32, u32) -> u32> = GlobalFunc(None);
@@ -146,6 +173,10 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
     if ok == 0 {
         fatal("Unable to hook aiscript opcodes");
     }
+    let ok = ((*api).hook_aiscript_opcode)(0x75, ::aiscript::idle_orders);
+    if ok == 0 {
+        fatal("Unable to hook aiscript opcodes");
+    }
     GAME.init(((*api).game)().map(|x| mem::transmute(x)), "Game object");
     AI_REGIONS.init(((*api).ai_regions)().map(|x| mem::transmute(x)), "AI regions");
     PLAYER_AI.init(((*api).player_ai)().map(|x| mem::transmute(x)), "Player AI");
@@ -164,5 +195,26 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
         ((*api).change_ai_region_state)().map(|x| mem::transmute(x)),
         "change_ai_region_state",
     );
+    let result = ((*api).hook_step_objects)(::frame_hook, 0);
+    if result == 0 {
+        ((*api).warn_unsupported_feature)(b"Ai script idle_orders\0".as_ptr());
+        ::aiscript::IDLE_ORDERS_DISABLED.store(true, ::std::sync::atomic::Ordering::Release);
+    }
+    let result = ((*api).hook_step_order)(::step_order_hook);
+    if result == 0 {
+        ((*api).warn_unsupported_feature)(b"Ai script idle_orders\0".as_ptr());
+        ::aiscript::IDLE_ORDERS_DISABLED.store(true, ::std::sync::atomic::Ordering::Release);
+    }
+    UNITS_DAT.init(((*api).dat)(0).map(|x| mem::transmute(x)), "units.dat");
+    bw_dat::init_units(units_dat());
+    let mut dat_ok = TECHDATA_DAT.try_init(((*api).dat)(4).map(|x| mem::transmute(x)));
+    dat_ok |= ORDERS_DAT.try_init(((*api).dat)(7).map(|x| mem::transmute(x)));
+    if !dat_ok {
+        ((*api).warn_unsupported_feature)(b"Ai script idle_orders\0".as_ptr());
+        ::aiscript::IDLE_ORDERS_DISABLED.store(true, ::std::sync::atomic::Ordering::Release);
+    } else {
+        bw_dat::init_techdata(techdata_dat());
+        bw_dat::init_orders(orders_dat());
+    }
     ::init(true);
 }
