@@ -51,6 +51,13 @@ impl Unit {
         unsafe { (*self.0).flags & 0x300 != 0 }
     }
 
+    /// Is the unit cloaked or burrowed (So it requires detection)
+    pub fn is_invincible(&self) -> bool {
+        unsafe {
+            (*self.0).flags & 0x04000000 != 0
+        }
+    }
+
     pub fn orders(&self) -> Orders {
         unsafe {
             Orders {
