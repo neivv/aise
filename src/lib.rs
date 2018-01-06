@@ -5,12 +5,10 @@ extern crate backtrace;
 extern crate byteorder;
 extern crate chrono;
 extern crate fern;
-extern crate kernel32;
 #[macro_use] extern crate lazy_static;
 extern crate libc;
 #[macro_use] extern crate log;
 #[macro_use] extern crate scopeguard;
-extern crate user32;
 extern crate winapi;
 
 pub mod mpqdraft;
@@ -26,6 +24,8 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, ATOMIC_BOOL_INIT, Ordering};
 
 use libc::c_void;
+
+use winapi::um::processthreadsapi::{GetCurrentProcess, TerminateProcess};
 
 fn init(samase: bool) {
     if cfg!(debug_assertions) {
@@ -94,7 +94,7 @@ fn init(samase: bool) {
         write!(msg, "Backtrace:\n{}", backtrace).unwrap();
         error!("{}", msg);
         windows::message_box("Ais_attackto panic", &msg);
-        unsafe { kernel32::TerminateProcess(kernel32::GetCurrentProcess(), 0x4230daef); }
+        unsafe { TerminateProcess(GetCurrentProcess(), 0x4230daef); }
     }));
 
     SAMASE_INIT.store(samase, Ordering::Release);

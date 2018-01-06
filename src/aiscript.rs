@@ -7,8 +7,8 @@ use std::sync::atomic::{Ordering, AtomicBool, ATOMIC_BOOL_INIT};
 use std::sync::Mutex;
 
 use byteorder::{WriteBytesExt, LittleEndian};
-use kernel32;
-use winapi;
+use winapi::um::heapapi::{HeapAlloc, HeapCreate};
+use winapi::um::winnt::{HANDLE, HEAP_CREATE_ENABLE_EXECUTE};
 use whack;
 
 use bw;
@@ -29,7 +29,7 @@ struct OpcodeHook {
 
 lazy_static! {
     static ref EXEC_HEAP: usize = unsafe {
-        kernel32::HeapCreate(winapi::HEAP_CREATE_ENABLE_EXECUTE, 0, 0) as usize
+        HeapCreate(HEAP_CREATE_ENABLE_EXECUTE, 0, 0) as usize
     };
     static ref ATTACK_TIMEOUTS: Mutex<[u32; 8]> = Mutex::new([!0; 8]);
     static ref IDLE_ORDERS: Mutex<IdleOrders> = Mutex::new(Default::default());
@@ -41,7 +41,7 @@ pub fn game_start_init() {
 }
 
 unsafe fn exec_alloc(size: usize) -> *mut u8 {
-    kernel32::HeapAlloc(*EXEC_HEAP as winapi::HANDLE, 0, size as u32) as *mut u8
+    HeapAlloc(*EXEC_HEAP as HANDLE, 0, size) as *mut u8
 }
 
 impl AiScriptOpcodes {

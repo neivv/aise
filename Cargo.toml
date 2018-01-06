@@ -20,13 +20,14 @@ backtrace = "0.3"
 byteorder = "1.1"
 chrono = "0.4"
 fern = "0.4"
-kernel32-sys = "0.2.2"
 lazy_static = "0.2"
 libc = "0.2"
 log = "0.3"
 scopeguard = "0.3.2"
-user32-sys = "0.2"
-winapi = "0.2.5"
+
+[dependencies.winapi]
+version = "0.3.3"
+features = ["heapapi", "libloaderapi", "processthreadsapi", "winuser"]
 
 [dependencies.whack]
 git = "https://github.com/neivv/whack/"

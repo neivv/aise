@@ -3,25 +3,27 @@
 
 //! Provides safe winapi wrappers with nicer string handling
 
-use kernel32;
-use user32;
 use std::ffi::{CString, OsString, OsStr};
 use std::os::windows::ffi::{OsStringExt, OsStrExt};
 use std::ptr::null_mut;
 
 use libc::c_void;
 
-use winapi::{HMODULE, FARPROC};
+use winapi::shared::minwindef::{FARPROC, HMODULE};
+use winapi::um::libloaderapi::{
+    self, FreeLibrary, GetModuleFileNameW, GetModuleHandleExW, LoadLibraryW,
+};
+use winapi::um::winuser::{MessageBoxW};
 
 pub fn GetProcAddress(handle: HMODULE, func: &str) -> FARPROC {
     unsafe {
         let name = CString::new(func.as_bytes()).unwrap();
-        kernel32::GetProcAddress(handle, name.as_ptr())
+        libloaderapi::GetProcAddress(handle, name.as_ptr())
     }
 }
 
 pub fn LoadLibrary(name: &str) -> HMODULE {
-    unsafe { kernel32::LoadLibraryW(winapi_str(name).as_ptr()) }
+    unsafe { LoadLibraryW(winapi_str(name).as_ptr()) }
 }
 
 pub fn winapi_str<T: AsRef<OsStr>>(input: T) -> Vec<u16> {
@@ -35,11 +37,11 @@ pub fn os_string_from_winapi(input: &[u16]) -> OsString {
 pub fn module_from_address(address: *mut c_void) -> Option<(OsString, HMODULE)> {
     unsafe {
         let mut out = null_mut();
-        let ok = kernel32::GetModuleHandleExW(4, address as *const _, &mut out);
+        let ok = GetModuleHandleExW(4, address as *const _, &mut out);
         if ok == 0 {
             return None;
         }
-        defer!({ kernel32::FreeLibrary(out); });
+        defer!({ FreeLibrary(out); });
         module_name(out).map(|name| (name, out))
     }
 }
@@ -49,7 +51,7 @@ pub fn module_name(handle: HMODULE) -> Option<OsString> {
         let mut buf_size = 128;
         let mut buf = Vec::with_capacity(buf_size);
         loop {
-            let result = kernel32::GetModuleFileNameW(handle, buf.as_mut_ptr(), buf_size as u32);
+            let result = GetModuleFileNameW(handle, buf.as_mut_ptr(), buf_size as u32);
             match result {
                 n if n == buf_size as u32 => {
                     // reserve does not guarantee to reserve exactly specified size,
@@ -73,11 +75,6 @@ pub fn module_name(handle: HMODULE) -> Option<OsString> {
 
 pub fn message_box(caption: &str, msg: &str) {
     unsafe {
-        user32::MessageBoxW(
-            null_mut(),
-            winapi_str(msg).as_ptr(),
-            winapi_str(caption).as_ptr(),
-            0
-        );
+        MessageBoxW(null_mut(), winapi_str(msg).as_ptr(), winapi_str(caption).as_ptr(), 0);
     }
 }

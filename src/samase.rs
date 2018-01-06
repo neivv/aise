@@ -1,8 +1,8 @@
 use std::mem;
 use std::ptr::null_mut;
 
-use kernel32;
 use libc::c_void;
+use winapi::um::processthreadsapi::{GetCurrentProcess, TerminateProcess};
 
 use bw;
 use bw_dat;
@@ -73,7 +73,7 @@ impl<T: Copy> GlobalFunc<T> {
 fn fatal(text: &str) -> ! {
     let msg = format!("This StarCraft version is not supported :(\n({})", text);
     windows::message_box("Aiscript extension plugin", &msg);
-    unsafe { kernel32::TerminateProcess(kernel32::GetCurrentProcess(), 0x4230daef); }
+    unsafe { TerminateProcess(GetCurrentProcess(), 0x4230daef); }
     unreachable!();
 }
 
