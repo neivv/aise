@@ -35,6 +35,11 @@ lazy_static! {
     static ref IDLE_ORDERS: Mutex<IdleOrders> = Mutex::new(Default::default());
 }
 
+pub fn game_start_init() {
+    *ATTACK_TIMEOUTS.lock().unwrap() = [!0; 8];
+    *IDLE_ORDERS.lock().unwrap() = Default::default();
+}
+
 unsafe fn exec_alloc(size: usize) -> *mut u8 {
     kernel32::HeapAlloc(*EXEC_HEAP as winapi::HANDLE, 0, size as u32) as *mut u8
 }

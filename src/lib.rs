@@ -138,6 +138,10 @@ unsafe fn frame_hook_1161() {
 }
 
 unsafe extern fn frame_hook() {
+    let current_frame = (*bw::game()).frame_count;
+    if current_frame == 0 {
+        aiscript::game_start_init();
+    }
     aiscript::step_idle_orders();
 }
 
