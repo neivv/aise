@@ -285,6 +285,7 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
     //      0x4 = Target allies,
     //      0x8 = Pick unseen targets
     //      0x10 = Pick invisible targets
+    //      0x20 = In combat
     //      0x4000 = Remove matching, no error on mismatch
     //      0x8000 = Remove matching
     let order = OrderId(read_u8(script));
@@ -556,6 +557,7 @@ unsafe fn find_idle_order_target(
     let accept_allies = decl.flags.simple & 0x4 != 0;
     let accept_unseen = decl.flags.simple & 0x8 != 0;
     let accept_invisible = decl.flags.simple & 0x10 != 0;
+    let in_combat = decl.flags.simple & 0x20 != 0;
     let player_mask = 1 << decl.player;
     let mut acceptable_players = [false; 12];
     let game = bw::game();
@@ -587,6 +589,16 @@ unsafe fn find_idle_order_target(
         }
         if !accept_invisible {
             if unit.is_invisible() && (*unit.0).detection_status & player_mask as u32 == 0 {
+                return false;
+            }
+        }
+        if in_combat {
+            let ok = unit.target().map(|x| {
+                let targeting_enemy =
+                    (*game).alliances[unit.player() as usize][x.player() as usize] == 0;
+                targeting_enemy && unit.order().is_attack_order()
+            }).unwrap_or(false);
+            if !ok {
                 return false;
             }
         }

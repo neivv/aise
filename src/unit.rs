@@ -68,6 +68,10 @@ impl Unit {
         }
     }
 
+    pub fn target(&self) -> Option<Unit> {
+        unsafe { Unit::from_ptr((*self.0).target) }
+    }
+
     pub fn matches_id(&self, other: UnitId) -> bool {
         let id = self.id();
         if other == id::ANY_UNIT {

@@ -96,6 +96,13 @@ pub mod order {
     use super::OrderId;
     pub const DIE: OrderId = OrderId(0x0);
     pub const MOVE: OrderId = OrderId(0x6);
+    pub const ATTACK: OrderId = OrderId(0x8);
+    pub const ATTACK_OBSCURED: OrderId = OrderId(0x9);
+    pub const ATTACK_UNIT: OrderId = OrderId(0xa);
+    pub const ATTACK_FIXED_RANGE: OrderId = OrderId(0xb);
+    pub const ATTACK_MOVE: OrderId = OrderId(0xe);
+    pub const TOWER_ATTACK: OrderId = OrderId(0x13);
+    pub const SUBUNIT_ATTACK: OrderId = OrderId(0x16);
     pub const DRONE_BUILD: OrderId = OrderId(0x19);
     pub const SCV_BUILD: OrderId = OrderId(0x1e);
     pub const PROBE_BUILD: OrderId = OrderId(0x1f);
@@ -105,16 +112,27 @@ pub mod order {
     pub const BUILD_NYDUS_EXIT: OrderId = OrderId(0x2e);
     pub const UNIT_MORPH: OrderId = OrderId(0x2a);
     pub const BUILDING_MORPH: OrderId = OrderId(0x2b);
+    pub const CARRIER_ATTACK: OrderId = OrderId(0x35);
+    pub const CARRIER_ATTACK_OBSCURED: OrderId = OrderId(0x36);
+    pub const CARRIER_ATTACK_UNIT: OrderId = OrderId(0x38);
+    pub const REAVER_ATTACK: OrderId = OrderId(0x3b);
+    pub const REAVER_ATTACK_OBSCURED: OrderId = OrderId(0x3c);
+    pub const REAVER_ATTACK_UNIT: OrderId = OrderId(0x3d);
     pub const TRAIN_FIGHTER: OrderId = OrderId(0x3f);
+    pub const INTERCEPTOR_ATTACK: OrderId = OrderId(0x40);
+    pub const SCARAB_ATTACK: OrderId = OrderId(0x41);
     pub const SHIELD_BATTERY: OrderId = OrderId(0x44);
     pub const SPAWNING_LARVA: OrderId = OrderId(0x4e);
     pub const SPREAD_CREEP: OrderId = OrderId(0x66);
     pub const CLOAK: OrderId = OrderId(0x6d);
     pub const DECLOAK: OrderId = OrderId(0x6e);
     pub const CLOAKING_NEARBY_UNITS: OrderId = OrderId(0x83);
+    pub const SAP_UNIT: OrderId = OrderId(0x86);
+    pub const SAP_LOCATION: OrderId = OrderId(0x87);
     pub const HALLUCINATED: OrderId = OrderId(0x95);
+    pub const AI_ATTACK_MOVE: OrderId = OrderId(0x9d);
+    pub const REVEAL_TRAP: OrderId = OrderId(0xab);
 }
-
 
 impl UnitId {
     pub fn get(&self, id: u32) -> u32 {
@@ -308,6 +326,18 @@ impl OrderId {
         match *self {
             TRAIN | CLOAKING_NEARBY_UNITS | CLOAK | DECLOAK | BUILD_ADDON | TRAIN_FIGHTER |
                 SHIELD_BATTERY | SPAWNING_LARVA | SPREAD_CREEP | HALLUCINATED => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_attack_order(&self) -> bool {
+        use order::*;
+        match *self {
+            ATTACK | ATTACK_OBSCURED | ATTACK_UNIT | ATTACK_FIXED_RANGE | ATTACK_MOVE |
+                TOWER_ATTACK | SUBUNIT_ATTACK | CARRIER_ATTACK | CARRIER_ATTACK_OBSCURED |
+                CARRIER_ATTACK_UNIT | REAVER_ATTACK | REAVER_ATTACK_OBSCURED |
+                REAVER_ATTACK_UNIT | INTERCEPTOR_ATTACK | SCARAB_ATTACK | SAP_UNIT |
+                SAP_LOCATION | AI_ATTACK_MOVE | REVEAL_TRAP => true,
             _ => false,
         }
     }
