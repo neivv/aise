@@ -32,11 +32,13 @@ lazy_static! {
         HeapCreate(HEAP_CREATE_ENABLE_EXECUTE, 0, 0) as usize
     };
     static ref ATTACK_TIMEOUTS: Mutex<[u32; 8]> = Mutex::new([!0; 8]);
+    static ref ATTACK_TIMEOUT_USED: Mutex<[bool; 8]> = Mutex::new([false; 8]);
     static ref IDLE_ORDERS: Mutex<IdleOrders> = Mutex::new(Default::default());
 }
 
 pub fn game_start_init() {
     *ATTACK_TIMEOUTS.lock().unwrap() = [!0; 8];
+    *ATTACK_TIMEOUT_USED.lock().unwrap() = [false; 8];
     *IDLE_ORDERS.lock().unwrap() = Default::default();
 }
 
@@ -152,6 +154,25 @@ pub unsafe extern fn attack_to(script: *mut bw::AiScript) {
 pub unsafe extern fn attack_timeout(script: *mut bw::AiScript) {
     let timeout = read_u32(script);
     ATTACK_TIMEOUTS.lock().unwrap()[(*script).player as usize] = timeout;
+}
+
+pub unsafe fn attack_timeouts_frame_hook() {
+    // Just force timeouts if attack timeout has ever happened.
+    // Unlike is_attack_timed_out, this code also runs for SCR.
+    // Actually only for SCR for now due to timeout 1 breaking teippi display
+    // and most likely should not cause difference here
+    if ::SAMASE_INIT.load(Ordering::Acquire) {
+        let mut timeouts_used = ATTACK_TIMEOUT_USED.lock().unwrap();
+        for i in 0..8 {
+            let player_ai = bw::player_ai(i);
+            if (*player_ai).last_attack_second != 0 {
+                timeouts_used[i as usize] = true;
+            }
+            if (*player_ai).last_attack_second == 0 && timeouts_used[i as usize] {
+                (*player_ai).last_attack_second = !100;
+            }
+        }
+    }
 }
 
 unsafe fn is_attack_timed_out(player: u32, orig: &Fn(u32) -> u32) -> u32 {

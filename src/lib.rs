@@ -142,6 +142,7 @@ unsafe extern fn frame_hook() {
     if current_frame == 0 {
         aiscript::game_start_init();
     }
+    aiscript::attack_timeouts_frame_hook();
     aiscript::step_idle_orders();
 }
 
