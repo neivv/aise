@@ -431,7 +431,7 @@ struct IdleOrderFlags {
 impl IdleOrderFlags {
     fn match_status(&self, unit: &Unit) -> bool {
         unsafe {
-            if self.status_required != 0 && self.status_not != 0 {
+            if self.status_required != 0 || self.status_not != 0 {
                 let flags = (if (*unit.0).ensnare_timer != 0 { 1 } else { 0 } << 0) |
                     (if (*unit.0).plague_timer != 0 { 1 } else { 0 } << 1) |
                     (if (*unit.0).lockdown_timer != 0 { 1 } else { 0 } << 2) |
