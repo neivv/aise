@@ -72,6 +72,17 @@ impl Unit {
         unsafe { Unit::from_ptr((*self.0).target) }
     }
 
+    pub fn building_ai(&self) -> Option<*mut bw::BuildingAi> {
+        unsafe {
+            let ai = (*self.0).ai as *mut bw::BuildingAi;
+            if ai != null_mut() && (*ai).ai_type == 3 {
+                Some(ai)
+            } else {
+                None
+            }
+        }
+    }
+
     pub fn matches_id(&self, other: UnitId) -> bool {
         let id = self.id();
         if other == id::ANY_UNIT {

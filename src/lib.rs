@@ -21,6 +21,7 @@ mod order;
 mod windows;
 
 use std::path::Path;
+use std::ptr::null_mut;
 use std::sync::atomic::{AtomicBool, ATOMIC_BOOL_INIT, Ordering};
 
 use libc::c_void;
@@ -144,6 +145,30 @@ unsafe extern fn frame_hook() {
     }
     aiscript::attack_timeouts_frame_hook();
     aiscript::step_idle_orders();
+    aiscript::under_attack_frame_hook();
+    for unit in unit::active_units() {
+        if let Some(ai) = unit.building_ai() {
+            let town = (*ai).town;
+            if town != null_mut() {
+                if let Some(max_workers) = aiscript::max_workers_for(town) {
+                    (*town).worker_limit = max_workers;
+                }
+            }
+            let iter = (*ai).train_queue_types.iter_mut()
+                .zip((*ai).train_queue_values.iter_mut());
+            for (ty, val) in iter {
+                if *ty == 2 && *val != null_mut() {
+                    let ai = *val as *mut bw::GuardAi;
+                    if (*ai).parent != null_mut() {
+                        // Guard ai share bug, remove the ai from queue
+                        debug!("Guard AI share for unit at {:?}", unit.position());
+                        *val = null_mut();
+                        *ty = 0;
+                    }
+                }
+            }
+        }
+    }
 }
 
 unsafe extern fn step_order_hook(unit: *mut c_void, orig: unsafe extern fn(*mut c_void)) {
@@ -152,8 +177,11 @@ unsafe extern fn step_order_hook(unit: *mut c_void, orig: unsafe extern fn(*mut 
 
 fn step_order_hook_1161(u: *mut bw::Unit, orig: &Fn(*mut bw::Unit)) {
     let unit = unit::Unit(u);
-    if unit.order() == order::id::DIE {
-        aiscript::remove_from_idle_orders(&unit);
+    match unit.order() {
+        order::id::DIE => {
+            aiscript::remove_from_idle_orders(&unit);
+        }
+        _ => (),
     }
     orig(u);
 }

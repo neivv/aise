@@ -34,12 +34,16 @@ lazy_static! {
     static ref ATTACK_TIMEOUTS: Mutex<[u32; 8]> = Mutex::new([!0; 8]);
     static ref ATTACK_TIMEOUT_USED: Mutex<[bool; 8]> = Mutex::new([false; 8]);
     static ref IDLE_ORDERS: Mutex<IdleOrders> = Mutex::new(Default::default());
+    static ref MAX_WORKERS: Mutex<Vec<MaxWorkers>> = Mutex::new(Default::default());
+    static ref UNDER_ATTACK_MODE: Mutex<[Option<bool>; 8]> = Mutex::new(Default::default());
 }
 
 pub fn game_start_init() {
     *ATTACK_TIMEOUTS.lock().unwrap() = [!0; 8];
     *ATTACK_TIMEOUT_USED.lock().unwrap() = [false; 8];
     *IDLE_ORDERS.lock().unwrap() = Default::default();
+    *MAX_WORKERS.lock().unwrap() = Default::default();
+    *UNDER_ATTACK_MODE.lock().unwrap() = Default::default();
 }
 
 unsafe fn exec_alloc(size: usize) -> *mut u8 {
@@ -116,6 +120,8 @@ pub unsafe fn add_aiscript_opcodes(patcher: &mut whack::ModulePatcher) {
     hooks.add_hook(0x75, idle_orders);
     hooks.add_hook(0x76, if_attacking);
     hooks.add_hook(0x77, unstart_campaign);
+    hooks.add_hook(0x78, max_workers);
+    hooks.add_hook(0x79, under_attack);
     patcher.hook_opt(bw::v1161::Ai_IsAttackTimedOut, is_attack_timed_out);
     hooks.apply(patcher);
 }
@@ -406,6 +412,67 @@ pub unsafe extern fn if_attacking(script: *mut bw::AiScript) {
 pub unsafe extern fn unstart_campaign(script: *mut bw::AiScript) {
     let ai = bw::player_ai((*script).player);
     (*ai).flags &= !0x20;
+}
+
+#[derive(Debug)]
+struct MaxWorkers {
+    town: *mut bw::AiTown,
+    count: u8,
+}
+
+unsafe impl Send for MaxWorkers {}
+
+pub unsafe extern fn max_workers(script: *mut bw::AiScript) {
+    let count = read_u8(script);
+    if (*script).town == null_mut() {
+        bw::print_text(&format!("Used `max_workers {}` without town", count));
+        return;
+    }
+    let mut workers = MAX_WORKERS.lock().unwrap();
+    workers.retain(|x| x.town != (*script).town);
+    if count != 255 {
+        workers.push(MaxWorkers {
+            town: (*script).town,
+            count,
+        });
+    }
+}
+
+pub extern fn max_workers_for(town: *mut bw::AiTown) -> Option<u8> {
+    let workers = MAX_WORKERS.lock().unwrap();
+    workers.iter().find(|x| x.town == town).map(|x| x.count)
+}
+
+pub unsafe extern fn under_attack(script: *mut bw::AiScript) {
+    // 0 = Never, 1 = Default, 2 = Always
+    let mode = read_u8(script);
+    let player = (*script).player as usize;
+    let mut under_attack = UNDER_ATTACK_MODE.lock().unwrap();
+    match mode {
+        0 => under_attack[player] = Some(false),
+        1 => under_attack[player] = None,
+        2 => under_attack[player] = Some(true),
+        _ => {
+            bw::print_text(&format!("Invalid `under_attack` mode: {}", mode));
+            return;
+        }
+    }
+}
+
+pub unsafe fn under_attack_frame_hook() {
+    let under_attack = UNDER_ATTACK_MODE.lock().unwrap();
+    for (player, mode) in under_attack.iter().cloned().enumerate() {
+        match mode {
+            Some(true) => {
+                (*bw::player_ai(player as u32)).previous_building_hit_second =
+                    bw::elapsed_seconds().wrapping_sub(1);
+            }
+            Some(false) => {
+                (*bw::player_ai(player as u32)).previous_building_hit_second = 0;
+            }
+            None => (),
+        }
+    }
 }
 
 #[derive(Debug, Default)]

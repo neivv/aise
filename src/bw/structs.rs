@@ -9,8 +9,59 @@ pub struct AiScript {
     pub player: u32,
     pub area: [u32; 4],
     pub center: [u32; 2],
-    pub town: *mut c_void,
+    pub town: *mut AiTown,
     pub flags: u32,
+}
+
+#[repr(C, packed)]
+pub struct AiTown {
+    pub next: *mut AiTown,
+    pub prev: *mut AiTown,
+    pub free_workers: *mut c_void,
+    pub workers: *mut c_void,
+    pub free_buildings: *mut c_void,
+    pub buildings: *mut BuildingAi,
+    pub player: u8,
+    pub inited: u8,
+    pub worker_count: u8,
+    pub worker_limit: u8,
+    pub resource_area: u8,
+    pub resource_units_not_set: u8,
+    pub in_battle: u8,
+    pub unk1f: u8,
+    pub base_position: Point,
+    pub main_building: *mut Unit,
+    pub building_scv: *mut Unit,
+    pub mineral: *mut Unit,
+    pub gas_buildings: [*mut Unit; 0x3],
+    pub town_units: [u32; 0x64],
+}
+
+#[repr(C, packed)]
+pub struct BuildingAi {
+    pub next: *mut BuildingAi,
+    pub prev: *mut BuildingAi,
+    pub ai_type: u8,
+    pub train_queue_types: [u8; 0x5],
+    pub dce: [u8; 0x2],
+    pub parent: *mut Unit,
+    pub town: *mut AiTown,
+    pub train_queue_values: [*mut c_void; 0x5],
+}
+
+#[repr(C, packed)]
+pub struct GuardAi {
+    pub next: *mut GuardAi,
+    pub prev: *mut GuardAi,
+    pub ai_type: u8,
+    pub times_dies: u8,
+    pub dca: [u8; 0x2],
+    pub parent: *mut Unit,
+    pub unit_id: u16,
+    pub home: Point,
+    pub other_home: Point,
+    pub padding1a: [u8; 0x2],
+    pub previous_update: u32,
 }
 
 #[repr(C, packed)]
@@ -26,7 +77,8 @@ pub struct PlayerAiData {
     pub flags: u16,
     pub dc21a: [u8; 0x4],
     pub attack_grouping_region: u16,
-    pub dc220: [u8; 0x8],
+    pub dc220: [u8; 0x4],
+    pub previous_building_hit_second: u32,
     pub last_attack_second: u32,
     pub strategic_suicide_mission_cooldown: u8,
     pub spell_cooldown: u8,
@@ -243,7 +295,9 @@ pub struct Unit {
     pub _unk125: u8,
     pub acid_spore_count: u8,
     pub acid_spore_timers: [u8; 0x9],
-    pub _dc130: [u8; 0x20],
+    pub _dc130: [u8; 0x4],
+    pub ai: *mut c_void,
+    pub _dc138: [u8; 0x18],
 }
 
 #[cfg(test)]
@@ -254,6 +308,9 @@ mod test {
         use std::mem;
         assert_eq!(mem::size_of::<AiScript>(), 0x34);
         assert_eq!(mem::size_of::<AiRegion>(), 0x34);
+        assert_eq!(mem::size_of::<AiTown>(), 0x1cc);
+        assert_eq!(mem::size_of::<BuildingAi>(), 0x2c);
+        assert_eq!(mem::size_of::<GuardAi>(), 0x20);
         assert_eq!(mem::size_of::<PlayerAiData>(), 0x4e8);
         assert_eq!(mem::size_of::<Game>(), 0xff5c);
         assert_eq!(mem::size_of::<Unit>(), 0x150);
