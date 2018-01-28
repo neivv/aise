@@ -29,7 +29,7 @@ pub struct AiTown {
     pub resource_units_not_set: u8,
     pub in_battle: u8,
     pub unk1f: u8,
-    pub base_position: Point,
+    pub position: Point,
     pub main_building: *mut Unit,
     pub building_scv: *mut Unit,
     pub mineral: *mut Unit,

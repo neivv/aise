@@ -155,44 +155,28 @@ pub fn read_file(name: &str) -> Option<*mut u8> {
     }
 }
 
+unsafe fn aiscript_opcode(
+    api: *const PluginApi,
+    opcode: u32,
+    hook: unsafe extern fn(*mut bw::AiScript),
+) {
+    let ok = ((*api).hook_aiscript_opcode)(opcode, hook);
+    if ok == 0 {
+        fatal("Unable to hook aiscript opcodes");
+    }
+}
+
 #[no_mangle]
 pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
-    let ok = ((*api).hook_aiscript_opcode)(0x71, ::aiscript::attack_to);
-    if ok == 0 {
-        fatal("Unable to hook aiscript opcodes");
-    }
-    let ok = ((*api).hook_aiscript_opcode)(0x72, ::aiscript::attack_timeout);
-    if ok == 0 {
-        fatal("Unable to hook aiscript opcodes");
-    }
-    let ok = ((*api).hook_aiscript_opcode)(0x73, ::aiscript::issue_order);
-    if ok == 0 {
-        fatal("Unable to hook aiscript opcodes");
-    }
-    let ok = ((*api).hook_aiscript_opcode)(0x74, ::aiscript::deaths);
-    if ok == 0 {
-        fatal("Unable to hook aiscript opcodes");
-    }
-    let ok = ((*api).hook_aiscript_opcode)(0x75, ::aiscript::idle_orders);
-    if ok == 0 {
-        fatal("Unable to hook aiscript opcodes");
-    }
-    let ok = ((*api).hook_aiscript_opcode)(0x76, ::aiscript::if_attacking);
-    if ok == 0 {
-        fatal("Unable to hook aiscript opcodes");
-    }
-    let ok = ((*api).hook_aiscript_opcode)(0x77, ::aiscript::unstart_campaign);
-    if ok == 0 {
-        fatal("Unable to hook aiscript opcodes");
-    }
-    let ok = ((*api).hook_aiscript_opcode)(0x78, ::aiscript::max_workers);
-    if ok == 0 {
-        fatal("Unable to hook aiscript opcodes");
-    }
-    let ok = ((*api).hook_aiscript_opcode)(0x79, ::aiscript::under_attack);
-    if ok == 0 {
-        fatal("Unable to hook aiscript opcodes");
-    }
+    aiscript_opcode(api, 0x71, ::aiscript::attack_to);
+    aiscript_opcode(api, 0x72, ::aiscript::attack_timeout);
+    aiscript_opcode(api, 0x73, ::aiscript::issue_order);
+    aiscript_opcode(api, 0x74, ::aiscript::deaths);
+    aiscript_opcode(api, 0x75, ::aiscript::idle_orders);
+    aiscript_opcode(api, 0x76, ::aiscript::if_attacking);
+    aiscript_opcode(api, 0x77, ::aiscript::unstart_campaign);
+    aiscript_opcode(api, 0x78, ::aiscript::max_workers);
+    aiscript_opcode(api, 0x79, ::aiscript::under_attack);
     GAME.init(((*api).game)().map(|x| mem::transmute(x)), "Game object");
     AI_REGIONS.init(((*api).ai_regions)().map(|x| mem::transmute(x)), "AI regions");
     PLAYER_AI.init(((*api).player_ai)().map(|x| mem::transmute(x)), "Player AI");
