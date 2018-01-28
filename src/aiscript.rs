@@ -114,6 +114,8 @@ pub unsafe fn add_aiscript_opcodes(patcher: &mut whack::ModulePatcher) {
     hooks.add_hook(0x73, issue_order);
     hooks.add_hook(0x74, deaths);
     hooks.add_hook(0x75, idle_orders);
+    hooks.add_hook(0x76, if_attacking);
+    hooks.add_hook(0x77, unstart_campaign);
     patcher.hook_opt(bw::v1161::Ai_IsAttackTimedOut, is_attack_timed_out);
     hooks.apply(patcher);
 }
@@ -391,6 +393,19 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
             player: (*script).player as u8,
         }, IdleOrderState::new()));
     }
+}
+
+pub unsafe extern fn if_attacking(script: *mut bw::AiScript) {
+    let dest = read_u16(script);
+    let ai = bw::player_ai((*script).player);
+    if (*ai).attack_grouping_region != 0 {
+        (*script).pos = dest as u32;
+    }
+}
+
+pub unsafe extern fn unstart_campaign(script: *mut bw::AiScript) {
+    let ai = bw::player_ai((*script).player);
+    (*ai).flags &= !0x20;
 }
 
 #[derive(Debug, Default)]
