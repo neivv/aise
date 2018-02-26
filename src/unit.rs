@@ -42,6 +42,18 @@ impl Unit {
         OrderId(unsafe { (*self.0).order })
     }
 
+    pub fn hitpoints(&self) -> i32 {
+        unsafe { (*self.0).hitpoints }
+    }
+
+    pub fn shields(&self) -> i32 {
+        if self.id().has_shields() {
+            unsafe { (*self.0).shields }
+        } else {
+            0
+        }
+    }
+
     pub fn energy(&self) -> u16 {
         unsafe { (*self.0).energy }
     }

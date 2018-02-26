@@ -330,6 +330,7 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
             simple: 0,
             status_required: 0,
             status_not: 0,
+            numeric: Vec::new(),
         };
         loop {
             let mut val = read_u16(script);
@@ -341,6 +342,30 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
                 }
                 1 => flags.status_required = (val & 0xff) as u8,
                 2 => flags.status_not = (val & 0xff) as u8,
+                3 => {
+                    let amount = read_u32(script) as i32;
+                    let comparision = match val & 0xf {
+                        0 => Comparision::LessThan,
+                        1 => Comparision::GreaterThan,
+                        2 => Comparision::LessThanPercentage,
+                        3 => Comparision::GreaterThanPercentage,
+                        _ => {
+                            bw::print_text("idle_orders: invalid encoding");
+                            return;
+                        }
+                    };
+                    let ty = match (val >> 4) & 0xf {
+                        0 => IdleOrderNumeric::Hp,
+                        1 => IdleOrderNumeric::Shields,
+                        2 => IdleOrderNumeric::Health,
+                        3 => IdleOrderNumeric::Energy,
+                        _ => {
+                            bw::print_text("idle_orders: invalid encoding");
+                            return;
+                        }
+                    };
+                    flags.numeric.push((ty, comparision, amount));
+                }
                 _ => bw::print_text("idle_orders: invalid encoding"),
             }
         }
@@ -508,12 +533,29 @@ struct IdleOrderFlags {
     simple: u8,
     status_required: u8,
     status_not: u8,
+    numeric: Vec<(IdleOrderNumeric, Comparision, i32)>,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+enum IdleOrderNumeric {
+    Hp,
+    Shields,
+    Energy,
+    Health,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+enum Comparision {
+    LessThanPercentage,
+    GreaterThanPercentage,
+    LessThan,
+    GreaterThan,
 }
 
 impl IdleOrderFlags {
     fn match_status(&self, unit: &Unit) -> bool {
         unsafe {
-            if self.status_required != 0 || self.status_not != 0 {
+            let status_ok = if self.status_required != 0 || self.status_not != 0 {
                 let flags = (if (*unit.0).ensnare_timer != 0 { 1 } else { 0 } << 0) |
                     (if (*unit.0).plague_timer != 0 { 1 } else { 0 } << 1) |
                     (if (*unit.0).lockdown_timer != 0 { 1 } else { 0 } << 2) |
@@ -526,7 +568,38 @@ impl IdleOrderFlags {
                     self.status_not & flags == 0
             } else {
                 true
+            };
+            if !status_ok {
+                return false;
             }
+            self.numeric.iter().all(|&(ty, compare, amount)| {
+                let id = unit.id();
+                let (val, max) = match ty {
+                    IdleOrderNumeric::Hp => (unit.hitpoints(), id.hitpoints()),
+                    IdleOrderNumeric::Shields => {
+                        if !id.has_shields() {
+                            return false;
+                        }
+                        (unit.shields(), id.shields())
+                    },
+                    IdleOrderNumeric::Health => (
+                        unit.hitpoints().saturating_add(unit.shields()),
+                        id.hitpoints().saturating_add(id.shields()),
+                    ),
+                    // TODO max energy
+                    IdleOrderNumeric::Energy => (unit.energy() as i32, 250 * 256),
+                };
+                match compare {
+                    Comparision::LessThan => val < amount,
+                    Comparision::GreaterThan => val > amount,
+                    Comparision::LessThanPercentage => {
+                        val.saturating_mul(100).checked_div(max).unwrap_or(0) < amount
+                    }
+                    Comparision::GreaterThanPercentage => {
+                        val.saturating_mul(100).checked_div(max).unwrap_or(0) > amount
+                    }
+                }
+            })
         }
     }
 }

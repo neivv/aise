@@ -1,6 +1,6 @@
 [package]
 name = "ais_attackto"
-version = "2.4.1"
+version = "2.4.2"
 authors = ["Markus Heikkinen <ittevien@gmail.com>"]
 
 [lib]
