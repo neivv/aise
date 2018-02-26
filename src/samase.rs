@@ -4,43 +4,13 @@ use std::ptr::null_mut;
 use libc::c_void;
 use winapi::um::processthreadsapi::{GetCurrentProcess, TerminateProcess};
 
+use samase_shim::PluginApi;
+
 use bw;
 use bw_dat;
 use order::OrderId;
 use unit::UnitId;
 use windows;
-
-#[repr(C, packed)]
-pub struct PluginApi {
-    version: u16,
-    padding: u16,
-    free_memory: unsafe extern fn(*mut u8),
-    write_exe_memory: unsafe extern fn(usize, *const u8, usize) -> u32,
-    warn_unsupported_feature: unsafe extern fn(*const u8),
-    read_file: unsafe extern fn() -> unsafe extern fn(*const u8, *mut usize) -> *mut u8,
-    game: unsafe extern fn() -> Option<unsafe extern fn() -> *mut c_void>,
-    rng_seed: unsafe extern fn() -> Option<unsafe extern fn() -> u32>,
-    hook_step_objects: unsafe extern fn(unsafe extern fn(), u32) -> u32,
-    hook_aiscript_opcode: unsafe extern fn(u32, unsafe extern fn(*mut bw::AiScript)) -> u32,
-    ai_regions: unsafe extern fn() -> Option<unsafe extern fn() -> *mut c_void>,
-    player_ai: unsafe extern fn() -> Option<unsafe extern fn() -> *mut c_void>,
-    get_region: unsafe extern fn() -> Option<unsafe extern fn(u32, u32) -> u32>,
-    change_ai_region_state: unsafe extern fn() -> Option<unsafe extern fn(*mut c_void, u32)>,
-    first_active_unit: unsafe extern fn() -> Option<unsafe extern fn() -> *mut c_void>,
-    first_hidden_unit: unsafe extern fn() -> Option<unsafe extern fn() -> *mut c_void>,
-    // self, order, x, y, target, fow_unit
-    issue_order: unsafe extern fn() ->
-        Option<unsafe extern fn(*mut bw::Unit, u32, u32, u32, *mut bw::Unit, u32)>,
-    print_text: unsafe extern fn() -> Option<unsafe extern fn(*const u8)>,
-    hook_on_first_file_access: unsafe extern fn(unsafe extern fn()),
-    hook_step_order: unsafe extern fn(
-        unsafe extern fn(*mut c_void, unsafe extern fn(*mut c_void))
-    ) -> u32,
-    hook_step_order_hidden: unsafe extern fn(
-        unsafe extern fn(*mut c_void, unsafe extern fn(*mut c_void))
-    ) -> u32,
-    dat: unsafe extern fn(u32) -> Option<unsafe extern fn() -> *mut bw_dat::DatTable>,
-}
 
 struct GlobalFunc<T: Copy>(Option<T>);
 
@@ -142,6 +112,15 @@ pub fn issue_order(
     unsafe { ISSUE_ORDER.get()(unit, order.0 as u32, x, y, target, fow_unit.0 as u32) }
 }
 
+static mut PRINT_TEXT: GlobalFunc<fn(*const u8)> = GlobalFunc(None);
+pub fn print_text(msg: *const u8) {
+    unsafe {
+        if let Some(print) = PRINT_TEXT.0 {
+            print(msg);
+        }
+    }
+}
+
 static mut READ_FILE: GlobalFunc<fn(*const u8, *mut usize) -> *mut u8> = GlobalFunc(None);
 pub fn read_file(name: &str) -> Option<*mut u8> {
     // Uh, should work fine
@@ -160,9 +139,13 @@ unsafe fn aiscript_opcode(
     opcode: u32,
     hook: unsafe extern fn(*mut bw::AiScript),
 ) {
-    let ok = ((*api).hook_aiscript_opcode)(opcode, hook);
-    if ok == 0 {
-        fatal("Unable to hook aiscript opcodes");
+    if bw::scr() {
+        let ok = ((*api).hook_aiscript_opcode)(opcode, mem::transmute(hook));
+        if ok == 0 {
+            fatal("Unable to hook aiscript opcodes");
+        }
+    } else {
+        ::aiscript::add_ai_opcode_1161(opcode, hook);
     }
 }
 
@@ -216,5 +199,6 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
         bw_dat::init_techdata(techdata_dat());
         bw_dat::init_orders(orders_dat());
     }
-    ::init(true);
+    PRINT_TEXT.0 = Some(mem::transmute(((*api).print_text)()));
+    ::init();
 }

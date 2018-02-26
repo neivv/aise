@@ -34,3 +34,6 @@ git = "https://github.com/neivv/whack/"
 
 [dependencies.bw_dat]
 path = "bw_dat"
+
+[dependencies.samase_shim]
+path = "../samase/samase_shim"

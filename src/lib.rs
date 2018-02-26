@@ -11,6 +11,8 @@ extern crate libc;
 #[macro_use] extern crate scopeguard;
 extern crate winapi;
 
+extern crate samase_shim;
+
 pub mod mpqdraft;
 pub mod samase;
 
@@ -28,7 +30,7 @@ use libc::c_void;
 
 use winapi::um::processthreadsapi::{GetCurrentProcess, TerminateProcess};
 
-fn init(samase: bool) {
+fn init() {
     if cfg!(debug_assertions) {
         let _ = fern::Dispatch::new()
             .format(|out, message, record| {
@@ -98,18 +100,23 @@ fn init(samase: bool) {
         unsafe { TerminateProcess(GetCurrentProcess(), 0x4230daef); }
     }));
 
-    SAMASE_INIT.store(samase, Ordering::Release);
-    if !samase {
-        patch();
-    }
 }
 
-static SAMASE_INIT: AtomicBool = ATOMIC_BOOL_INIT;
+static IS_1161: AtomicBool = ATOMIC_BOOL_INIT;
 
 #[no_mangle]
 #[allow(non_snake_case)]
 pub extern fn Initialize() {
-    init(false);
+    IS_1161.store(true, Ordering::Release);
+    // 1.16.1 init
+    unsafe {
+        let f: fn() = || {
+            let ctx = samase_shim::init_1161();
+            samase::samase_plugin_init(ctx.api());
+            patch();
+        };
+        samase_shim::on_win_main(f);
+    }
 }
 
 lazy_static! {
@@ -119,23 +126,11 @@ lazy_static! {
 fn patch() {
     unsafe {
         let mut active_patcher = PATCHER.lock().unwrap();
-
         {
             let mut exe = active_patcher.patch_exe(0x00400000);
-
-            bw_dat::init_1161(&mut exe);
-            bw::v1161::init_funcs(&mut exe);
-            bw::v1161::init_vars(&mut exe);
             aiscript::add_aiscript_opcodes(&mut exe);
-            exe.call_hook(bw::v1161::StepObjects, frame_hook_1161);
-            exe.hook_opt(bw::v1161::StepOrder, step_order_hook_1161);
         }
-        bw_dat::init_1161_post();
     }
-}
-
-unsafe fn frame_hook_1161() {
-    frame_hook();
 }
 
 unsafe extern fn frame_hook() {
@@ -171,12 +166,8 @@ unsafe extern fn frame_hook() {
     }
 }
 
-unsafe extern fn step_order_hook(unit: *mut c_void, orig: unsafe extern fn(*mut c_void)) {
-    step_order_hook_1161(unit as *mut bw::Unit, &|x| orig(x as *mut c_void));
-}
-
-fn step_order_hook_1161(u: *mut bw::Unit, orig: &Fn(*mut bw::Unit)) {
-    let unit = unit::Unit(u);
+unsafe extern fn step_order_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_void)) {
+    let unit = unit::Unit(u as *mut bw::Unit);
     match unit.order() {
         order::id::DIE => {
             aiscript::remove_from_idle_orders(&unit);

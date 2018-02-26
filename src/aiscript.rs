@@ -36,6 +36,8 @@ lazy_static! {
     static ref IDLE_ORDERS: Mutex<IdleOrders> = Mutex::new(Default::default());
     static ref MAX_WORKERS: Mutex<Vec<MaxWorkers>> = Mutex::new(Default::default());
     static ref UNDER_ATTACK_MODE: Mutex<[Option<bool>; 8]> = Mutex::new(Default::default());
+    static ref QUEUED_AI_OPCODES: Mutex<Vec<(u32, unsafe extern fn(*mut bw::AiScript))>> =
+        Mutex::new(Default::default());
 }
 
 pub fn game_start_init() {
@@ -111,17 +113,15 @@ impl AiScriptOpcodes {
     }
 }
 
+pub fn add_ai_opcode_1161(opcode: u32, hook: unsafe extern fn(*mut bw::AiScript)) {
+    QUEUED_AI_OPCODES.lock().unwrap().push((opcode, hook));
+}
+
 pub unsafe fn add_aiscript_opcodes(patcher: &mut whack::ModulePatcher) {
     let mut hooks = AiScriptOpcodes::new();
-    hooks.add_hook(0x71, attack_to);
-    hooks.add_hook(0x72, attack_timeout);
-    hooks.add_hook(0x73, issue_order);
-    hooks.add_hook(0x74, deaths);
-    hooks.add_hook(0x75, idle_orders);
-    hooks.add_hook(0x76, if_attacking);
-    hooks.add_hook(0x77, unstart_campaign);
-    hooks.add_hook(0x78, max_workers);
-    hooks.add_hook(0x79, under_attack);
+    for &(op, hook) in QUEUED_AI_OPCODES.lock().unwrap().iter() {
+        hooks.add_hook(op, hook);
+    }
     patcher.hook_opt(bw::v1161::Ai_IsAttackTimedOut, is_attack_timed_out);
     hooks.apply(patcher);
 }
@@ -169,7 +169,7 @@ pub unsafe fn attack_timeouts_frame_hook() {
     // Unlike is_attack_timed_out, this code also runs for SCR.
     // Actually only for SCR for now due to timeout 1 breaking teippi display
     // and most likely should not cause difference here
-    if ::SAMASE_INIT.load(Ordering::Acquire) {
+    if bw::scr() {
         let mut timeouts_used = ATTACK_TIMEOUT_USED.lock().unwrap();
         for i in 0..8 {
             let player_ai = bw::player_ai(i);
