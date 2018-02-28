@@ -26,6 +26,7 @@ mod aiscript;
 mod bw;
 mod unit;
 mod order;
+mod swap_retain;
 mod windows;
 
 use std::path::Path;

@@ -17,6 +17,7 @@ use whack;
 use bw;
 use order::{self, OrderId};
 use unit::{self, Unit, UnitId};
+use swap_retain::SwapRetain;
 
 pub const IDLE_ORDERS_DISABLED: AtomicBool = ATOMIC_BOOL_INIT;
 
@@ -563,7 +564,7 @@ pub fn update_towns() {
     let old = mem::replace(&mut *towns_global, towns());
     for old in old {
         if !towns_global.iter().any(|&x| x == old) {
-            max_workers.retain(|x| x.town != old);
+            max_workers.swap_retain(|x| x.town != old);
         }
     }
 }
@@ -614,7 +615,7 @@ pub unsafe extern fn max_workers(script: *mut bw::AiScript) {
         }
     };
     let mut workers = MAX_WORKERS.lock().unwrap();
-    workers.retain(|x| x.town != town);
+    workers.swap_retain(|x| x.town != town);
     if count != 255 {
         workers.push(MaxWorkers {
             town,
@@ -798,7 +799,7 @@ pub fn remove_from_idle_orders(unit: &Unit) {
             bw::issue_order(x.user.0, order::id::MOVE, x.home, null_mut(), unit::id::NONE);
         }
     }
-    orders.ongoing.retain(|x| *unit != x.user && Some(*unit) != x.target);
+    orders.ongoing.swap_retain(|x| *unit != x.user && Some(*unit) != x.target);
 }
 
 pub unsafe fn step_idle_orders() {
@@ -815,7 +816,7 @@ pub unsafe fn step_idle_orders() {
     let ongoing = &mut orders.ongoing;
     // Yes, it may consider an order ongoing even if the unit is targeting the
     // target for other reasons. Acceptable?
-    ongoing.retain(|o| {
+    ongoing.swap_retain(|o| {
         let retain = match o.target {
             None => o.user.orders().any(|x| x.id == o.order),
             Some(target) => o.user.orders().filter_map(|x| x.target).any(|x| x == target),

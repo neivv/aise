@@ -27,7 +27,10 @@ pub fn LoadLibrary(name: &str) -> HMODULE {
 }
 
 pub fn winapi_str<T: AsRef<OsStr>>(input: T) -> Vec<u16> {
-    input.as_ref().encode_wide().chain(Some(0)).collect::<Vec<u16>>()
+    let mut buf = Vec::with_capacity(input.as_ref().len());
+    buf.extend(input.as_ref().encode_wide());
+    buf.push(0);
+    buf
 }
 
 pub fn os_string_from_winapi(input: &[u16]) -> OsString {
