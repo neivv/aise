@@ -75,6 +75,10 @@ pub fn first_active_unit() -> *mut Unit {
     samase::first_active_unit()
 }
 
+pub fn first_hidden_unit() -> *mut Unit {
+    samase::first_hidden_unit()
+}
+
 pub fn change_ai_region_state(region: *mut AiRegion, state: u32) {
     samase::change_ai_region_state(region, state);
 }

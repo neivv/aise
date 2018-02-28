@@ -2,6 +2,7 @@
 extern crate bw_dat;
 
 extern crate backtrace;
+extern crate bincode;
 extern crate byteorder;
 extern crate chrono;
 extern crate fern;
@@ -9,9 +10,14 @@ extern crate fern;
 extern crate libc;
 #[macro_use] extern crate log;
 #[macro_use] extern crate scopeguard;
+extern crate serde;
+#[macro_use] extern crate serde_derive;
+extern crate thread_local;
 extern crate winapi;
 
 extern crate samase_shim;
+
+#[macro_use] mod macros;
 
 pub mod mpqdraft;
 pub mod samase;
@@ -134,10 +140,6 @@ fn patch() {
 }
 
 unsafe extern fn frame_hook() {
-    let current_frame = (*bw::game()).frame_count;
-    if current_frame == 0 {
-        aiscript::game_start_init();
-    }
     aiscript::attack_timeouts_frame_hook();
     aiscript::step_idle_orders();
     aiscript::under_attack_frame_hook();
@@ -164,6 +166,10 @@ unsafe extern fn frame_hook() {
             }
         }
     }
+}
+
+unsafe extern fn frame_hook_after() {
+    aiscript::update_towns();
 }
 
 unsafe extern fn step_order_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_void)) {

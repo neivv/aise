@@ -1,4 +1,9 @@
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use std::ptr::null_mut;
+
+use serde::{Serializer, Serialize, Deserializer, Deserialize};
 
 use bw;
 use order::OrderId;
@@ -6,7 +11,115 @@ use order::OrderId;
 pub use bw_dat::UnitId;
 pub use bw_dat::unit as id;
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct Unit(pub *mut bw::Unit);
+
+unsafe impl Send for Unit {}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct HashableUnit(pub Unit);
+
+impl Hash for HashableUnit {
+    fn hash<H: Hasher>(&self, hasher: &mut H) {
+        hasher.write_usize((self.0).0 as usize);
+    }
+}
+
+impl Serialize for Unit {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::Error;
+        match save_mapping().borrow().get(&HashableUnit(*self)) {
+            Some(id) => id.serialize(serializer),
+            None => Err(S::Error::custom(format!("Couldn't get id for unit {:?}", self))),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Unit {
+    fn deserialize<S: Deserializer<'de>>(deserializer: S) -> Result<Self, S::Error> {
+        use serde::de::Error;
+        let id = u32::deserialize(deserializer)?;
+        match load_mapping().borrow().get(&id) {
+            Some(&unit) => Ok(unit),
+            None => Err(S::Error::custom(format!("Couldn't get unit for id {:?}", id))),
+        }
+    }
+}
+
+pub struct SaveIdMapping {
+    next: Option<Unit>,
+    list: SaveIdState,
+    id: u32,
+    in_subunit: bool,
+}
+
+enum SaveIdState {
+    ActiveUnits,
+    HiddenUnits,
+}
+
+fn save_id_mapping() -> SaveIdMapping {
+    SaveIdMapping {
+        next: Unit::from_ptr(bw::first_active_unit()),
+        list: SaveIdState::ActiveUnits,
+        id: 0,
+        in_subunit: false,
+    }
+}
+
+impl Iterator for SaveIdMapping {
+    type Item = (Unit, u32);
+    fn next(&mut self) -> Option<Self::Item> {
+        unsafe {
+            while self.next.is_none() {
+                match self.list {
+                    SaveIdState::ActiveUnits => {
+                        self.next = Unit::from_ptr(bw::first_hidden_unit());
+                        self.list = SaveIdState::HiddenUnits;
+                    }
+                    SaveIdState::HiddenUnits => return None,
+                }
+            }
+            self.id += 1;
+            let result = (self.next.unwrap(), self.id);
+            let unit = self.next.unwrap().0;
+            if (*unit).subunit != null_mut() && !self.in_subunit {
+                self.next = Unit::from_ptr((*unit).subunit);
+                self.in_subunit = true;
+            } else {
+                if self.in_subunit {
+                    self.in_subunit = false;
+                    let parent = (*unit).subunit;
+                    self.next = Unit::from_ptr((*parent).next);
+                } else {
+                    self.next = Unit::from_ptr((*unit).next);
+                }
+            }
+            Some(result)
+        }
+    }
+}
+
+ome2_thread_local! {
+    SAVE_ID_MAP: RefCell<HashMap<HashableUnit, u32>> = save_mapping(RefCell::new(HashMap::new()));
+    LOAD_ID_MAP: RefCell<HashMap<u32, Unit>> = load_mapping(RefCell::new(HashMap::new()));
+}
+
+pub fn init_save_mapping() {
+    *save_mapping().borrow_mut() = save_id_mapping().map(|(x, y)| (HashableUnit(x), y)).collect();
+}
+
+pub fn clear_save_mapping() {
+    save_mapping().borrow_mut().clear();
+}
+
+pub fn init_load_mapping() {
+    *load_mapping().borrow_mut() = save_id_mapping().map(|(x, y)| (y, x)).collect();
+}
+
+pub fn clear_load_mapping() {
+    load_mapping().borrow_mut().clear();
+}
 
 impl Unit {
     pub fn from_ptr(ptr: *mut bw::Unit) -> Option<Unit> {
@@ -63,7 +176,6 @@ impl Unit {
         unsafe { (*self.0).flags & 0x300 != 0 }
     }
 
-    /// Is the unit cloaked or burrowed (So it requires detection)
     pub fn is_invincible(&self) -> bool {
         unsafe {
             (*self.0).flags & 0x04000000 != 0
@@ -82,6 +194,17 @@ impl Unit {
 
     pub fn target(&self) -> Option<Unit> {
         unsafe { Unit::from_ptr((*self.0).target) }
+    }
+
+    pub fn worker_ai(&self) -> Option<*mut bw::WorkerAi> {
+        unsafe {
+            let ai = (*self.0).ai as *mut bw::WorkerAi;
+            if ai != null_mut() && (*ai).ai_type == 2 {
+                Some(ai)
+            } else {
+                None
+            }
+        }
     }
 
     pub fn building_ai(&self) -> Option<*mut bw::BuildingAi> {

@@ -69,6 +69,11 @@ pub fn first_active_unit() -> *mut bw::Unit {
     unsafe { FIRST_ACTIVE_UNIT.0.map(|x| x()).unwrap_or(null_mut()) }
 }
 
+static mut FIRST_HIDDEN_UNIT: GlobalFunc<fn() -> *mut bw::Unit> = GlobalFunc(None);
+pub fn first_hidden_unit() -> *mut bw::Unit {
+    unsafe { FIRST_HIDDEN_UNIT.0.map(|x| x()).unwrap_or(null_mut()) }
+}
+
 static mut UNITS_DAT: GlobalFunc<fn() -> *mut bw_dat::DatTable> = GlobalFunc(None);
 pub fn units_dat() -> *mut bw_dat::DatTable {
     unsafe { UNITS_DAT.get()() }
@@ -151,6 +156,14 @@ unsafe fn aiscript_opcode(
 
 #[no_mangle]
 pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
+    let required_version = 3;
+    if (*api).version < required_version {
+        fatal(&format!(
+            "Newer samase is required. (Plugin API version {}, this plugin requires version {})",
+            (*api).version, required_version,
+        ));
+    }
+
     aiscript_opcode(api, 0x71, ::aiscript::attack_to);
     aiscript_opcode(api, 0x72, ::aiscript::attack_timeout);
     aiscript_opcode(api, 0x73, ::aiscript::issue_order);
@@ -164,10 +177,14 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
     AI_REGIONS.init(((*api).ai_regions)().map(|x| mem::transmute(x)), "AI regions");
     PLAYER_AI.init(((*api).player_ai)().map(|x| mem::transmute(x)), "Player AI");
     GET_REGION.init(((*api).get_region)().map(|x| mem::transmute(x)), "get_region");
-    match ((*api).first_active_unit)() {
-        None => ((*api).warn_unsupported_feature)(b"Ai script issue_order\0".as_ptr()),
-        Some(s) => FIRST_ACTIVE_UNIT.0 = Some(mem::transmute(s)),
-    }
+    FIRST_ACTIVE_UNIT.init(
+        ((*api).first_active_unit)().map(|x| mem::transmute(x)),
+        "first active unit",
+    );
+    FIRST_HIDDEN_UNIT.init(
+        ((*api).first_hidden_unit)().map(|x| mem::transmute(x)),
+        "first hidden unit",
+    );
     match ((*api).issue_order)() {
         None => ((*api).warn_unsupported_feature)(b"Ai script issue_order\0".as_ptr()),
         Some(s) => ISSUE_ORDER.0 = Some(mem::transmute(s)),
@@ -180,8 +197,11 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
     );
     let result = ((*api).hook_step_objects)(::frame_hook, 0);
     if result == 0 {
-        ((*api).warn_unsupported_feature)(b"Ai script idle_orders\0".as_ptr());
-        ::aiscript::IDLE_ORDERS_DISABLED.store(true, ::std::sync::atomic::Ordering::Release);
+        fatal("Couldn't hook step_objects");
+    }
+    let result = ((*api).hook_step_objects)(::frame_hook_after, 1);
+    if result == 0 {
+        fatal("Couldn't hook step_objects");
     }
     let result = ((*api).hook_step_order)(::step_order_hook);
     if result == 0 {
@@ -200,5 +220,14 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
         bw_dat::init_orders(orders_dat());
     }
     PRINT_TEXT.0 = Some(mem::transmute(((*api).print_text)()));
+    let result = ((*api).extend_save)(
+        "aise\0".as_ptr(),
+        Some(::aiscript::save),
+        Some(::aiscript::load),
+        ::aiscript::init_game,
+    );
+    if result == 0 {
+        ((*api).warn_unsupported_feature)(b"Saving\0".as_ptr());
+    }
     ::init();
 }

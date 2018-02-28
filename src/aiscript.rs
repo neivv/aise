@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::io::Write;
 use std::fmt;
 use std::mem;
@@ -6,7 +7,9 @@ use std::slice;
 use std::sync::atomic::{Ordering, AtomicBool, ATOMIC_BOOL_INIT};
 use std::sync::Mutex;
 
+use bincode;
 use byteorder::{WriteBytesExt, LittleEndian};
+use serde::{Serializer, Serialize, Deserializer, Deserialize};
 use winapi::um::heapapi::{HeapAlloc, HeapCreate};
 use winapi::um::winnt::{HANDLE, HEAP_CREATE_ENABLE_EXECUTE};
 use whack;
@@ -38,9 +41,99 @@ lazy_static! {
     static ref UNDER_ATTACK_MODE: Mutex<[Option<bool>; 8]> = Mutex::new(Default::default());
     static ref QUEUED_AI_OPCODES: Mutex<Vec<(u32, unsafe extern fn(*mut bw::AiScript))>> =
         Mutex::new(Default::default());
+    // For tracking deleted towns.
+    // If the tracking is updated after step_objects, it shouldn't be possible for a town
+    // to be deleted and recreated in the same frame. (As recreation happens in scripts,
+    // and deletion happens on last unit dying) Better solutions won't obviously hurt though.
+    static ref TOWNS: Mutex<Vec<Town>> = Mutex::new(Vec::new());
 }
 
-pub fn game_start_init() {
+ome2_thread_local! {
+    SAVE_TOWNS: RefCell<Vec<Town>> = town_id_mapping(RefCell::new(Vec::new()));
+}
+
+pub fn init_save_mapping() {
+    *town_id_mapping().borrow_mut() = towns();
+}
+
+pub fn clear_save_mapping() {
+    town_id_mapping().borrow_mut().clear();
+}
+
+pub fn init_load_mapping() {
+    *town_id_mapping().borrow_mut() = towns();
+}
+
+pub fn clear_load_mapping() {
+    town_id_mapping().borrow_mut().clear();
+}
+
+#[derive(Serialize, Deserialize)]
+struct SaveData {
+    attack_timeouts: [u32; 8],
+    attack_timeout_used: [bool; 8],
+    idle_orders: IdleOrders,
+    max_workers: Vec<MaxWorkers>,
+    under_attack_mode: [Option<bool>; 8],
+    towns: Vec<Town>,
+}
+
+pub unsafe extern fn save(set_data: unsafe extern fn(*const u8, usize)) {
+    unit::init_save_mapping();
+    defer!(unit::clear_save_mapping());
+    init_save_mapping();
+    defer!(clear_save_mapping());
+    let save = SaveData {
+        attack_timeouts: ATTACK_TIMEOUTS.lock().unwrap().clone(),
+        attack_timeout_used: ATTACK_TIMEOUT_USED.lock().unwrap().clone(),
+        idle_orders: IDLE_ORDERS.lock().unwrap().clone(),
+        max_workers: MAX_WORKERS.lock().unwrap().clone(),
+        under_attack_mode: UNDER_ATTACK_MODE.lock().unwrap().clone(),
+        towns: TOWNS.lock().unwrap().clone(),
+    };
+    match bincode::serialize(&save) {
+        Ok(o) => {
+            set_data(o.as_ptr(), o.len());
+        }
+        Err(e) => {
+            error!("Couldn't save game: {}", e);
+            bw::print_text(format!("(Aise) Couldn't save game: {}", e));
+        }
+    }
+}
+
+pub unsafe extern fn load(ptr: *const u8, len: usize) -> u32 {
+    unit::init_load_mapping();
+    defer!(unit::clear_load_mapping());
+    init_load_mapping();
+    defer!(clear_load_mapping());
+
+    let slice = slice::from_raw_parts(ptr, len);
+    let data: SaveData = match bincode::deserialize(slice) {
+        Ok(o) => o,
+        Err(e) => {
+            error!("Couldn't load game: {}", e);
+            return 0
+        }
+    };
+    let SaveData {
+        attack_timeouts,
+        attack_timeout_used,
+        idle_orders,
+        max_workers,
+        under_attack_mode,
+        towns,
+    } = data;
+    *ATTACK_TIMEOUTS.lock().unwrap() = attack_timeouts;
+    *ATTACK_TIMEOUT_USED.lock().unwrap() = attack_timeout_used;
+    *IDLE_ORDERS.lock().unwrap() = idle_orders;
+    *MAX_WORKERS.lock().unwrap() = max_workers;
+    *UNDER_ATTACK_MODE.lock().unwrap() = under_attack_mode;
+    *TOWNS.lock().unwrap() = towns;
+    1
+}
+
+pub unsafe extern fn init_game() {
     *ATTACK_TIMEOUTS.lock().unwrap() = [!0; 8];
     *ATTACK_TIMEOUT_USED.lock().unwrap() = [false; 8];
     *IDLE_ORDERS.lock().unwrap() = Default::default();
@@ -439,25 +532,92 @@ pub unsafe extern fn unstart_campaign(script: *mut bw::AiScript) {
     (*ai).flags &= !0x20;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 struct MaxWorkers {
-    town: *mut bw::AiTown,
+    town: Town,
     count: u8,
 }
 
-unsafe impl Send for MaxWorkers {}
+fn towns() -> Vec<Town> {
+    let mut result = Vec::with_capacity(32);
+    for unit in unit::active_units() {
+        let town = if let Some(ai) = unit.building_ai() {
+            unsafe { Town::from_ptr((*ai).town) }
+        } else if let Some(ai) = unit.worker_ai() {
+            unsafe { Town::from_ptr((*ai).town) }
+        } else {
+            None
+        };
+        if let Some(town) = town {
+            if !result.iter().any(|&x| x == town) {
+                result.push(town);
+            }
+        }
+    }
+    result
+}
+
+pub fn update_towns() {
+    let mut towns_global = TOWNS.lock().unwrap();
+    let mut max_workers = MAX_WORKERS.lock().unwrap();
+    let old = mem::replace(&mut *towns_global, towns());
+    for old in old {
+        if !towns_global.iter().any(|&x| x == old) {
+            max_workers.retain(|x| x.town != old);
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+struct Town(*mut bw::AiTown);
+
+impl Town {
+    fn from_ptr(ptr: *mut bw::AiTown) -> Option<Town> {
+        if ptr == null_mut() {
+            None
+        } else {
+            Some(Town(ptr))
+        }
+    }
+}
+
+unsafe impl Send for Town {}
+
+impl Serialize for Town {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::Error;
+        match town_id_mapping().borrow().iter().enumerate().find(|&(_, x)| x == self) {
+            Some((id, _)) => (id as u32).serialize(serializer),
+            None => Err(S::Error::custom(format!("Couldn't get id for town {:?}", self))),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Town {
+    fn deserialize<S: Deserializer<'de>>(deserializer: S) -> Result<Self, S::Error> {
+        use serde::de::Error;
+        let id = u32::deserialize(deserializer)?;
+        match town_id_mapping().borrow().get(id as usize) {
+            Some(&town) => Ok(town),
+            None => Err(S::Error::custom(format!("Couldn't get town for id {:?}", id))),
+        }
+    }
+}
 
 pub unsafe extern fn max_workers(script: *mut bw::AiScript) {
     let count = read_u8(script);
-    if (*script).town == null_mut() {
-        bw::print_text(&format!("Used `max_workers {}` without town", count));
-        return;
-    }
+    let town = match Town::from_ptr((*script).town) {
+        Some(s) => s,
+        None => {
+            bw::print_text(&format!("Used `max_workers {}` without town", count));
+            return;
+        }
+    };
     let mut workers = MAX_WORKERS.lock().unwrap();
-    workers.retain(|x| x.town != (*script).town);
+    workers.retain(|x| x.town != town);
     if count != 255 {
         workers.push(MaxWorkers {
-            town: (*script).town,
+            town,
             count,
         });
     }
@@ -465,7 +625,7 @@ pub unsafe extern fn max_workers(script: *mut bw::AiScript) {
 
 pub extern fn max_workers_for(town: *mut bw::AiTown) -> Option<u8> {
     let workers = MAX_WORKERS.lock().unwrap();
-    workers.iter().find(|x| x.town == town).map(|x| x.count)
+    workers.iter().find(|x| x.town.0 == town).map(|x| x.count)
 }
 
 pub unsafe extern fn under_attack(script: *mut bw::AiScript) {
@@ -500,22 +660,22 @@ pub unsafe fn under_attack_frame_hook() {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct IdleOrders {
     orders: Vec<(IdleOrder, IdleOrderState)>,
     // user, target, return point
     ongoing: Vec<OngoingOrder>,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 struct OngoingOrder {
-    user: *mut bw::Unit,
-    target: *mut bw::Unit,
+    user: Unit,
+    target: Option<Unit>,
     home: bw::Point,
     order: OrderId,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 struct IdleOrder {
     priority: u8,
     order: OrderId,
@@ -528,7 +688,7 @@ struct IdleOrder {
     player: u8,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 struct IdleOrderFlags {
     simple: u8,
     status_required: u8,
@@ -536,7 +696,7 @@ struct IdleOrderFlags {
     numeric: Vec<(IdleOrderNumeric, Comparision, i32)>,
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
 enum IdleOrderNumeric {
     Hp,
     Shields,
@@ -544,7 +704,7 @@ enum IdleOrderNumeric {
     Health,
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
 enum Comparision {
     LessThanPercentage,
     GreaterThanPercentage,
@@ -604,7 +764,7 @@ impl IdleOrderFlags {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct IdleOrderState {
     next_frame: u32,
 }
@@ -633,12 +793,12 @@ impl IdleOrder {
 
 pub fn remove_from_idle_orders(unit: &Unit) {
     let mut orders = IDLE_ORDERS.lock().unwrap();
-    for x in orders.ongoing.iter().filter(|x| x.target == unit.0) {
+    for x in orders.ongoing.iter().filter(|x| x.target == Some(*unit)) {
         unsafe {
-            bw::issue_order(x.user, order::id::MOVE, x.home, null_mut(), unit::id::NONE);
+            bw::issue_order(x.user.0, order::id::MOVE, x.home, null_mut(), unit::id::NONE);
         }
     }
-    orders.ongoing.retain(|x| unit.0 != x.user && unit.0 != x.target);
+    orders.ongoing.retain(|x| *unit != x.user && Some(*unit) != x.target);
 }
 
 pub unsafe fn step_idle_orders() {
@@ -656,20 +816,19 @@ pub unsafe fn step_idle_orders() {
     // Yes, it may consider an order ongoing even if the unit is targeting the
     // target for other reasons. Acceptable?
     ongoing.retain(|o| {
-        let user = Unit(o.user);
-        let retain = match o.target == null_mut() {
-            true => user.orders().any(|x| x.id == o.order),
-            false => user.orders().filter_map(|x| x.target).any(|x| x.0 == o.target),
+        let retain = match o.target {
+            None => o.user.orders().any(|x| x.id == o.order),
+            Some(target) => o.user.orders().filter_map(|x| x.target).any(|x| x == target),
         };
         if !retain {
-            bw::issue_order(user.0, order::id::MOVE, o.home, null_mut(), unit::id::NONE);
+            bw::issue_order(o.user.0, order::id::MOVE, o.home, null_mut(), unit::id::NONE);
         }
         retain
     });
     for &mut (ref decl, ref mut state) in orders.orders.iter_mut().rev() {
         if state.next_frame <= current_frame {
             let unit = unit::active_units()
-                .find(|u| decl.unit_valid(u) && !ongoing.iter().any(|x| x.user == u.0));
+                .find(|u| decl.unit_valid(u) && !ongoing.iter().any(|x| x.user == *u));
             if let Some(unit) = unit {
                 // Instead of a *perfect* solution of trying to find closest user-target pair,
                 // find closest target for the first unit, and then find closest user for
@@ -703,8 +862,8 @@ pub unsafe fn step_idle_orders() {
                     };
                     bw::issue_order(user.0, decl.order, pos, order_target, unit::id::NONE);
                     ongoing.push(OngoingOrder {
-                        user: user.0,
-                        target: order_target,
+                        user,
+                        target: Unit::from_ptr(order_target),
                         home,
                         order: decl.order,
                     });
@@ -779,7 +938,7 @@ unsafe fn find_idle_order_target(
             }
         }
         let already_targeted_count = ongoing.iter()
-            .filter(|x| x.target == unit.0 && x.order == decl.order)
+            .filter(|x| x.target == Some(*unit) && x.order == decl.order)
             .count();
         already_targeted_count < decl.limit as usize
     })
@@ -791,7 +950,7 @@ fn find_idle_order_user(
     ongoing: &[OngoingOrder],
 ) -> Option<(Unit, u32)> {
     unit::find_nearest(target.position(), |unit| {
-        decl.unit_valid(unit) && !ongoing.iter().any(|x| x.user == unit.0)
+        decl.unit_valid(unit) && !ongoing.iter().any(|x| x.user == *unit)
     })
 }
 

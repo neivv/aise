@@ -1,4 +1,5 @@
 extern crate libc;
+#[macro_use] extern crate serde_derive;
 #[macro_use] extern crate whack;
 
 mod bw;
@@ -49,15 +50,15 @@ init_fns! {
     init_portdata, PORTDATA_DAT,
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct OrderId(pub u8);
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct UnitId(pub u16);
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct WeaponId(pub u16);
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct UpgradeId(pub u16);
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct TechId(pub u16);
 
 unsafe fn get(dat: *const bw::DatTable, id: u32, field: u32) -> u32 {

@@ -18,7 +18,7 @@ pub struct AiTown {
     pub next: *mut AiTown,
     pub prev: *mut AiTown,
     pub free_workers: *mut c_void,
-    pub workers: *mut c_void,
+    pub workers: *mut WorkerAi,
     pub free_buildings: *mut c_void,
     pub buildings: *mut BuildingAi,
     pub player: u8,
@@ -35,6 +35,19 @@ pub struct AiTown {
     pub mineral: *mut Unit,
     pub gas_buildings: [*mut Unit; 0x3],
     pub town_units: [u32; 0x64],
+}
+
+#[repr(C, packed)]
+pub struct WorkerAi {
+    pub next: *mut WorkerAi,
+    pub prev: *mut WorkerAi,
+    pub ai_type: u8,
+    pub target_resource: u8,
+    pub reassign_count: u8,
+    pub wait_timer: u8,
+    pub last_update_second: u32,
+    pub parent: *mut Unit,
+    pub town: *mut AiTown,
 }
 
 #[repr(C, packed)]
@@ -145,7 +158,7 @@ pub struct Order {
     pub target: *mut Unit,
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct Rect32 {
     pub left: i32,
@@ -154,7 +167,7 @@ pub struct Rect32 {
     pub bottom: i32,
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct Rect {
     pub left: i16,
@@ -163,14 +176,14 @@ pub struct Rect {
     pub bottom: i16,
 }
 
-#[repr(C, packed)]
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Point {
     pub x: i16,
     pub y: i16,
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct Point32 {
     pub x: i32,
@@ -310,6 +323,7 @@ mod test {
         assert_eq!(mem::size_of::<AiRegion>(), 0x34);
         assert_eq!(mem::size_of::<AiTown>(), 0x1cc);
         assert_eq!(mem::size_of::<BuildingAi>(), 0x2c);
+        assert_eq!(mem::size_of::<WorkerAi>(), 0x18);
         assert_eq!(mem::size_of::<GuardAi>(), 0x20);
         assert_eq!(mem::size_of::<PlayerAiData>(), 0x4e8);
         assert_eq!(mem::size_of::<Game>(), 0xff5c);
