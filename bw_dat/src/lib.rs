@@ -74,6 +74,11 @@ unsafe fn get(dat: *const bw::DatTable, id: u32, field: u32) -> u32 {
 
 pub mod unit {
     use super::UnitId;
+    pub const COCOON: UnitId = UnitId(0x3b);
+    pub const LURKER_EGG: UnitId = UnitId(0x61);
+    pub const COMMAND_CENTER: UnitId = UnitId(0x6a);
+    pub const NUCLEAR_SILO: UnitId = UnitId(0x6c);
+    pub const PYLON: UnitId = UnitId(0x9c);
     pub const NONE: UnitId = UnitId(0xe4);
     pub const ANY_UNIT: UnitId = UnitId(0xe5);
 }
@@ -110,6 +115,9 @@ pub mod order {
     pub const PLACE_ADDON: OrderId = OrderId(0x24);
     pub const BUILD_ADDON: OrderId = OrderId(0x25);
     pub const TRAIN: OrderId = OrderId(0x26);
+    pub const RALLY_UNIT: OrderId = OrderId(0x27);
+    pub const RALLY_POS: OrderId = OrderId(0x28);
+    pub const ZERG_BIRTH: OrderId = OrderId(0x29);
     pub const BUILD_NYDUS_EXIT: OrderId = OrderId(0x2e);
     pub const UNIT_MORPH: OrderId = OrderId(0x2a);
     pub const BUILDING_MORPH: OrderId = OrderId(0x2b);
@@ -124,6 +132,9 @@ pub mod order {
     pub const SCARAB_ATTACK: OrderId = OrderId(0x41);
     pub const SHIELD_BATTERY: OrderId = OrderId(0x44);
     pub const SPAWNING_LARVA: OrderId = OrderId(0x4e);
+    pub const HARVEST_GAS: OrderId = OrderId(0x53);
+    pub const RETURN_GAS: OrderId = OrderId(0x54);
+    pub const RETURN_MINERALS: OrderId = OrderId(0x5a);
     pub const SPREAD_CREEP: OrderId = OrderId(0x66);
     pub const CLOAK: OrderId = OrderId(0x6d);
     pub const DECLOAK: OrderId = OrderId(0x6e);
@@ -131,6 +142,7 @@ pub mod order {
     pub const SAP_UNIT: OrderId = OrderId(0x86);
     pub const SAP_LOCATION: OrderId = OrderId(0x87);
     pub const HALLUCINATED: OrderId = OrderId(0x95);
+    pub const RESET_COLLISION_HARVESTER: OrderId = OrderId(0x97);
     pub const AI_ATTACK_MOVE: OrderId = OrderId(0x9d);
     pub const REVEAL_TRAP: OrderId = OrderId(0xab);
 }
