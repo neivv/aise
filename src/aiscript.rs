@@ -47,26 +47,36 @@ lazy_static! {
     // to be deleted and recreated in the same frame. (As recreation happens in scripts,
     // and deletion happens on last unit dying) Better solutions won't obviously hurt though.
     static ref TOWNS: Mutex<Vec<Town>> = Mutex::new(Vec::new());
+    static ref CALL_STACKS: Mutex<CallStacks> = Mutex::new(CallStacks {
+        stacks: Vec::new(),
+    });
 }
 
 ome2_thread_local! {
     SAVE_TOWNS: RefCell<Vec<Town>> = town_id_mapping(RefCell::new(Vec::new()));
+    SAVE_SCRIPTS: RefCell<Vec<Script>> = script_id_mapping(RefCell::new(Vec::new()));
 }
 
 pub fn init_save_mapping() {
     *town_id_mapping().borrow_mut() = towns();
+    let scripts = scripts();
+    CALL_STACKS.lock().unwrap().retain_only(&scripts);
+    *script_id_mapping().borrow_mut() = scripts;
 }
 
 pub fn clear_save_mapping() {
     town_id_mapping().borrow_mut().clear();
+    script_id_mapping().borrow_mut().clear();
 }
 
 pub fn init_load_mapping() {
     *town_id_mapping().borrow_mut() = towns();
+    *script_id_mapping().borrow_mut() = scripts();
 }
 
 pub fn clear_load_mapping() {
     town_id_mapping().borrow_mut().clear();
+    script_id_mapping().borrow_mut().clear();
 }
 
 #[derive(Serialize, Deserialize)]
@@ -77,6 +87,7 @@ struct SaveData {
     max_workers: Vec<MaxWorkers>,
     under_attack_mode: [Option<bool>; 8],
     towns: Vec<Town>,
+    call_stacks: CallStacks,
 }
 
 pub unsafe extern fn save(set_data: unsafe extern fn(*const u8, usize)) {
@@ -91,6 +102,7 @@ pub unsafe extern fn save(set_data: unsafe extern fn(*const u8, usize)) {
         max_workers: MAX_WORKERS.lock().unwrap().clone(),
         under_attack_mode: UNDER_ATTACK_MODE.lock().unwrap().clone(),
         towns: TOWNS.lock().unwrap().clone(),
+        call_stacks: CALL_STACKS.lock().unwrap().clone(),
     };
     match bincode::serialize(&save) {
         Ok(o) => {
@@ -124,6 +136,7 @@ pub unsafe extern fn load(ptr: *const u8, len: usize) -> u32 {
         max_workers,
         under_attack_mode,
         towns,
+        call_stacks,
     } = data;
     *ATTACK_TIMEOUTS.lock().unwrap() = attack_timeouts;
     *ATTACK_TIMEOUT_USED.lock().unwrap() = attack_timeout_used;
@@ -131,6 +144,7 @@ pub unsafe extern fn load(ptr: *const u8, len: usize) -> u32 {
     *MAX_WORKERS.lock().unwrap() = max_workers;
     *UNDER_ATTACK_MODE.lock().unwrap() = under_attack_mode;
     *TOWNS.lock().unwrap() = towns;
+    *CALL_STACKS.lock().unwrap() = call_stacks;
     1
 }
 
@@ -140,6 +154,8 @@ pub unsafe extern fn init_game() {
     *IDLE_ORDERS.lock().unwrap() = Default::default();
     *MAX_WORKERS.lock().unwrap() = Default::default();
     *UNDER_ATTACK_MODE.lock().unwrap() = Default::default();
+    *TOWNS.lock().unwrap() = Default::default();
+    *CALL_STACKS.lock().unwrap() = Default::default();
 }
 
 unsafe fn exec_alloc(size: usize) -> *mut u8 {
@@ -558,6 +574,18 @@ fn towns() -> Vec<Town> {
     result
 }
 
+fn scripts() -> Vec<Script> {
+    let mut result = Vec::with_capacity(32);
+    let mut script = bw::first_ai_script();
+    while script != null_mut() {
+        result.push(Script(script));
+        unsafe {
+            script = (*script).next;
+        }
+    }
+    result
+}
+
 pub fn update_towns() {
     let mut towns_global = TOWNS.lock().unwrap();
     let mut max_workers = MAX_WORKERS.lock().unwrap();
@@ -658,6 +686,99 @@ pub unsafe fn under_attack_frame_hook() {
             }
             None => (),
         }
+    }
+}
+
+pub unsafe extern fn call(script: *mut bw::AiScript) {
+    let dest = read_u16(script) as u32;
+    let ret = (*script).pos;
+    (*script).pos = dest;
+    let mut stacks = CALL_STACKS.lock().unwrap();
+    stacks.push(Script(script), ret);
+}
+
+pub unsafe extern fn ret(script: *mut bw::AiScript) {
+    let mut stacks = CALL_STACKS.lock().unwrap();
+    let script = Script(script);
+    match stacks.pop(script) {
+        Some(s) => {
+            (*script.0).pos = s;
+        }
+        None => {
+            bw::print_text(format!("Script {} used return without call", script.debug_string()));
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+struct Script(*mut bw::AiScript);
+
+unsafe impl Send for Script {}
+
+impl Script {
+    fn debug_string(&self) -> String {
+        unsafe {
+            format!(
+                "Player {}, pos {}, {}",
+                (*self.0).player, (*self.0).center[0], (*self.0).center[1],
+            )
+        }
+    }
+}
+
+impl Serialize for Script {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::Error;
+        match script_id_mapping().borrow().iter().enumerate().find(|&(_, x)| x == self) {
+            Some((id, _)) => (id as u32).serialize(serializer),
+            None => Err(S::Error::custom(format!("Couldn't get id for script {:?}", self))),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Script {
+    fn deserialize<S: Deserializer<'de>>(deserializer: S) -> Result<Self, S::Error> {
+        use serde::de::Error;
+        let id = u32::deserialize(deserializer)?;
+        match script_id_mapping().borrow().get(id as usize) {
+            Some(&town) => Ok(town),
+            None => Err(S::Error::custom(format!("Couldn't get script for id {:?}", id))),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct CallStacks {
+    stacks: Vec<(Script, Vec<u32>)>,
+}
+
+impl CallStacks {
+    fn push(&mut self, script: Script, ret: u32) {
+        let index = match self.stacks.iter().position(|x| x.0 == script) {
+            Some(s) => s,
+            None => {
+                self.stacks.push((script, Vec::new()));
+                self.stacks.len() - 1
+            }
+        };
+        self.stacks[index].1.push(ret);
+    }
+
+    fn pop(&mut self, script: Script) -> Option<u32> {
+        match self.stacks.iter().position(|x| x.0 == script) {
+            Some(s) => {
+                let result = self.stacks[s].1.pop();
+                if self.stacks[s].1.is_empty() {
+                    self.stacks.swap_remove(s);
+                }
+                result
+            }
+            None => None,
+        }
+    }
+
+    fn retain_only(&mut self, scripts: &[Script]) {
+        self.stacks.retain(|x| scripts.iter().any(|&y| y == x.0))
     }
 }
 

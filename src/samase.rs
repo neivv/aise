@@ -74,6 +74,11 @@ pub fn first_hidden_unit() -> *mut bw::Unit {
     unsafe { FIRST_HIDDEN_UNIT.0.map(|x| x()).unwrap_or(null_mut()) }
 }
 
+static mut FIRST_AI_SCRIPT: GlobalFunc<fn() -> *mut bw::AiScript> = GlobalFunc(None);
+pub fn first_ai_script() -> *mut bw::AiScript {
+    unsafe { FIRST_AI_SCRIPT.0.map(|x| x()).unwrap_or(null_mut()) }
+}
+
 static mut UNITS_DAT: GlobalFunc<fn() -> *mut bw_dat::DatTable> = GlobalFunc(None);
 pub fn units_dat() -> *mut bw_dat::DatTable {
     unsafe { UNITS_DAT.get()() }
@@ -164,6 +169,8 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
         ));
     }
 
+    aiscript_opcode(api, 0x40, ::aiscript::call);
+    aiscript_opcode(api, 0x41, ::aiscript::ret);
     aiscript_opcode(api, 0x71, ::aiscript::attack_to);
     aiscript_opcode(api, 0x72, ::aiscript::attack_timeout);
     aiscript_opcode(api, 0x73, ::aiscript::issue_order);
@@ -184,6 +191,10 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
     FIRST_HIDDEN_UNIT.init(
         ((*api).first_hidden_unit)().map(|x| mem::transmute(x)),
         "first hidden unit",
+    );
+    FIRST_AI_SCRIPT.init(
+        ((*api).first_ai_script)().map(|x| mem::transmute(x)),
+        "first_ai_script",
     );
     match ((*api).issue_order)() {
         None => ((*api).warn_unsupported_feature)(b"Ai script issue_order\0".as_ptr()),
