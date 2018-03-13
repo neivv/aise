@@ -326,14 +326,14 @@ pub unsafe extern fn issue_order(script: *mut bw::AiScript) {
     //      0x10 = Target each unit once
     let order = OrderId(read_u8(script));
     let limit = read_u16(script);
-    let unit_id = UnitId(read_u16(script));
+    let unit_id = read_unit_match(script);
     let mut src = read_position(script);
     let radius = read_u16(script);
     src.extend_area(radius as i16);
     let mut target = read_position(script);
     let tgt_radius = read_u16(script);
     target.extend_area(tgt_radius as i16);
-    let target_misc = read_u16(script);
+    let target_misc = read_unit_match(script);
     let flags = read_u16(script);
     if flags & 0xffe0 != 0 {
         bw::print_text(&format!("Aiscript issue_order: Unknown flags 0x{:x}", flags));
@@ -344,7 +344,7 @@ pub unsafe extern fn issue_order(script: *mut bw::AiScript) {
         if count == limit {
             return false;
         }
-        let ok = u.player() as u32 == (*script).player && u.matches_id(unit_id);
+        let ok = u.player() as u32 == (*script).player && unit_id.matches(u);
         if ok {
             count += 1;
         }
@@ -364,12 +364,11 @@ pub unsafe extern fn issue_order(script: *mut bw::AiScript) {
             }
         }
         let mut count = 0;
-        let target_unit_id = UnitId(target_misc);
         Some(unit::find_units(&target.area, |u| {
             if flags & 0x8 != 0 && count != 0 {
                 return false;
             }
-            let ok = acceptable_players[u.player() as usize] && u.matches_id(target_unit_id);
+            let ok = acceptable_players[u.player() as usize] && target_misc.matches(u);
             if ok {
                 count += 1;
             }
@@ -403,14 +402,16 @@ pub unsafe extern fn issue_order(script: *mut bw::AiScript) {
         }
         match order {
             order::id::PLACE_ADDON | order::id::BUILD_ADDON => {
+                let unit_id = target_misc.get_one();
                 (&mut (*unit.0).unit_specific[4..])
-                    .write_u16::<LittleEndian>(target_misc).unwrap();
+                    .write_u16::<LittleEndian>(unit_id.0).unwrap();
             }
             order::id::DRONE_BUILD | order::id::SCV_BUILD | order::id::PROBE_BUILD |
                 order::id::UNIT_MORPH | order::id::BUILDING_MORPH | order::id::TRAIN |
                 order::id::TRAIN_FIGHTER | order::id::BUILD_NYDUS_EXIT =>
             {
-                (*unit.0).build_queue[(*unit.0).current_build_slot as usize] = target_misc;
+                let unit_id = target_misc.get_one();
+                (*unit.0).build_queue[(*unit.0).current_build_slot as usize] = unit_id.0;
             }
             _ => (),
         }
@@ -430,9 +431,9 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
     let order = OrderId(read_u8(script));
     let rate = read_u16(script);
     let limit = read_u16(script);
-    let unit_id = UnitId(read_u16(script));
+    let unit_id = read_unit_match(script);
     let radius = read_u16(script);
-    let target_unit_id = UnitId(read_u16(script));
+    let target_unit_id = read_unit_match(script);
     let priority = read_u8(script);
     let delete_flags;
     let flags = {
@@ -802,12 +803,17 @@ struct IdleOrder {
     priority: u8,
     order: OrderId,
     limit: u16,
-    unit_id: UnitId,
-    target_unit_id: UnitId,
+    unit_id: UnitMatch,
+    target_unit_id: UnitMatch,
     radius: u16,
     flags: IdleOrderFlags,
     rate: u16,
     player: u8,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct UnitMatch {
+    units: Vec<UnitId>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -832,6 +838,16 @@ enum Comparision {
     GreaterThanPercentage,
     LessThan,
     GreaterThan,
+}
+
+impl UnitMatch {
+    pub fn matches(&self, unit: &Unit) -> bool {
+        self.units.iter().any(|&x| unit.matches_id(x))
+    }
+
+    pub fn get_one(&self) -> UnitId {
+        self.units.iter().cloned().filter(|x| x.0 < unit::id::NONE.0).next().unwrap_or(UnitId(0))
+    }
 }
 
 impl IdleOrderFlags {
@@ -907,7 +923,7 @@ impl IdleOrder {
             .map(|x| x.energy_cost() << 8)
             .unwrap_or(0);
         user.player() == self.player &&
-            user.matches_id(self.unit_id) &&
+            self.unit_id.matches(user) &&
             user.order() != self.order &&
             user.energy() as u32 >= energy_cost
     }
@@ -1036,7 +1052,7 @@ unsafe fn find_idle_order_target(
         if !decl.flags.match_status(unit) {
             return false;
         }
-        if !unit.matches_id(decl.target_unit_id) || !acceptable_players[unit.player() as usize] {
+        if !decl.target_unit_id.matches(unit) || !acceptable_players[unit.player() as usize] {
             return false;
         }
         if !accept_unseen {
@@ -1191,6 +1207,28 @@ impl fmt::Display for Position {
             write!(f, "{}, {}", left, right)
         } else {
             write!(f, "{}, {}, {}, {}", left, top, right, bottom)
+        }
+    }
+}
+
+unsafe fn read_unit_match(script: *mut bw::AiScript) -> UnitMatch {
+    let val = read_u16(script);
+    if val > 0xff00 {
+        let repeat = val & 0xff;
+        let units = (0..repeat).map(|_| {
+            UnitId(read_u16(script))
+        }).collect();
+        UnitMatch {
+            units,
+        }
+    } else if val < 0x1000 {
+        UnitMatch {
+            units: vec![UnitId(val)],
+        }
+    } else {
+        bw::print_text(format!("Invalid script encoding: unit match {:x}", val));
+        UnitMatch {
+            units: vec![],
         }
     }
 }

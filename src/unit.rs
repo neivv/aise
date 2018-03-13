@@ -220,10 +220,12 @@ impl Unit {
 
     pub fn matches_id(&self, other: UnitId) -> bool {
         let id = self.id();
-        if other == id::ANY_UNIT {
-            true
-        } else {
-            id == other
+        match other {
+            id::ANY_UNIT => true,
+            id::GROUP_MEN => id.group_flags() & 0x8 != 0,
+            id::GROUP_BUILDINGS => id.group_flags() & 0x10 != 0,
+            id::GROUP_FACTORIES => id.group_flags() & 0x20 != 0,
+            other => id == other,
         }
     }
 

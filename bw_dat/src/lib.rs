@@ -81,6 +81,9 @@ pub mod unit {
     pub const PYLON: UnitId = UnitId(0x9c);
     pub const NONE: UnitId = UnitId(0xe4);
     pub const ANY_UNIT: UnitId = UnitId(0xe5);
+    pub const GROUP_MEN: UnitId = UnitId(0xe6);
+    pub const GROUP_BUILDINGS: UnitId = UnitId(0xe7);
+    pub const GROUP_FACTORIES: UnitId = UnitId(0xe8);
 }
 
 pub mod weapon {
