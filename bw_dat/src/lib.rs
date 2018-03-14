@@ -162,8 +162,12 @@ impl UnitId {
     }
 
     pub fn shields(&self) -> i32 {
-        // Yeah, it is stored as displayed
-        self.get(7) as i32 * 256
+        if self.has_shields() {
+            // Yeah, it is stored as displayed
+            self.get(7) as i32 * 256
+        } else {
+            0
+        }
     }
 
     pub fn has_shields(&self) -> bool {

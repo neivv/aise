@@ -426,6 +426,8 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
     //      0x8 = Pick unseen targets
     //      0x10 = Pick invisible targets
     //      0x20 = In combat
+    //      0x40 = Deathrattle
+    //      0x100 ~ 0x2000 = Extensions
     //      0x4000 = Remove matching, no error on mismatch
     //      0x8000 = Remove matching
     let order = OrderId(read_u8(script));
@@ -496,7 +498,7 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
         return;
     }
     let mut orders = IDLE_ORDERS.lock().unwrap();
-    let idle_order_list = &mut orders.orders;
+    let deathrattle = flags.simple & 0x40 != 0;
     if delete_flags != 0 {
         let silent_fail = delete_flags & 0x4000 != 0;
         let matchee = IdleOrder {
@@ -510,10 +512,16 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
             rate,
             player: (*script).player as u8,
         };
-        match idle_order_list.iter().position(|x| x.0 == matchee) {
-            Some(s) => {
-                idle_order_list.remove(s);
-            }
+        let cmp = |x: &IdleOrder| *x == matchee;
+        let index = match deathrattle {
+            false => orders.orders.iter().position(|x| cmp(&x.0)),
+            true => orders.deathrattles.iter().position(|x| cmp(x)),
+        };
+        match index {
+            Some(s) => match deathrattle {
+                false => { orders.orders.remove(s); }
+                true => { orders.deathrattles.remove(s); }
+            },
             None => if !silent_fail {
                 bw::print_text(
                     &format!("idle_orders: Unable to find match to remove for {:#?}", matchee),
@@ -521,9 +529,17 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
             },
         }
     } else {
-        let pos = idle_order_list.binary_search_by_key(&priority, |x| x.0.priority)
-            .unwrap_or_else(|x| x);
-        idle_order_list.insert(pos, (IdleOrder {
+        let pos = match deathrattle {
+            false => {
+                orders.orders.binary_search_by_key(&priority, |x| x.0.priority)
+                    .unwrap_or_else(|x| x)
+            }
+            true => {
+                orders.deathrattles.binary_search_by_key(&priority, |x| x.priority)
+                    .unwrap_or_else(|x| x)
+            }
+        };
+        let order = IdleOrder {
             order,
             limit,
             unit_id,
@@ -533,7 +549,11 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
             flags,
             rate,
             player: (*script).player as u8,
-        }, IdleOrderState::new()));
+        };
+        match deathrattle {
+            false => orders.orders.insert(pos, (order, IdleOrderState::new())),
+            true => orders.deathrattles.insert(pos, order),
+        }
     }
 }
 
@@ -786,6 +806,7 @@ impl CallStacks {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct IdleOrders {
     orders: Vec<(IdleOrder, IdleOrderState)>,
+    deathrattles: Vec<IdleOrder>,
     // user, target, return point
     ongoing: Vec<OngoingOrder>,
 }
@@ -796,6 +817,7 @@ struct OngoingOrder {
     target: Option<Unit>,
     home: bw::Point,
     order: OrderId,
+    panic_health: i32, // Try deathrattles if the hp drops below this
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -950,6 +972,7 @@ pub unsafe fn step_idle_orders() {
     let current_frame = (*bw::game()).frame_count;
     let mut orders = IDLE_ORDERS.lock().unwrap();
     let orders = &mut *orders;
+    let deathrattles = &orders.deathrattles;
     let ongoing = &mut orders.ongoing;
     // Yes, it may consider an order ongoing even if the unit is targeting the
     // target for other reasons. Acceptable?
@@ -960,6 +983,31 @@ pub unsafe fn step_idle_orders() {
         };
         if !retain {
             bw::issue_order(o.user.0, order::id::MOVE, o.home, null_mut(), unit::id::NONE);
+        } else {
+            if o.user.health() < o.panic_health {
+                for decl in deathrattles {
+                    if decl.unit_valid(&o.user) {
+                        let panic_target = find_idle_order_target(&o.user, &decl, &[]);
+                        if let Some((target, distance)) = panic_target {
+                            if distance < decl.radius as u32 {
+                                let (target, pos) = idle_order_target_pos(&target, decl);
+                                // Prevent panicing in future
+                                o.panic_health = 0;
+                                o.target = target;
+                                o.order = decl.order;
+                                let target_ptr = target.map(|x| x.0).unwrap_or(null_mut());
+                                bw::issue_order(
+                                    o.user.0,
+                                    decl.order,
+                                    pos,
+                                    target_ptr,
+                                    unit::id::NONE
+                                );
+                            }
+                        }
+                    }
+                }
+            }
         }
         retain
     });
@@ -986,24 +1034,19 @@ pub unsafe fn step_idle_orders() {
                     }
                 };
                 if distance < decl.radius as u32 {
-                    let pos = target.position();
-                    let no_detection = target.is_invisible() &&
-                        (*target.0).detection_status & (1 << decl.player) as u32 == 0;
-                    let order_target = if no_detection {
-                        null_mut()
-                    } else {
-                        target.0
-                    };
+                    let (order_target, pos) = idle_order_target_pos(&target, decl);
                     let home = match user.order() {
                         order::id::MOVE => (*user.0).order_target_pos,
                         _ => user.position(),
                     };
-                    bw::issue_order(user.0, decl.order, pos, order_target, unit::id::NONE);
+                    let target_ptr = order_target.map(|x| x.0).unwrap_or(null_mut());
+                    bw::issue_order(user.0, decl.order, pos, target_ptr, unit::id::NONE);
                     ongoing.push(OngoingOrder {
                         user,
-                        target: Unit::from_ptr(order_target),
+                        target: order_target,
                         home,
                         order: decl.order,
+                        panic_health: idle_order_panic_health(&user),
                     });
                     // Round to multiple of decl.rate so that priority is somewhat useful.
                     // Adds [rate, rate * 2) frames of wait.
@@ -1018,6 +1061,25 @@ pub unsafe fn step_idle_orders() {
             }
         }
     }
+}
+
+fn idle_order_target_pos(target: &Unit, decl: &IdleOrder) -> (Option<Unit>, bw::Point) {
+    let pos = target.position();
+    let no_detection = unsafe {
+        target.is_invisible() && (*target.0).detection_status & (1 << decl.player) as u32 == 0
+    };
+    let order_target = if no_detection {
+        null_mut()
+    } else {
+        target.0
+    };
+    (Unit::from_ptr(order_target), pos)
+}
+
+fn idle_order_panic_health(unit: &Unit) -> i32 {
+    let id = unit.id();
+    let max_health = id.hitpoints().saturating_add(id.shields());
+    (max_health / 4).min(unit.health() / 2)
 }
 
 unsafe fn find_idle_order_target(

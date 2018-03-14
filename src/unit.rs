@@ -167,6 +167,10 @@ impl Unit {
         }
     }
 
+    pub fn health(&self) -> i32 {
+        self.hitpoints().saturating_add(self.shields())
+    }
+
     pub fn energy(&self) -> u16 {
         unsafe { (*self.0).energy }
     }
