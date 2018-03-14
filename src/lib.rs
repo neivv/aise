@@ -44,12 +44,12 @@ fn init() {
                 out.finish(format_args!("{}[{}:{}][{}] {}",
                     chrono::Local::now()
                         .format("[%Y-%m-%d][%H:%M:%S]"),
-                    record.location().file(),
-                    record.location().line(),
+                    record.file().unwrap_or(""),
+                    record.line().unwrap_or(0),
                     record.level(),
                     message))
             })
-            .level(log::LogLevelFilter::Trace)
+            .level(log::LevelFilter::Trace)
             .chain(fern::log_file("ais_attackto.log").unwrap())
             .apply();
     }
