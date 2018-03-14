@@ -437,52 +437,83 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
     let radius = read_u16(script);
     let target_unit_id = read_unit_match(script);
     let priority = read_u8(script);
-    let delete_flags;
-    let flags = {
-        let mut flags = IdleOrderFlags {
+    let mut delete_flags = 0;
+    let mut target_flags;
+    let mut self_flags;
+    {
+        unsafe fn parse_flags(
+            script: *mut bw::AiScript,
+            flags: &mut IdleOrderFlags,
+            mut self_flags: Option<&mut IdleOrderFlags>,
+            delete_flags: &mut u16,
+        ) -> bool {
+            loop {
+                let val = read_u16(script);
+                match (val & 0x2f00) >> 8 {
+                    0 => {
+                        flags.simple = (val & 0xff) as u8;
+                        *delete_flags = val & 0xc000;
+                        return true;
+                    }
+                    1 => flags.status_required = (val & 0xff) as u8,
+                    2 => flags.status_not = (val & 0xff) as u8,
+                    3 => {
+                        let amount = read_u32(script) as i32;
+                        let comparision = match val & 0xf {
+                            0 => Comparision::LessThan,
+                            1 => Comparision::GreaterThan,
+                            2 => Comparision::LessThanPercentage,
+                            3 => Comparision::GreaterThanPercentage,
+                            _ => {
+                                bw::print_text("idle_orders: invalid encoding");
+                                return false;
+                            }
+                        };
+                        let ty = match (val >> 4) & 0xf {
+                            0 => IdleOrderNumeric::Hp,
+                            1 => IdleOrderNumeric::Shields,
+                            2 => IdleOrderNumeric::Health,
+                            3 => IdleOrderNumeric::Energy,
+                            _ => {
+                                bw::print_text("idle_orders: invalid encoding");
+                                return false;
+                            }
+                        };
+                        flags.numeric.push((ty, comparision, amount));
+                    }
+                    4 => {
+                        if val & 0xff == 0 {
+                            if let Some(ref mut self_flags) = self_flags {
+                                let ok = parse_flags(script, *self_flags, None, delete_flags);
+                                if !ok {
+                                    return false;
+                                }
+                            }
+                        } else {
+                            bw::print_text("idle_orders: invalid encoding");
+                            return false;
+                        }
+                    }
+                    _ => bw::print_text("idle_orders: invalid encoding"),
+                }
+            }
+        }
+        target_flags = IdleOrderFlags {
             simple: 0,
             status_required: 0,
             status_not: 0,
             numeric: Vec::new(),
         };
-        loop {
-            let mut val = read_u16(script);
-            match (val & 0x2f00) >> 8 {
-                0 => {
-                    flags.simple = (val & 0xff) as u8;
-                    delete_flags = val & 0xc000;
-                    break;
-                }
-                1 => flags.status_required = (val & 0xff) as u8,
-                2 => flags.status_not = (val & 0xff) as u8,
-                3 => {
-                    let amount = read_u32(script) as i32;
-                    let comparision = match val & 0xf {
-                        0 => Comparision::LessThan,
-                        1 => Comparision::GreaterThan,
-                        2 => Comparision::LessThanPercentage,
-                        3 => Comparision::GreaterThanPercentage,
-                        _ => {
-                            bw::print_text("idle_orders: invalid encoding");
-                            return;
-                        }
-                    };
-                    let ty = match (val >> 4) & 0xf {
-                        0 => IdleOrderNumeric::Hp,
-                        1 => IdleOrderNumeric::Shields,
-                        2 => IdleOrderNumeric::Health,
-                        3 => IdleOrderNumeric::Energy,
-                        _ => {
-                            bw::print_text("idle_orders: invalid encoding");
-                            return;
-                        }
-                    };
-                    flags.numeric.push((ty, comparision, amount));
-                }
-                _ => bw::print_text("idle_orders: invalid encoding"),
-            }
+        self_flags = IdleOrderFlags {
+            simple: 0,
+            status_required: 0,
+            status_not: 0,
+            numeric: Vec::new(),
+        };
+        let ok = parse_flags(script, &mut target_flags, Some(&mut self_flags), &mut delete_flags);
+        if !ok {
+            return;
         }
-        flags
     };
     if IDLE_ORDERS_DISABLED.load(Ordering::Acquire) == true {
         return;
@@ -498,7 +529,7 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
         return;
     }
     let mut orders = IDLE_ORDERS.lock().unwrap();
-    let deathrattle = flags.simple & 0x40 != 0;
+    let deathrattle = target_flags.simple & 0x40 != 0;
     if delete_flags != 0 {
         let silent_fail = delete_flags & 0x4000 != 0;
         let matchee = IdleOrder {
@@ -508,7 +539,8 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
             target_unit_id,
             radius,
             priority,
-            flags,
+            target_flags,
+            self_flags,
             rate,
             player: (*script).player as u8,
         };
@@ -546,7 +578,8 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
             target_unit_id,
             radius,
             priority,
-            flags,
+            target_flags,
+            self_flags,
             rate,
             player: (*script).player as u8,
         };
@@ -828,7 +861,8 @@ struct IdleOrder {
     unit_id: UnitMatch,
     target_unit_id: UnitMatch,
     radius: u16,
-    flags: IdleOrderFlags,
+    target_flags: IdleOrderFlags,
+    self_flags: IdleOrderFlags,
     rate: u16,
     player: u8,
 }
@@ -940,6 +974,7 @@ impl IdleOrderState {
 }
 
 impl IdleOrder {
+    /// Idle order user
     fn unit_valid(&self, user: &Unit) -> bool {
         let energy_cost = self.order.tech()
             .map(|x| x.energy_cost() << 8)
@@ -947,7 +982,8 @@ impl IdleOrder {
         user.player() == self.player &&
             self.unit_id.matches(user) &&
             user.order() != self.order &&
-            user.energy() as u32 >= energy_cost
+            user.energy() as u32 >= energy_cost &&
+            self.self_flags.match_status(user)
     }
 }
 
@@ -1087,12 +1123,12 @@ unsafe fn find_idle_order_target(
     decl: &IdleOrder,
     ongoing: &[OngoingOrder],
 ) -> Option<(Unit, u32)> {
-    let accept_enemies = decl.flags.simple & 0x2 == 0;
-    let accept_own = decl.flags.simple & 0x2 != 0;
-    let accept_allies = decl.flags.simple & 0x4 != 0;
-    let accept_unseen = decl.flags.simple & 0x8 != 0;
-    let accept_invisible = decl.flags.simple & 0x10 != 0;
-    let in_combat = decl.flags.simple & 0x20 != 0;
+    let accept_enemies = decl.target_flags.simple & 0x2 == 0;
+    let accept_own = decl.target_flags.simple & 0x2 != 0;
+    let accept_allies = decl.target_flags.simple & 0x4 != 0;
+    let accept_unseen = decl.target_flags.simple & 0x8 != 0;
+    let accept_invisible = decl.target_flags.simple & 0x10 != 0;
+    let in_combat = decl.target_flags.simple & 0x20 != 0;
     let player_mask = 1 << decl.player;
     let mut acceptable_players = [false; 12];
     let game = bw::game();
@@ -1111,7 +1147,7 @@ unsafe fn find_idle_order_target(
         if unit.is_invincible() {
             return false;
         }
-        if !decl.flags.match_status(unit) {
+        if !decl.target_flags.match_status(unit) {
             return false;
         }
         if !decl.target_unit_id.matches(unit) || !acceptable_players[unit.player() as usize] {
