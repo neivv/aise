@@ -86,7 +86,9 @@ pub struct AiRegion {
 
 #[repr(C, packed)]
 pub struct PlayerAiData {
-    pub dc0: [u8; 0x218],
+    pub dc0: [u8; 0x210],
+    pub request_count: u8,
+    pub dc211: [u8; 0x7],
     pub flags: u16,
     pub dc21a: [u8; 0x4],
     pub attack_grouping_region: u16,
@@ -168,7 +170,7 @@ pub struct Rect32 {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Rect {
     pub left: i16,
     pub top: i16,

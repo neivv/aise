@@ -50,15 +50,15 @@ init_fns! {
     init_portdata, PORTDATA_DAT,
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize, Ord, PartialOrd)]
 pub struct OrderId(pub u8);
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize, Ord, PartialOrd)]
 pub struct UnitId(pub u16);
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize, Ord, PartialOrd)]
 pub struct WeaponId(pub u16);
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize, Ord, PartialOrd)]
 pub struct UpgradeId(pub u16);
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize, Ord, PartialOrd)]
 pub struct TechId(pub u16);
 
 unsafe fn get(dat: *const bw::DatTable, id: u32, field: u32) -> u32 {
@@ -137,10 +137,13 @@ pub mod order {
     pub const SPAWNING_LARVA: OrderId = OrderId(0x4e);
     pub const HARVEST_GAS: OrderId = OrderId(0x53);
     pub const RETURN_GAS: OrderId = OrderId(0x54);
+    pub const HARVEST_MINERALS: OrderId = OrderId(0x57);
     pub const RETURN_MINERALS: OrderId = OrderId(0x5a);
     pub const SPREAD_CREEP: OrderId = OrderId(0x66);
     pub const CLOAK: OrderId = OrderId(0x6d);
     pub const DECLOAK: OrderId = OrderId(0x6e);
+    pub const UNLOAD: OrderId = OrderId(0x6f);
+    pub const MOVE_UNLOAD: OrderId = OrderId(0x70);
     pub const CLOAKING_NEARBY_UNITS: OrderId = OrderId(0x83);
     pub const SAP_UNIT: OrderId = OrderId(0x86);
     pub const SAP_LOCATION: OrderId = OrderId(0x87);
