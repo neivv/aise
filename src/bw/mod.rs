@@ -1,14 +1,15 @@
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
 
+use std::ptr::null;
+
+use bw_dat::{UnitId, OrderId, TechId, UpgradeId};
+
 use samase;
 
 pub mod structs;
 
 pub use self::structs::*;
-
-use order::OrderId;
-use unit::UnitId;
 
 pub mod v1161 {
     use super::structs::*;
@@ -116,4 +117,31 @@ pub fn print_text<M: AsRef<str>>(msg: M) {
     let mut buf: Vec<u8> = msg.as_ref().as_bytes().into();
     buf.push(0);
     samase::print_text(buf.as_ptr());
+}
+
+pub fn unit_dat_requirements(unit: UnitId) -> Option<*const u16> {
+    let result = samase::requirements(0, unit.0 as u32);
+    if result == null() {
+        None
+    } else {
+        Some(result)
+    }
+}
+
+pub fn upgrade_dat_requirements(upgrade: UpgradeId) -> Option<*const u16> {
+    let result = samase::requirements(1, upgrade.0 as u32);
+    if result == null() {
+        None
+    } else {
+        Some(result)
+    }
+}
+
+pub fn tech_research_dat_requirements(tech: TechId) -> Option<*const u16> {
+    let result = samase::requirements(2, tech.0 as u32);
+    if result == null() {
+        None
+    } else {
+        Some(result)
+    }
 }

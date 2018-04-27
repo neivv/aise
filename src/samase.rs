@@ -99,6 +99,11 @@ pub fn get_region(x: u32, y: u32) -> u32 {
     unsafe { GET_REGION.get()(x, y) }
 }
 
+static mut DAT_REQUIREMENTS: GlobalFunc<fn(u32, u32) -> *const u16> = GlobalFunc(None);
+pub fn requirements(ty: u32, id: u32) -> *const u16 {
+    unsafe { DAT_REQUIREMENTS.get()(ty, id) }
+}
+
 static mut CHANGE_AI_REGION_STATE: GlobalFunc<fn(*mut bw::AiRegion, u32)> = GlobalFunc(None);
 pub fn change_ai_region_state(region: *mut bw::AiRegion, state: u32) {
     unsafe { CHANGE_AI_REGION_STATE.get()(region, state) }
@@ -161,7 +166,7 @@ unsafe fn aiscript_opcode(
 
 #[no_mangle]
 pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
-    let required_version = 3;
+    let required_version = 5;
     if (*api).version < required_version {
         fatal(&format!(
             "Newer samase is required. (Plugin API version {}, this plugin requires version {})",
@@ -184,6 +189,10 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
     AI_REGIONS.init(((*api).ai_regions)().map(|x| mem::transmute(x)), "AI regions");
     PLAYER_AI.init(((*api).player_ai)().map(|x| mem::transmute(x)), "Player AI");
     GET_REGION.init(((*api).get_region)().map(|x| mem::transmute(x)), "get_region");
+    DAT_REQUIREMENTS.init(
+        ((*api).dat_requirements)().map(|x| mem::transmute(x)),
+        "dat_requirements"
+    );
     FIRST_ACTIVE_UNIT.init(
         ((*api).first_active_unit)().map(|x| mem::transmute(x)),
         "first active unit",

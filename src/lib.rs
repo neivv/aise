@@ -12,6 +12,7 @@ extern crate libc;
 #[macro_use] extern crate scopeguard;
 extern crate serde;
 #[macro_use] extern crate serde_derive;
+extern crate smallvec;
 extern crate thread_local;
 extern crate winapi;
 
@@ -24,6 +25,8 @@ pub mod samase;
 
 mod aiscript;
 mod bw;
+mod datreq;
+mod game;
 mod unit;
 mod order;
 mod swap_retain;
@@ -141,6 +144,7 @@ fn patch() {
 }
 
 unsafe extern fn frame_hook() {
+    aiscript::clean_unsatisfiable_requests();
     aiscript::attack_timeouts_frame_hook();
     aiscript::step_idle_orders();
     aiscript::under_attack_frame_hook();

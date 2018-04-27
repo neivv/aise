@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::ptr::null_mut;
 
+use byteorder::{ReadBytesExt, LE};
 use serde::{Serializer, Serialize, Deserializer, Deserialize};
 
 use bw;
@@ -252,6 +253,22 @@ impl Unit {
             (*self.0).currently_building = null_mut();
             (*self.0).unke8 = 0;
             (*self.0).unkea = 0;
+        }
+    }
+
+    pub fn is_completed(&self) -> bool {
+        unsafe { (*self.0).flags & 0x1 != 0 }
+    }
+
+    pub fn addon(&self) -> Option<Unit> {
+        unsafe {
+            if self.id().is_building() {
+                let ptr =
+                    (&(*self.0).unit_specific[..]).read_u32::<LE>().unwrap() as *mut bw::Unit;
+                Unit::from_ptr(ptr)
+            } else {
+                None
+            }
         }
     }
 }

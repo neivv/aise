@@ -154,6 +154,14 @@ pub mod order {
 }
 
 impl UnitId {
+    pub fn optional(id: u32) -> Option<UnitId> {
+        if id > u16::max_value() as u32 || id == unit::NONE.0 as u32 {
+            None
+        } else {
+            Some(UnitId(id as u16))
+        }
+    }
+
     pub fn get(&self, id: u32) -> u32 {
         unsafe {
             ::get(UNITS_DAT, self.0 as u32, id)
@@ -189,6 +197,10 @@ impl UnitId {
         self.get(22)
     }
 
+    pub fn is_building(&self) -> bool {
+        self.flags() & 0x1 != 0
+    }
+
     pub fn group_flags(&self) -> u32 {
         self.get(44)
     }
@@ -219,7 +231,7 @@ impl UnitId {
 }
 
 impl WeaponId {
-    fn optional(id: u32) -> Option<WeaponId> {
+    pub fn optional(id: u32) -> Option<WeaponId> {
         if id > u16::max_value() as u32 || id == weapon::NONE.0 as u32 {
             None
         } else {
@@ -256,7 +268,7 @@ impl WeaponId {
 }
 
 impl UpgradeId {
-    fn optional(id: u32) -> Option<UpgradeId> {
+    pub fn optional(id: u32) -> Option<UpgradeId> {
         if id > u16::max_value() as u32 || id == upgrade::NONE.0 as u32 {
             None
         } else {
@@ -308,7 +320,7 @@ impl UpgradeId {
 }
 
 impl TechId {
-    fn optional(id: u32) -> Option<TechId> {
+    pub fn optional(id: u32) -> Option<TechId> {
         if id > u16::max_value() as u32 || id == tech::NONE.0 as u32 {
             None
         } else {

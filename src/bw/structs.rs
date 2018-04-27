@@ -86,7 +86,8 @@ pub struct AiRegion {
 
 #[repr(C, packed)]
 pub struct PlayerAiData {
-    pub dc0: [u8; 0x210],
+    pub dc0: [u8; 0x18],
+    pub requests: [AiSpendingRequest; 0x3f],
     pub request_count: u8,
     pub dc211: [u8; 0x7],
     pub flags: u16,
@@ -101,22 +102,56 @@ pub struct PlayerAiData {
 }
 
 #[repr(C, packed)]
+#[derive(Copy, Clone)]
+pub struct AiSpendingRequest {
+    pub priority: u8,
+    pub ty: u8,
+    pub id: u16,
+    pub val: *mut c_void,
+}
+
+#[repr(C, packed)]
 pub struct Game {
     pub dc0: [u8; 0xe4],
     pub map_width_tiles: u16,
     pub map_height_tiles: u16,
     pub dce8: [u8; 0x64],
     pub frame_count: u32,
-    pub dc150: [u8; 0x5ba4],
+    pub dc150: [u8; 0x2b36],
+    pub player_color_palette: [[u8; 0x8]; 0xc],
+    pub player_minimap_color: [u8; 0xc],
+    pub dc2cf2: [u8; 0x362],
+    pub zerg_supply: [u32; 0xc],
+    pub zerg_supply_used: [u32; 0xc],
+    pub zerg_supply_max: [u32; 0xc],
+    pub terran_supply: [u32; 0xc],
+    pub terran_supply_used: [u32; 0xc],
+    pub terran_supply_max: [u32; 0xc],
+    pub protoss_supply: [u32; 0xc],
+    pub protoss_supply_used: [u32; 0xc],
+    pub protoss_supply_max: [u32; 0xc],
+    pub dc3204: [u8; 0x30],
+    pub all_units_count: [[u32; 0xc]; 0xe4],
     pub completed_units_count: [[u32; 0xc]; 0xe4],
     pub unit_kills: [[u32; 0xc]; 0xe4],
     pub deaths: [[u32; 0xc]; 0xe4],
-    pub dcdd34: [u8; 0x810],
+    pub tech_availability_sc: [[u8; 0x18]; 0xc],
+    pub tech_level_sc: [[u8; 0x18]; 0xc],
+    pub dcdf74: [u8; 0x24],
+    pub upgrade_limit_sc: [[u8; 0x2e]; 0xc],
+    pub upgrade_level_sc: [[u8; 0x2e]; 0xc],
+    pub dce3e8: [u8; 0x15c],
     pub alliances: [[u8; 0xc]; 0xc],
     pub dce5d4: [u8; 0x34],
     pub elapsed_seconds: u32,
     pub dce60c: [u8; 0x564],
     pub locations: [Location; 0xff],
+    pub dcff5c: [u8; 0x4],
+    pub tech_availability_bw: [[u8; 0x14]; 0xc],
+    pub tech_level_bw: [[u8; 0x14]; 0xc],
+    pub dc10140: [u8; 0x48],
+    pub upgrade_limit_bw: [[u8; 0xf]; 0xc],
+    pub upgrade_level_bw: [[u8; 0xf]; 0xc],
 }
 
 #[repr(C, packed)]
@@ -328,7 +363,7 @@ mod test {
         assert_eq!(mem::size_of::<WorkerAi>(), 0x18);
         assert_eq!(mem::size_of::<GuardAi>(), 0x20);
         assert_eq!(mem::size_of::<PlayerAiData>(), 0x4e8);
-        assert_eq!(mem::size_of::<Game>(), 0xff5c);
+        assert_eq!(mem::size_of::<Game>(), 0x102f0);
         assert_eq!(mem::size_of::<Unit>(), 0x150);
         assert_eq!(mem::size_of::<Sprite>(), 0x24);
     }
