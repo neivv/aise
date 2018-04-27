@@ -1554,7 +1554,7 @@ unsafe fn can_satisfy_unit_request(game: Game, player: u8, unit_id: UnitId) -> b
                     reqs = reqs.offset(1);
                     game.unit_count(player, unit) != 0
                 }
-                UnitReq::Id(id) => {
+                UnitReq::Unit(id) => {
                     let unit = match UnitId::optional(id as u32) {
                         Some(s) => s,
                         None => {
@@ -1678,7 +1678,16 @@ unsafe fn can_satisfy_nonunit_request(
                     }
                     true
                 }
-                NonUnitReq::Id(_) => true,
+                NonUnitReq::Unit(id) => {
+                    let unit = match UnitId::optional(id as u32) {
+                        Some(s) => s,
+                        None => {
+                            warn!("Unknown unit {:x}", id);
+                            return true;
+                        }
+                    };
+                    game.completed_count(player, unit) != 0
+                }
                 NonUnitReq::Unknown(id) => {
                     warn!("Unknown req ty {:x}", id);
                     return true;

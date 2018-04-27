@@ -5,13 +5,13 @@ macro_rules! decl_req {
             $($variant,)*
             End,
             Unknown(u16),
-            Id(u16),
+            Unit(u16),
         }
 
         impl $name {
             pub fn from_raw(raw: u16) -> $name {
                 if raw < 0xff00 {
-                    $name::Id(raw)
+                    $name::Unit(raw)
                 } else {
                     match raw {
                         $($val => $name::$variant,)*
