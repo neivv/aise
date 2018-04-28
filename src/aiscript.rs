@@ -844,8 +844,14 @@ impl CallStacks {
 struct IdleOrders {
     orders: Vec<(IdleOrder, IdleOrderState)>,
     deathrattles: Vec<IdleOrder>,
-    // user, target, return point
     ongoing: Vec<OngoingOrder>,
+    returning_cloaked: Vec<ReturningCloaked>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct ReturningCloaked {
+    unit: Unit,
+    start_point: bw::Point,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -855,6 +861,7 @@ struct OngoingOrder {
     home: bw::Point,
     order: OrderId,
     panic_health: i32, // Try deathrattles if the hp drops below this
+    cloaked: bool,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -999,6 +1006,7 @@ pub fn remove_from_idle_orders(unit: &Unit) {
         }
     }
     orders.ongoing.swap_retain(|x| *unit != x.user && Some(*unit) != x.target);
+    orders.returning_cloaked.swap_retain(|x| *unit != x.unit);
 }
 
 pub unsafe fn step_idle_orders() {
@@ -1009,11 +1017,13 @@ pub unsafe fn step_idle_orders() {
             (*ai).spell_cooldown = 250;
         }
     }
-    let current_frame = Game::get().frame_count();
+    let game = Game::get();
+    let current_frame = game.frame_count();
     let mut orders = IDLE_ORDERS.lock().unwrap();
     let orders = &mut *orders;
     let deathrattles = &orders.deathrattles;
     let ongoing = &mut orders.ongoing;
+    let returning_cloaked = &mut orders.returning_cloaked;
     // Yes, it may consider an order ongoing even if the unit is targeting the
     // target for other reasons. Acceptable?
     ongoing.swap_retain(|o| {
@@ -1023,7 +1033,21 @@ pub unsafe fn step_idle_orders() {
         };
         if !retain {
             bw::issue_order(o.user.0, order::id::MOVE, o.home, null_mut(), unit::id::NONE);
+            if o.cloaked {
+                returning_cloaked.push(ReturningCloaked {
+                    unit: o.user,
+                    start_point: o.user.position(),
+                });
+            }
         } else {
+            fn can_personnel_cloak(id: UnitId) -> bool {
+                use bw_dat::unit::*;
+                match id {
+                    GHOST | SAMIR_DURAN | INFESTED_DURAN | SARAH_KERRIGAN | INFESTED_KERRIGAN |
+                        ALEXEI_STUKOV => true,
+                    _ => false,
+                }
+            }
             if o.user.health() < o.panic_health {
                 for decl in deathrattles {
                     if decl.unit_valid(&o.user) {
@@ -1047,9 +1071,37 @@ pub unsafe fn step_idle_orders() {
                         }
                     }
                 }
+            } else if can_personnel_cloak(o.user.id()) && !o.cloaked && !o.user.is_invisible() {
+                let tech = bw_dat::tech::PERSONNEL_CLOAKING;
+                let order_energy = o.order.tech().map(|x| x.energy_cost()).unwrap_or(0);
+                let min_energy = tech.energy_cost()
+                    .saturating_add(25)
+                    .saturating_add(order_energy)
+                    .saturating_mul(256);
+                if o.user.energy() as u32 > min_energy {
+                    if game.tech_researched(o.user.player(), tech) || o.user.id().is_hero() {
+                        if bw::distance(o.user.position(), (*o.user.0).move_target) < 32 * 24 {
+                            o.user.issue_secondary_order(bw_dat::order::CLOAK);
+                            o.cloaked = true;
+                        }
+                    }
+                }
             }
         }
         retain
+    });
+    returning_cloaked.swap_retain(|ret| {
+        if !ret.unit.is_invisible() {
+            return false;
+        }
+        let pos = ret.unit.position();
+        let distance = bw::distance(pos, ret.start_point);
+        if distance > 32 * 12 || ((*ret.unit.0).move_target == pos && distance > 32 * 2) {
+            ret.unit.issue_secondary_order(bw_dat::order::DECLOAK);
+            false
+        } else {
+            true
+        }
     });
     for &mut (ref decl, ref mut state) in orders.orders.iter_mut().rev() {
         if state.next_frame <= current_frame {
@@ -1087,6 +1139,7 @@ pub unsafe fn step_idle_orders() {
                         home,
                         order: decl.order,
                         panic_health: idle_order_panic_health(&user),
+                        cloaked: false,
                     });
                     // Round to multiple of decl.rate so that priority is somewhat useful.
                     // Adds [rate, rate * 2) frames of wait.
@@ -1148,6 +1201,9 @@ unsafe fn find_idle_order_target(
         }
     }
     unit::find_nearest(user.position(), |unit| {
+        if unit == user {
+            return false;
+        }
         if unit.is_invincible() {
             return false;
         }
@@ -1190,7 +1246,7 @@ fn find_idle_order_user(
     ongoing: &[OngoingOrder],
 ) -> Option<(Unit, u32)> {
     unit::find_nearest(target.position(), |unit| {
-        decl.unit_valid(unit) && !ongoing.iter().any(|x| x.user == *unit)
+        unit != target && decl.unit_valid(unit) && !ongoing.iter().any(|x| x.user == *unit)
     })
 }
 

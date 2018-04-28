@@ -145,3 +145,19 @@ pub fn tech_research_dat_requirements(tech: TechId) -> Option<*const u16> {
         Some(result)
     }
 }
+
+// BW algorithm
+pub fn distance(a: Point, b: Point) -> u32 {
+    let x = (a.x as i32).wrapping_sub(b.x as i32).abs() as u32;
+    let y = (a.y as i32).wrapping_sub(b.y as i32).abs() as u32;
+    let (greater, lesser) = if x > y {
+        (x, y)
+    } else {
+        (y, x)
+    };
+    if greater / 4 > lesser {
+        greater
+    } else {
+        greater * 59 / 64 + lesser * 99 / 256
+    }
+}

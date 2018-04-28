@@ -352,7 +352,7 @@ where F: FnMut(&Unit) -> bool,
     let mut result = None;
     let mut result_dist = !0;
     for unit in active_units() {
-        let distance = distance(unit.position(), point);
+        let distance = bw::distance(unit.position(), point);
         if distance < result_dist {
             if filter(&unit) {
                 result = Some(unit);
@@ -361,22 +361,6 @@ where F: FnMut(&Unit) -> bool,
         }
     }
     result.map(|x| (x, result_dist))
-}
-
-// BW algorithm
-fn distance(a: bw::Point, b: bw::Point) -> u32 {
-    let x = (a.x as i32).wrapping_sub(b.x as i32).abs() as u32;
-    let y = (a.y as i32).wrapping_sub(b.y as i32).abs() as u32;
-    let (greater, lesser) = if x > y {
-        (x, y)
-    } else {
-        (y, x)
-    };
-    if greater / 4 > lesser {
-        greater
-    } else {
-        greater * 59 / 64 + lesser * 99 / 256
-    }
 }
 
 fn rect_overlaps(a: &bw::Rect, b: &bw::Rect) -> bool {

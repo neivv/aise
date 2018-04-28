@@ -74,8 +74,14 @@ unsafe fn get(dat: *const bw::DatTable, id: u32, field: u32) -> u32 {
 
 pub mod unit {
     use super::UnitId;
+    pub const GHOST: UnitId = UnitId(0x1);
+    pub const SARAH_KERRIGAN: UnitId = UnitId(0x10);
+    pub const INFESTED_KERRIGAN: UnitId = UnitId(0x33);
     pub const COCOON: UnitId = UnitId(0x3b);
     pub const LURKER_EGG: UnitId = UnitId(0x61);
+    pub const SAMIR_DURAN: UnitId = UnitId(0x63);
+    pub const ALEXEI_STUKOV: UnitId = UnitId(0x64);
+    pub const INFESTED_DURAN: UnitId = UnitId(0x68);
     pub const COMMAND_CENTER: UnitId = UnitId(0x6a);
     pub const NUCLEAR_SILO: UnitId = UnitId(0x6c);
     pub const PYLON: UnitId = UnitId(0x9c);
@@ -98,6 +104,7 @@ pub mod upgrade {
 
 pub mod tech {
     use super::TechId;
+    pub const PERSONNEL_CLOAKING: TechId = TechId(0xa);
     pub const NONE: TechId = TechId(0x2c);
 }
 
@@ -199,6 +206,10 @@ impl UnitId {
 
     pub fn is_building(&self) -> bool {
         self.flags() & 0x1 != 0
+    }
+
+    pub fn is_hero(&self) -> bool {
+        self.flags() & 0x40 != 0
     }
 
     pub fn group_flags(&self) -> u32 {
