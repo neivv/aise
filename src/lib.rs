@@ -221,5 +221,5 @@ unsafe fn would_train_fail(player: u8, unit: UnitId) -> bool {
         }
         ai = (*ai).next;
     }
-    true
+    false
 }

@@ -1,6 +1,6 @@
 [package]
-version = "2.6.2"
 name = "ais_extend"
+version = "2.6.3"
 authors = ["Markus Heikkinen <ittevien@gmail.com>"]
 
 [lib]
