@@ -79,6 +79,11 @@ pub fn first_ai_script() -> *mut bw::AiScript {
     unsafe { FIRST_AI_SCRIPT.0.map(|x| x()).unwrap_or(null_mut()) }
 }
 
+static mut GUARD_AIS: GlobalFunc<fn() -> *mut bw::GuardAiList> = GlobalFunc(None);
+pub fn guard_ais() -> *mut bw::GuardAiList {
+    unsafe { GUARD_AIS.0.map(|x| x()).unwrap_or(null_mut()) }
+}
+
 static mut UNITS_DAT: GlobalFunc<fn() -> *mut bw_dat::DatTable> = GlobalFunc(None);
 pub fn units_dat() -> *mut bw_dat::DatTable {
     unsafe { UNITS_DAT.get()() }
@@ -166,7 +171,7 @@ unsafe fn aiscript_opcode(
 
 #[no_mangle]
 pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
-    let required_version = 5;
+    let required_version = 6;
     if (*api).version < required_version {
         fatal(&format!(
             "Newer samase is required. (Plugin API version {}, this plugin requires version {})",
@@ -204,6 +209,10 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
     FIRST_AI_SCRIPT.init(
         ((*api).first_ai_script)().map(|x| mem::transmute(x)),
         "first_ai_script",
+    );
+    GUARD_AIS.init(
+        ((*api).first_guard_ai)().map(|x| mem::transmute(x)),
+        "guard ais",
     );
     match ((*api).issue_order)() {
         None => ((*api).warn_unsupported_feature)(b"Ai script issue_order\0".as_ptr()),

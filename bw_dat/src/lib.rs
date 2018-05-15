@@ -163,6 +163,7 @@ pub mod order {
     pub const SAP_LOCATION: OrderId = OrderId(0x87);
     pub const HALLUCINATED: OrderId = OrderId(0x95);
     pub const RESET_COLLISION_HARVESTER: OrderId = OrderId(0x97);
+    pub const COMPUTER_AI: OrderId = OrderId(0x9c);
     pub const AI_ATTACK_MOVE: OrderId = OrderId(0x9d);
     pub const REVEAL_TRAP: OrderId = OrderId(0xab);
 }

@@ -63,6 +63,12 @@ pub struct BuildingAi {
 }
 
 #[repr(C, packed)]
+pub struct GuardAiList {
+    pub free: *mut c_void,
+    pub first: *mut GuardAi,
+}
+
+#[repr(C, packed)]
 pub struct GuardAi {
     pub next: *mut GuardAi,
     pub prev: *mut GuardAi,
@@ -81,7 +87,25 @@ pub struct GuardAi {
 pub struct AiRegion {
     pub id: u16,
     pub target_region_id: u16,
-    pub dc4: [u8; 0x30],
+    pub player: u8,
+    pub state: u8,
+    pub unk_val: u8,
+    pub unk_count: u8,
+    pub flags: u8,
+    pub unk: u8,
+    pub ground_unit_count: u16,
+    pub needed_ground_strength: u16,
+    pub needed_air_strength: u16,
+    pub local_military_ground_strength: u16,
+    pub local_military_air_strength: u16,
+    pub all_military_ground_strength: u16,
+    pub all_military_air_strength: u16,
+    // Are these ordered correctly?
+    pub enemy_air_strength: u16,
+    pub enemy_ground_strength: u16,
+    pub air_target: *mut Unit,
+    pub ground_target: *mut Unit,
+    pub dc24: [u8; 0x10],
 }
 
 #[repr(C, packed)]
@@ -93,7 +117,8 @@ pub struct PlayerAiData {
     pub flags: u16,
     pub dc21a: [u8; 0x4],
     pub attack_grouping_region: u16,
-    pub dc220: [u8; 0x4],
+    pub train_unit_id: u16,
+    pub dc222: [u8; 0x2],
     pub previous_building_hit_second: u32,
     pub last_attack_second: u32,
     pub strategic_suicide_mission_cooldown: u8,

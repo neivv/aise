@@ -84,6 +84,13 @@ pub fn first_ai_script() -> *mut AiScript {
     samase::first_ai_script()
 }
 
+pub fn guard_ais(player: u8) -> *mut GuardAi {
+    unsafe {
+        assert!(player < 8);
+        (*samase::guard_ais().offset(player as isize)).first
+    }
+}
+
 pub fn change_ai_region_state(region: *mut AiRegion, state: u32) {
     samase::change_ai_region_state(region, state);
 }
