@@ -23,6 +23,7 @@ extern crate samase_shim;
 pub mod mpqdraft;
 pub mod samase;
 
+mod ai;
 mod aiscript;
 mod bw;
 mod datreq;
@@ -39,8 +40,6 @@ use std::sync::atomic::{AtomicBool, ATOMIC_BOOL_INIT, Ordering};
 use libc::c_void;
 
 use winapi::um::processthreadsapi::{GetCurrentProcess, TerminateProcess};
-
-use bw_dat::UnitId;
 
 fn init() {
     if cfg!(debug_assertions) {
@@ -187,39 +186,16 @@ unsafe extern fn step_order_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_v
         }
         order::id::COMPUTER_AI => {
             if let Some(_) = unit.building_ai() {
-                if (*unit.0).order_timer == 0 && unit.player() < 8 {
-                    let ai = bw::player_ai(unit.player().into());
-                    if (*ai).train_unit_id != 0 {
-                        if would_train_fail(unit.player(), UnitId((*ai).train_unit_id - 1)) {
-                            debug!("Train would fail for player {}", unit.player());
-                            (*ai).train_unit_id = 0;
-                        }
-                    }
+                let player = unit.player();
+                if (*unit.0).order_timer == 0 && player < 8 {
+                    // Handle trains here instead of letting BW to handle them with
+                    // stupid guard-related behaviour.
+                    let ai = ai::PlayerAi::get(player);
+                    ai.check_train(unit, game::Game::get());
                 }
             }
         }
         _ => (),
     }
     orig(u);
-}
-
-unsafe fn would_train_fail(player: u8, unit: UnitId) -> bool {
-    let regions = bw::ai_regions(player.into());
-    let mut ai = bw::guard_ais(player);
-    while ai != null_mut() {
-        if (*ai).parent == null_mut() && (*ai).unit_id == unit.0 {
-            if let Some(region) = bw::get_region((*ai).other_home) {
-                let region = regions.offset(region as isize);
-                let would_fail = (*region).state != 3 &&
-                    (*region).air_target == null_mut() &&
-                    (*region).ground_target == null_mut() &&
-                    (*region).flags & 0x20 == 0;
-                if would_fail {
-                    return true;
-                }
-            }
-        }
-        ai = (*ai).next;
-    }
-    false
 }

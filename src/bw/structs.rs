@@ -110,7 +110,12 @@ pub struct AiRegion {
 
 #[repr(C, packed)]
 pub struct PlayerAiData {
-    pub dc0: [u8; 0x18],
+    pub mineral_need: u32,
+    pub gas_need: u32,
+    pub supply_need: u32,
+    pub minerals_available: u32,
+    pub gas_available: u32,
+    pub supply_available: u32,
     pub requests: [AiSpendingRequest; 0x3f],
     pub request_count: u8,
     pub dc211: [u8; 0x7],
@@ -123,7 +128,10 @@ pub struct PlayerAiData {
     pub last_attack_second: u32,
     pub strategic_suicide_mission_cooldown: u8,
     pub spell_cooldown: u8,
-    pub dc22e: [u8; 0x2ba],
+    pub dc22e: [u8; 0x1c2],
+    pub build_limits: [u8; 0xe4],
+    pub free_medic: *mut Unit,
+    pub dc4e8: [u8; 0x10],
 }
 
 #[repr(C, packed)]
@@ -137,10 +145,14 @@ pub struct AiSpendingRequest {
 
 #[repr(C, packed)]
 pub struct Game {
-    pub dc0: [u8; 0xe4],
+    pub minerals: [u32; 0xc],
+    pub gas: [u32; 0xc],
+    pub dc60: [u8; 0x84],
     pub map_width_tiles: u16,
     pub map_height_tiles: u16,
-    pub dce8: [u8; 0x64],
+    pub dce8: [u8; 0x4],
+    pub tileset: u16,
+    pub dcee: [u8; 0x5e],
     pub frame_count: u32,
     pub dc150: [u8; 0x2b36],
     pub player_color_palette: [[u8; 0x8]; 0xc],

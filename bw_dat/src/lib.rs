@@ -78,8 +78,16 @@ pub mod unit {
     pub const VULTURE: UnitId = UnitId(0x2);
     pub const SARAH_KERRIGAN: UnitId = UnitId(0x10);
     pub const JIM_RAYNOR_VULTURE: UnitId = UnitId(0x13);
+    pub const HYDRALISK: UnitId = UnitId(0x26);
+    pub const MUTALISK: UnitId = UnitId(0x2b);
+    pub const GUARDIAN: UnitId = UnitId(0x2c);
     pub const INFESTED_KERRIGAN: UnitId = UnitId(0x33);
     pub const COCOON: UnitId = UnitId(0x3b);
+    pub const DARK_TEMPLAR: UnitId = UnitId(0x3d);
+    pub const DEVOURER: UnitId = UnitId(0x3e);
+    pub const DARK_ARCHON: UnitId = UnitId(0x3f);
+    pub const HIGH_TEMPLAR: UnitId = UnitId(0x43);
+    pub const ARCHON: UnitId = UnitId(0x44);
     pub const CARRIER: UnitId = UnitId(0x48);
     pub const WARBRINGER: UnitId = UnitId(0x51);
     pub const GANTRITHOR: UnitId = UnitId(0x52);
@@ -87,6 +95,7 @@ pub mod unit {
     pub const LURKER_EGG: UnitId = UnitId(0x61);
     pub const SAMIR_DURAN: UnitId = UnitId(0x63);
     pub const ALEXEI_STUKOV: UnitId = UnitId(0x64);
+    pub const LURKER: UnitId = UnitId(0x67);
     pub const INFESTED_DURAN: UnitId = UnitId(0x68);
     pub const COMMAND_CENTER: UnitId = UnitId(0x6a);
     pub const NUCLEAR_SILO: UnitId = UnitId(0x6c);

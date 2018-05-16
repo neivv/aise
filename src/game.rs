@@ -14,6 +14,18 @@ impl Game {
         Game(game)
     }
 
+    pub fn minerals(self, player: u8) -> u32 {
+        unsafe {
+            (*self.0).minerals[player as usize]
+        }
+    }
+
+    pub fn gas(self, player: u8) -> u32 {
+        unsafe {
+            (*self.0).gas[player as usize]
+        }
+    }
+
     pub fn frame_count(self) -> u32 {
         unsafe {
             (*self.0).frame_count
