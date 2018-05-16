@@ -139,7 +139,7 @@ impl PlayerAi {
                 if needed == 0 {
                     None
                 } else {
-                    Some((SpendingRequest::Military(unit, region), needed))
+                    Some((SpendingRequest::Military(prereq, region), needed))
                 }
             }
         }
