@@ -1,16 +1,17 @@
 [package]
-name = "ais_extend"
+name = "aise"
 version = "2.6.6"
 authors = ["Markus Heikkinen <ittevien@gmail.com>"]
 
 [lib]
-name = "ais_attackto"
+name = "aise"
 crate-type = ["cdylib"]
 
 [profile.dev]
 panic = "abort"
 
 [profile.release]
+opt-level = "s"
 debug = true
 panic = "abort"
 overflow-checks = true
@@ -42,4 +43,4 @@ git = "https://github.com/neivv/whack/"
 path = "bw_dat"
 
 [dependencies.samase_shim]
-path = "../samase/samase_shim"
+git = "https://github.com/neivv/samase_plugin"

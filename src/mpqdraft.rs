@@ -48,7 +48,7 @@ unsafe extern "stdcall" fn get_plugin_name(_plugin: *mut MpqdraftPlugin, out: *m
     use std::io::Write;
 
     let mut out = slice::from_raw_parts_mut(out, out_size as usize);
-    let result = write!(out, "Aiscript attackto {}\0", env!("CARGO_PKG_VERSION"));
+    let result = write!(out, "Aiscript extension plugin {}\0", env!("CARGO_PKG_VERSION"));
     if result.is_err() { 0 } else { 1 }
 }
 
