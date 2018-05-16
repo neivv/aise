@@ -17,6 +17,7 @@ use whack;
 
 use bw_dat::{self, UnitId, UpgradeId, TechId};
 
+use ai;
 use bw;
 use game::Game;
 use order::{self, OrderId};
@@ -184,6 +185,19 @@ impl AiScriptOpcodes {
         asm.write_all(&[
             0xff, 0xd0, // call eax
             0x59, // pop ecx
+            0x8b, 0x46, 0x0c, // mov eax, [esi + 0xc] (Script wait)
+            0x31, 0xc9, // xor ecx, ecx
+            0x49, // dec ecx
+            0x39, 0xc8, // cmp eax, ecx
+            0x74, 0x0d, // je wait not set
+            0x61, // popad
+            0xc7, 0x44, 0xe4, 0xfc, // Mov [esp - 4], dword ...
+        ]).unwrap();
+        asm.write_u32::<LE>(bw::v1161::ProgressAiScript_Ret as u32).unwrap();
+        // jmp dword [esp - 4]
+        asm.write_all(&[0xff, 0x64, 0xe4, 0xfc]).unwrap();
+        // wait not set
+        asm.write_all(&[
             0x61, // popad
             0xc7, 0x44, 0xe4, 0xfc, // Mov [esp - 4], dword ...
         ]).unwrap();
@@ -765,6 +779,28 @@ pub unsafe extern fn ret(script: *mut bw::AiScript) {
         None => {
             bw::print_text(format!("Script {} used return without call", script.debug_string()));
         }
+    }
+}
+
+pub unsafe extern fn do_morph(script: *mut bw::AiScript) {
+    let amount = read_u8(script);
+    let unit_id = UnitId(read_u16(script));
+    let player = (*script).player as u8;
+    if ai::count_units(player, unit_id, Game::get()) < u32::from(amount) {
+        let ai = ai::PlayerAi::get(player);
+        (*ai.0).train_unit_id = unit_id.0 + 1;
+    }
+}
+
+pub unsafe extern fn train(script: *mut bw::AiScript) {
+    let amount = read_u8(script);
+    let unit_id = UnitId(read_u16(script));
+    let player = (*script).player as u8;
+    if ai::count_units(player, unit_id, Game::get()) < u32::from(amount) {
+        let ai = ai::PlayerAi::get(player);
+        (*ai.0).train_unit_id = unit_id.0 + 1;
+        (*script).pos -= 4;
+        (*script).wait = 30;
     }
 }
 

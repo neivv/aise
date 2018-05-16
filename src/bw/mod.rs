@@ -22,6 +22,7 @@ pub mod v1161 {
     pub const ProgressAiScript_SwitchLimit: usize = 0x0045B885;
     pub const ProgressAiScript_SwitchTable: usize = 0x0045B892;
     pub const ProgressAiScript_Loop: usize = 0x0045B860;
+    pub const ProgressAiScript_Ret: usize = 0x0045C9AA;
 }
 
 pub fn scr() -> bool {

@@ -145,10 +145,12 @@ fn patch() {
 }
 
 unsafe extern fn frame_hook() {
+    let game = game::Game::get();
     aiscript::clean_unsatisfiable_requests();
     aiscript::attack_timeouts_frame_hook();
     aiscript::step_idle_orders();
     aiscript::under_attack_frame_hook();
+    ai::update_guard_needs(game);
     for unit in unit::active_units() {
         if let Some(ai) = unit.building_ai() {
             let town = (*ai).town;

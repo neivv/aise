@@ -73,7 +73,7 @@ pub struct GuardAi {
     pub next: *mut GuardAi,
     pub prev: *mut GuardAi,
     pub ai_type: u8,
-    pub times_dies: u8,
+    pub times_died: u8,
     pub dca: [u8; 0x2],
     pub parent: *mut Unit,
     pub unit_id: u16,

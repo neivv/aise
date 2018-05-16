@@ -171,7 +171,7 @@ unsafe fn aiscript_opcode(
 
 #[no_mangle]
 pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
-    let required_version = 6;
+    let required_version = 7;
     if (*api).version < required_version {
         fatal(&format!(
             "Newer samase is required. (Plugin API version {}, this plugin requires version {})",
@@ -181,6 +181,8 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
 
     aiscript_opcode(api, 0x40, ::aiscript::call);
     aiscript_opcode(api, 0x41, ::aiscript::ret);
+    aiscript_opcode(api, 0x46, ::aiscript::do_morph);
+    aiscript_opcode(api, 0x4c, ::aiscript::train);
     aiscript_opcode(api, 0x71, ::aiscript::attack_to);
     aiscript_opcode(api, 0x72, ::aiscript::attack_timeout);
     aiscript_opcode(api, 0x73, ::aiscript::issue_order);

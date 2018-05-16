@@ -78,9 +78,12 @@ pub mod unit {
     pub const VULTURE: UnitId = UnitId(0x2);
     pub const SARAH_KERRIGAN: UnitId = UnitId(0x10);
     pub const JIM_RAYNOR_VULTURE: UnitId = UnitId(0x13);
+    pub const EGG: UnitId = UnitId(0x24);
+    pub const ZERGLING: UnitId = UnitId(0x25);
     pub const HYDRALISK: UnitId = UnitId(0x26);
     pub const MUTALISK: UnitId = UnitId(0x2b);
     pub const GUARDIAN: UnitId = UnitId(0x2c);
+    pub const SCOURGE: UnitId = UnitId(0x2f);
     pub const INFESTED_KERRIGAN: UnitId = UnitId(0x33);
     pub const COCOON: UnitId = UnitId(0x3b);
     pub const DARK_TEMPLAR: UnitId = UnitId(0x3d);
@@ -163,6 +166,7 @@ pub mod order {
     pub const HARVEST_MINERALS: OrderId = OrderId(0x57);
     pub const RETURN_MINERALS: OrderId = OrderId(0x5a);
     pub const SPREAD_CREEP: OrderId = OrderId(0x66);
+    pub const ARCHON_WARP: OrderId = OrderId(0x69);
     pub const CLOAK: OrderId = OrderId(0x6d);
     pub const DECLOAK: OrderId = OrderId(0x6e);
     pub const UNLOAD: OrderId = OrderId(0x6f);
@@ -175,6 +179,7 @@ pub mod order {
     pub const COMPUTER_AI: OrderId = OrderId(0x9c);
     pub const AI_ATTACK_MOVE: OrderId = OrderId(0x9d);
     pub const REVEAL_TRAP: OrderId = OrderId(0xab);
+    pub const DARK_ARCHON_MELD: OrderId = OrderId(0xb7);
 }
 
 impl UnitId {
