@@ -312,9 +312,32 @@ struct AttackRegion {
     target_region: u16,
     end_second: u32,
     units: Vec<(UnitId, u32)>,
+    current_units: Vec<Unit>,
 }
 
 impl AttackRegion {
+    fn check_dead_units(&mut self, regions: *mut bw::AiRegion) {
+        let region = unsafe { regions.offset(self.region as isize) };
+        for unit in self.current_units.iter() {
+            if unit.order() == bw_dat::order::DIE {
+                let pos = self.units.iter_mut().find(|x| x.0 == unit.id());
+                if let Some(&mut (_, ref mut count)) = pos {
+                    if *count != 0 {
+                        *count -= 1;
+                    }
+                }
+            }
+        }
+        self.current_units.clear();
+        // Misses the units added later in this frame but I doubt anyone cares if the
+        // attack force removal is one frame off.
+        for ai in ai::region_military(region) {
+            if let Some(unit) = Unit::from_ptr(unsafe { (*ai).parent }) {
+                self.current_units.push(unit);
+            }
+        }
+    }
+
     // Return true on end
     unsafe fn step_frame(
         &self,
@@ -514,16 +537,23 @@ pub unsafe fn attack_forces_frame_hook(game: Game) {
                 let region = regions.offset(prepare_region as isize - 1);
                 let timeouts = ATTACK_TIMEOUTS.lock().unwrap();
                 let timeout = timeouts[player as usize].timeout(&ai);
+                let unit_count = units.iter().map(|x| x.1 as usize).sum();
                 forces.attack_regions.push(AttackRegion {
                     player,
                     region: prepare_region - 1,
                     target_region: (*region).target_region_id, // Yes, 0-based
                     end_second: game.elapsed_seconds() + timeout,
                     units,
+                    current_units: Vec::with_capacity(unit_count),
                 });
             }
         }
         forces.last_prepare_region[player as usize] = prepare_region;
+    }
+    for region in &mut forces.attack_regions {
+        let player = region.player;
+        let regions = bw::ai_regions(player as u32);
+        region.check_dead_units(regions);
     }
     let mut i = 0;
     while i < forces.attack_regions.len() {
