@@ -400,6 +400,7 @@ pub unsafe fn move_military(
     region: *mut bw::AiRegion,
     player_ai: &PlayerAi,
     guards: *mut bw::GuardAiList,
+    game: Game,
 ) {
     let mut was_detector = false;
     if let Some(guard) = unit.guard_ai() {
@@ -447,9 +448,22 @@ pub unsafe fn move_military(
             _ => order::AI_ATTACK_MOVE,
         };
         let target_pathing_region = bw::region((*region).id);
-        let target_pos = bw::Point {
+        let region_unit_count = region_military(region).count();
+        let region_center = bw::Point {
             x: ((*target_pathing_region).x >> 8) as i16,
             y: ((*target_pathing_region).y >> 8) as i16,
+        };
+        let target_pos = offset_pos(&region_center, region_unit_count as u32, game);
+        let target_pos = {
+            if let Some(offset_pathing_region) = bw::pathing_region(target_pos) {
+                if (*target_pathing_region).group == (*offset_pathing_region).group {
+                    target_pos
+                } else {
+                    region_center
+                }
+            } else {
+                region_center
+            }
         };
         bw::issue_order(unit.0, move_order, target_pos, null_mut(), unit::NONE);
         if player_ai.is_campaign() {
@@ -476,6 +490,63 @@ pub unsafe fn move_military(
         warn!("Couldn't allocate military ai");
     }
 }
+
+fn spread_offset(index: u32) -> Option<bw::Point> {
+    let odd_sqrts = [1u32, 9, 25, 49, 81, 121, 169, 225];
+    let distance = odd_sqrts.iter().position(|&x| x > index)?;
+    let layer_index_count =
+        odd_sqrts.get(distance)? - odd_sqrts.get(distance.checked_sub(1)?)?;
+    let pos_in_layer = index - odd_sqrts.get(distance.checked_sub(1)?)?;
+    let other_distance = (pos_in_layer % (layer_index_count / 4)) as i16 -
+        (layer_index_count / 8) as i16;
+    let ret = match pos_in_layer / (layer_index_count / 4) {
+        0 => bw::Point {
+            x: other_distance * 16,
+            y: distance as i16 * 16,
+        },
+        1 => bw::Point {
+            x: distance as i16 * 16,
+            y: other_distance * 16,
+        },
+        2 => bw::Point {
+            x: 0 - other_distance * 16,
+            y: 0i16 - distance as i16 * 16,
+        },
+        3 | _ => bw::Point {
+            x: 0 - distance as i16 * 16,
+            y: 0 - other_distance * 16,
+        },
+    };
+    Some(ret)
+}
+
+fn offset_pos(pos: &bw::Point, index: u32, game: Game) -> bw::Point {
+    fn inner(pos: &bw::Point, index: u32, game: Game) -> Option<bw::Point> {
+        let ret = spread_offset(index)?;
+        let map_width_pixels = unsafe { (*game.0).map_width_tiles } * 0x20;
+        let map_height_pixels = unsafe { (*game.0).map_height_tiles } * 0x20;
+        Some(bw::Point {
+            x: pos.x.wrapping_add(ret.x).max(0).min(map_width_pixels as i16),
+            y: pos.y.wrapping_add(ret.y).max(0).min(map_height_pixels as i16),
+        })
+    }
+    inner(pos, index, game).unwrap_or_else(|| pos.clone())
+}
+
+#[test]
+fn test_offset_pos() {
+    if let Some(pos) = spread_offset(0) {
+        assert_eq!(pos, bw::Point { x: 0, y: 0 });
+    }
+    assert_eq!(spread_offset(1).unwrap().y, 16);
+    assert_eq!(spread_offset(2).unwrap().y, 16);
+    assert_eq!(spread_offset(2).unwrap().x, 0);
+    assert_eq!(spread_offset(5).unwrap().y, -16);
+    assert_eq!(spread_offset(6).unwrap().y, -16);
+    assert_eq!(spread_offset(6).unwrap().x, 0);
+    // TODO actually check that the corners go right, sigh
+}
+
 
 pub fn region_military(region: *mut bw::AiRegion) -> RegionMilitary {
     unsafe {

@@ -19,6 +19,10 @@ pub fn ai_regions(player: u32) -> *mut AiRegion {
     samase::ai_regions(player)
 }
 
+pub fn pathing_region(pos: Point) -> Option<*mut Region> {
+    Some(region(get_region(pos)?))
+}
+
 pub fn region(id: u16) -> *mut Region {
     unsafe {
         &mut (*samase::pathing()).regions[id as usize]

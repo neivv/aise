@@ -366,7 +366,7 @@ impl AttackRegion {
             return true;
         }
         if self.is_timed_out(game) {
-            self.do_attack(player_ai, regions, guards);
+            self.do_attack(player_ai, regions, guards, game);
             return true;
         }
         let mut units_needed = self.units.clone();
@@ -379,7 +379,7 @@ impl AttackRegion {
             }
         };
         let attack_force_size: u32 = self.units.iter().map(|x| x.1).sum();
-        let max_distance = ((attack_force_size / 8) * 0x20).max(0x20 * 4);
+        let max_distance = ((attack_force_size / 8) * 0x20).max(0x20 * 5);
         for ai in ai::region_military(region) {
             let unit = Unit::from_ptr((*ai).parent).expect("No military parent");
             let found = remove_from_units_needed(&mut units_needed, unit.id());
@@ -392,7 +392,7 @@ impl AttackRegion {
         }
         // Once everyone is inside 10x10 tile box, attack
         if everyone_near && units_needed.iter().all(|x| x.1 == 0) {
-            self.do_attack(player_ai, regions, guards);
+            self.do_attack(player_ai, regions, guards, game);
             return true;
         }
 
@@ -419,7 +419,7 @@ impl AttackRegion {
                 if count == 0 {
                     continue 'unit_loop;
                 }
-                ai::move_military(unit, region, player_ai, guards);
+                ai::move_military(unit, region, player_ai, guards, game);
                 count -= 1;
             }
             let already_in_queue = player_ai.spending_requests().any(|x| {
@@ -470,6 +470,7 @@ impl AttackRegion {
         player_ai: &ai::PlayerAi,
         regions: *mut bw::AiRegion,
         guards: *mut bw::GuardAiList,
+        game: Game,
     ) {
         let source_region = regions.offset(self.region as isize);
         let target_region = regions.offset(self.target_region as isize);
@@ -479,7 +480,7 @@ impl AttackRegion {
         while (*source_region).first_military != null_mut() {
             let ai = (*source_region).first_military;
             if let Some(unit) = Unit::from_ptr((*ai).parent) {
-                ai::move_military(unit, target_region, player_ai, guards);
+                ai::move_military(unit, target_region, player_ai, guards, game);
             } else {
                 error!("Parentless military when attacking???");
                 return;
