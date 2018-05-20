@@ -180,6 +180,24 @@ unsafe extern fn step_order_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_v
                     // stupid guard-related behaviour.
                     let ai = ai::PlayerAi::get(player);
                     ai.check_train(unit, game::Game::get());
+                    // Keep medics at prepare regions even if BW doesn't think they are such
+                    if unit.id() == bw_dat::unit::MEDIC {
+                        if let Some(ai) = unit.military_ai() {
+                            let region = (*ai).region;
+                            if (*region).state == 0 {
+                                if aiscript::is_attack_region(unit.player(), region) {
+                                    bw::issue_order(
+                                        unit.0,
+                                        bw_dat::order::MEDIC_IDLE,
+                                        unit.position(),
+                                        null_mut(),
+                                        bw_dat::unit::NONE,
+                                    );
+                                    return;
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

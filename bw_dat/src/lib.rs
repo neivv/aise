@@ -184,6 +184,7 @@ pub mod order {
     pub const COMPUTER_AI: OrderId = OrderId(0x9c);
     pub const AI_ATTACK_MOVE: OrderId = OrderId(0x9d);
     pub const REVEAL_TRAP: OrderId = OrderId(0xab);
+    pub const MEDIC_IDLE: OrderId = OrderId(0xaf);
     pub const HEAL_MOVE: OrderId = OrderId(0xb1);
     pub const DARK_ARCHON_MELD: OrderId = OrderId(0xb7);
 }
