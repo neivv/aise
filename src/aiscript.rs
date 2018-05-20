@@ -359,13 +359,18 @@ impl AttackRegion {
             false
         }
 
+        let region = regions.offset(self.region as isize);
+        // Bw did the attack, oh well
+        if (*region).state == 0 {
+            self.cancel_trains_to_region(regions);
+            return true;
+        }
         if self.is_timed_out(game) {
             self.do_attack(player_ai, regions, guards);
             return true;
         }
         let mut units_needed = self.units.clone();
         let mut everyone_near = true;
-        let region = regions.offset(self.region as isize);
         let region_center = {
             let region = bw::region(self.region);
             bw::Point {
@@ -401,16 +406,7 @@ impl AttackRegion {
                             if unit_id != bw_dat::unit::NONE {
                                 let found = remove_from_units_needed(&mut units_needed, unit_id);
                                 if !found {
-                                    // Could maybe also check completion percent to be enough
-                                    // so it's not worth canceling
-                                    if n == 0 {
-                                        if let Some(new) = ai::unit_ai_region(unit, regions) {
-                                            (*ai).train_queue_values[i] = new as *mut c_void;
-                                        }
-                                    } else {
-                                        // Can just delete the unit from queue
-                                        unit.build_queue_cancel(n);
-                                    }
+                                    ai_train_not_needed(unit, n, regions);
                                 }
                             }
                         }
@@ -490,10 +486,46 @@ impl AttackRegion {
             }
         }
         bw::change_ai_region_state(source_region, 0);
+        self.cancel_trains_to_region(regions);
+    }
+
+    unsafe fn cancel_trains_to_region(&self, regions: *mut bw::AiRegion) {
+        let source_region = regions.offset(self.region as isize);
+        for unit in unit::active_units().filter(|x| x.player() == self.player) {
+            if let Some(ai) = unit.building_ai() {
+                for n in 0..5 {
+                    let i = ((*unit.0).current_build_slot as usize + n) % 5;
+                    if (*ai).train_queue_types[i] == 1 {
+                        if (*ai).train_queue_values[i] as *mut bw::AiRegion == source_region {
+                            let unit_id = UnitId((*unit.0).build_queue[i]);
+                            if unit_id != bw_dat::unit::NONE {
+                                ai_train_not_needed(unit, n, regions);
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     fn is_timed_out(&self, game: Game) -> bool {
         game.elapsed_seconds() > self.end_second
+    }
+}
+
+unsafe fn ai_train_not_needed(unit: Unit, n: usize, regions: *mut bw::AiRegion) {
+    // Could maybe also check completion percent to be enough
+    // so it's not worth canceling
+    if n == 0 {
+        if let Some(ai) = unit.building_ai() {
+            if let Some(new) = ai::unit_ai_region(unit, regions) {
+                let i = ((*unit.0).current_build_slot as usize + n) % 5;
+                (*ai).train_queue_values[i] = new as *mut c_void;
+            }
+        }
+    } else {
+        // Can just delete the unit from queue
+        unit.build_queue_cancel(n);
     }
 }
 
@@ -571,6 +603,14 @@ pub unsafe fn attack_forces_frame_hook(game: Game) {
             i += 1;
         }
     }
+}
+
+pub fn is_attack_region(player: u8, region: *mut bw::AiRegion) -> bool {
+    let forces = ATTACK_FORCES.lock().unwrap();
+    let regions = bw::ai_regions(player as u32);
+    forces.attack_regions.iter().any(|x| {
+        x.player == player && regions.wrapping_offset(x.region as isize) == region
+    })
 }
 
 pub unsafe extern fn issue_order(script: *mut bw::AiScript) {
@@ -1733,7 +1773,7 @@ pub unsafe fn clean_unsatisfiable_requests() {
             .take_while(|x| {
                 let can = can_satisfy_request(game, player, x);
                 if !can {
-                    debug!("Player {} can't satisfy request {:x}/{:x}", player, x.ty, x.id);
+                    //debug!("Player {} can't satisfy request {:x}/{:x}", player, x.ty, x.id);
                 }
                 !can
             }).count();
