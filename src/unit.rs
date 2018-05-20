@@ -6,6 +6,8 @@ use std::ptr::null_mut;
 use byteorder::{ReadBytesExt, LE};
 use serde::{Serializer, Serialize, Deserializer, Deserialize};
 
+use bw_dat;
+
 use bw;
 use order::OrderId;
 
@@ -176,6 +178,10 @@ impl Unit {
         unsafe { (*self.0).energy }
     }
 
+    pub fn is_air(&self) -> bool {
+        unsafe { (*self.0).flags & 0x4 != 0 }
+    }
+
     /// Is the unit cloaked or burrowed (So it requires detection)
     pub fn is_invisible(&self) -> bool {
         unsafe { (*self.0).flags & 0x300 != 0 }
@@ -201,6 +207,17 @@ impl Unit {
         unsafe { Unit::from_ptr((*self.0).target) }
     }
 
+    pub fn guard_ai(&self) -> Option<*mut bw::GuardAi> {
+        unsafe {
+            let ai = (*self.0).ai as *mut bw::GuardAi;
+            if ai != null_mut() && (*ai).ai_type == 1 {
+                Some(ai)
+            } else {
+                None
+            }
+        }
+    }
+
     pub fn worker_ai(&self) -> Option<*mut bw::WorkerAi> {
         unsafe {
             let ai = (*self.0).ai as *mut bw::WorkerAi;
@@ -216,6 +233,17 @@ impl Unit {
         unsafe {
             let ai = (*self.0).ai as *mut bw::BuildingAi;
             if ai != null_mut() && (*ai).ai_type == 3 {
+                Some(ai)
+            } else {
+                None
+            }
+        }
+    }
+
+    pub fn military_ai(&self) -> Option<*mut bw::MilitaryAi> {
+        unsafe {
+            let ai = (*self.0).ai as *mut bw::MilitaryAi;
+            if ai != null_mut() && (*ai).ai_type == 4 {
                 Some(ai)
             } else {
                 None
@@ -268,6 +296,26 @@ impl Unit {
                 Unit::from_ptr(ptr)
             } else {
                 None
+            }
+        }
+    }
+
+    // Index is displayed index
+    pub fn build_queue_cancel(&self, index: usize) {
+        unsafe {
+            let index = (index + (*self.0).current_build_slot as usize) % 5;
+            let last = (5 + (*self.0).current_build_slot as usize) % 5;
+            for i in index + 1..5 {
+                (*self.0).build_queue[i % 5] = (*self.0).build_queue[(i + 1) % 5];
+            }
+            (*self.0).build_queue[last] = bw_dat::unit::NONE.0;
+            if let Some(ai) = self.building_ai() {
+                for i in index + 1..5 {
+                    (*ai).train_queue_types[i % 5] = (*ai).train_queue_types[(i + 1) % 5];
+                    (*ai).train_queue_values[i % 5] = (*ai).train_queue_values[(i + 1) % 5];
+                }
+                (*ai).train_queue_types[last] = 0;
+                (*ai).train_queue_values[last] = null_mut();
             }
         }
     }

@@ -84,6 +84,11 @@ pub fn guard_ais() -> *mut bw::GuardAiList {
     unsafe { GUARD_AIS.0.map(|x| x()).unwrap_or(null_mut()) }
 }
 
+static mut PATHING: GlobalFunc<fn() -> *mut bw::Pathing> = GlobalFunc(None);
+pub fn pathing() -> *mut bw::Pathing {
+    unsafe { PATHING.0.map(|x| x()).unwrap_or(null_mut()) }
+}
+
 static mut UNITS_DAT: GlobalFunc<fn() -> *mut bw_dat::DatTable> = GlobalFunc(None);
 pub fn units_dat() -> *mut bw_dat::DatTable {
     unsafe { UNITS_DAT.get()() }
@@ -167,7 +172,7 @@ unsafe fn aiscript_opcode(
 
 #[no_mangle]
 pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
-    let required_version = 7;
+    let required_version = 8;
     if (*api).version < required_version {
         fatal(&format!(
             "Newer samase is required. (Plugin API version {}, this plugin requires version {})",
@@ -175,10 +180,12 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
         ));
     }
 
+    aiscript_opcode(api, 0x0c, ::aiscript::attack_add);
     aiscript_opcode(api, 0x40, ::aiscript::call);
     aiscript_opcode(api, 0x41, ::aiscript::ret);
     aiscript_opcode(api, 0x46, ::aiscript::do_morph);
     aiscript_opcode(api, 0x4c, ::aiscript::train);
+    aiscript_opcode(api, 0x53, ::aiscript::prep_down);
     aiscript_opcode(api, 0x71, ::aiscript::attack_to);
     aiscript_opcode(api, 0x72, ::aiscript::attack_timeout);
     aiscript_opcode(api, 0x73, ::aiscript::issue_order);
@@ -211,6 +218,10 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
     GUARD_AIS.init(
         ((*api).first_guard_ai)().map(|x| mem::transmute(x)),
         "guard ais",
+    );
+    PATHING.init(
+        ((*api).pathing)().map(|x| mem::transmute(x)),
+        "pathing",
     );
     match ((*api).issue_order)() {
         None => ((*api).warn_unsupported_feature)(b"Ai script issue_order\0".as_ptr()),

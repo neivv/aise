@@ -19,6 +19,12 @@ pub fn ai_regions(player: u32) -> *mut AiRegion {
     samase::ai_regions(player)
 }
 
+pub fn region(id: u16) -> *mut Region {
+    unsafe {
+        &mut (*samase::pathing()).regions[id as usize]
+    }
+}
+
 pub fn get_region(pos: Point) -> Option<u16> {
     let Point { x, y } = pos;
     unsafe {
@@ -64,6 +70,13 @@ pub fn first_hidden_unit() -> *mut Unit {
 
 pub fn first_ai_script() -> *mut AiScript {
     samase::first_ai_script()
+}
+
+pub fn guard_ai_list(player: u8) -> *mut GuardAiList {
+    unsafe {
+        assert!(player < 8);
+        samase::guard_ais().offset(player as isize)
+    }
 }
 
 pub fn guard_ais(player: u8) -> *mut GuardAi {

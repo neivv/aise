@@ -51,6 +51,17 @@ pub struct WorkerAi {
 }
 
 #[repr(C, packed)]
+pub struct MilitaryAi {
+    pub next: *mut MilitaryAi,
+    pub prev: *mut MilitaryAi,
+    pub ai_type: u8,
+    pub unk: u8,
+    pub unk2: u16,
+    pub parent: *mut Unit,
+    pub region: *mut AiRegion,
+}
+
+#[repr(C, packed)]
 pub struct BuildingAi {
     pub next: *mut BuildingAi,
     pub prev: *mut BuildingAi,
@@ -64,8 +75,14 @@ pub struct BuildingAi {
 
 #[repr(C, packed)]
 pub struct GuardAiList {
-    pub free: *mut c_void,
+    pub free: *mut GuardAiArray,
     pub first: *mut GuardAi,
+}
+
+#[repr(C, packed)]
+pub struct GuardAiArray {
+    pub ais: [GuardAi; 0x3e8],
+    pub first_free: *mut GuardAi,
 }
 
 #[repr(C, packed)]
@@ -81,6 +98,32 @@ pub struct GuardAi {
     pub other_home: Point,
     pub padding1a: [u8; 0x2],
     pub previous_update: u32,
+}
+
+#[repr(C, packed)]
+pub struct Pathing {
+    pub region_ocunt: u16,
+    pub unk2: u16,
+    pub unk_ids: *mut u16,
+    pub unk_split_region: *mut c_void,
+    pub map_tile_regions: [u16; 0x100 * 0x100],
+    pub split_regions: [[u8; 6]; 25000],
+    pub regions: [Region; 5000],
+}
+
+#[repr(C, packed)]
+pub struct Region {
+    pub ty: u16,
+    pub group: u16,
+    pub unk4: u16,
+    pub ground_neighbours: u8,
+    pub all_neighbours: u8,
+    pub temp: *mut c_void,
+    pub neighbour_ids: *mut u16,
+    pub x: i32,
+    pub y: i32,
+    pub area: Rect,
+    pub dc20: [u8; 0x20],
 }
 
 #[repr(C, packed)]
@@ -105,7 +148,16 @@ pub struct AiRegion {
     pub enemy_ground_strength: u16,
     pub air_target: *mut Unit,
     pub ground_target: *mut Unit,
-    pub dc24: [u8; 0x10],
+    pub slowest_military: *mut Unit,
+    pub detector: *mut Unit,
+    pub free_ais: *mut MilitaryAiArray,
+    pub first_military: *mut MilitaryAi,
+}
+
+#[repr(C, packed)]
+pub struct MilitaryAiArray {
+    pub ais: [MilitaryAi; 0x3e8],
+    pub first_free: *mut MilitaryAi,
 }
 
 #[repr(C, packed)]
@@ -128,7 +180,17 @@ pub struct PlayerAiData {
     pub last_attack_second: u32,
     pub strategic_suicide_mission_cooldown: u8,
     pub spell_cooldown: u8,
-    pub dc22e: [u8; 0x1c2],
+    pub attack_failed: u8,
+    pub difficulty: u8,
+    pub attack_force: [u16; 0x40],
+    pub ground_vs_ground_build_def: [u16; 0x14],
+    pub ground_vs_air_build_def: [u16; 0x14],
+    pub air_vs_ground_build_def: [u16; 0x14],
+    pub air_vs_air_build_def: [u16; 0x14],
+    pub ground_vs_ground_use_def: [u16; 0x14],
+    pub ground_vs_air_use_def: [u16; 0x14],
+    pub air_vs_ground_use_def: [u16; 0x14],
+    pub air_vs_air_use_def: [u16; 0x14],
     pub build_limits: [u8; 0xe4],
     pub free_medic: *mut Unit,
     pub dc4e8: [u8; 0x10],
@@ -399,9 +461,12 @@ mod test {
         assert_eq!(mem::size_of::<BuildingAi>(), 0x2c);
         assert_eq!(mem::size_of::<WorkerAi>(), 0x18);
         assert_eq!(mem::size_of::<GuardAi>(), 0x20);
+        assert_eq!(mem::size_of::<MilitaryAi>(), 0x14);
         assert_eq!(mem::size_of::<PlayerAiData>(), 0x4e8);
         assert_eq!(mem::size_of::<Game>(), 0x102f0);
         assert_eq!(mem::size_of::<Unit>(), 0x150);
         assert_eq!(mem::size_of::<Sprite>(), 0x24);
+        assert_eq!(mem::size_of::<Region>(), 0x40);
+        assert_eq!(mem::size_of::<Pathing>(), 0x92bfc);
     }
 }

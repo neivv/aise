@@ -8,6 +8,7 @@ use std::sync::Mutex;
 
 use bincode;
 use byteorder::{ReadBytesExt, WriteBytesExt, LE};
+use libc::c_void;
 use serde::{Serializer, Serialize, Deserializer, Deserialize};
 use smallvec::SmallVec;
 
@@ -23,6 +24,7 @@ use swap_retain::SwapRetain;
 pub const IDLE_ORDERS_DISABLED: AtomicBool = ATOMIC_BOOL_INIT;
 
 lazy_static! {
+    static ref ATTACK_FORCES: Mutex<AttackForces> = Mutex::new(Default::default());
     static ref ATTACK_TIMEOUTS: Mutex<[AttackTimeoutState; 8]> =
         Mutex::new([AttackTimeoutState::new(); 8]);
     static ref IDLE_ORDERS: Mutex<IdleOrders> = Mutex::new(Default::default());
@@ -67,6 +69,7 @@ pub fn clear_load_mapping() {
 
 #[derive(Serialize, Deserialize)]
 struct SaveData {
+    attack_forces: AttackForces,
     attack_timeouts: [AttackTimeoutState; 8],
     idle_orders: IdleOrders,
     max_workers: Vec<MaxWorkers>,
@@ -81,6 +84,7 @@ pub unsafe extern fn save(set_data: unsafe extern fn(*const u8, usize)) {
     init_save_mapping();
     defer!(clear_save_mapping());
     let save = SaveData {
+        attack_forces: ATTACK_FORCES.lock().unwrap().clone(),
         attack_timeouts: ATTACK_TIMEOUTS.lock().unwrap().clone(),
         idle_orders: IDLE_ORDERS.lock().unwrap().clone(),
         max_workers: MAX_WORKERS.lock().unwrap().clone(),
@@ -114,6 +118,7 @@ pub unsafe extern fn load(ptr: *const u8, len: usize) -> u32 {
         }
     };
     let SaveData {
+        attack_forces,
         attack_timeouts,
         idle_orders,
         max_workers,
@@ -121,6 +126,7 @@ pub unsafe extern fn load(ptr: *const u8, len: usize) -> u32 {
         towns,
         call_stacks,
     } = data;
+    *ATTACK_FORCES.lock().unwrap() = attack_forces;
     *ATTACK_TIMEOUTS.lock().unwrap() = attack_timeouts;
     *IDLE_ORDERS.lock().unwrap() = idle_orders;
     *MAX_WORKERS.lock().unwrap() = max_workers;
@@ -131,6 +137,7 @@ pub unsafe extern fn load(ptr: *const u8, len: usize) -> u32 {
 }
 
 pub unsafe extern fn init_game() {
+    *ATTACK_FORCES.lock().unwrap() = Default::default();
     *ATTACK_TIMEOUTS.lock().unwrap() = [AttackTimeoutState::new(); 8];
     *IDLE_ORDERS.lock().unwrap() = Default::default();
     *MAX_WORKERS.lock().unwrap() = Default::default();
@@ -185,6 +192,15 @@ impl AttackTimeoutState {
             original_start_second: None,
         }
     }
+
+    pub fn timeout(&self, ai: &ai::PlayerAi) -> u32 {
+        self.value.unwrap_or_else(|| {
+            match ai.is_campaign() {
+                true => 180,
+                false => 120,
+            }
+        })
+    }
 }
 
 pub unsafe extern fn attack_timeout(script: *mut bw::AiScript) {
@@ -194,7 +210,7 @@ pub unsafe extern fn attack_timeout(script: *mut bw::AiScript) {
 
 pub unsafe fn attack_timeouts_frame_hook(game: Game) {
     let mut timeouts = ATTACK_TIMEOUTS.lock().unwrap();
-    let seconds = (*game.0).elapsed_seconds;
+    let seconds = game.elapsed_seconds();
     for i in 0..8 {
         let player_ai = bw::player_ai(i as u32);
         let last_attack_second = (*player_ai).last_attack_second;
@@ -231,6 +247,298 @@ pub unsafe fn attack_timeouts_frame_hook_after() {
             if (*player_ai).last_attack_second == new {
                 (*player_ai).last_attack_second = previous;
             }
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+struct AttackForces {
+    current_forces: Vec<AttackForce>,
+    attack_regions: Vec<AttackRegion>,
+    last_prepare_region: [u16; 8],
+}
+
+impl AttackForces {
+    fn check_attack_clear(&mut self, player: u8, ai: &ai::PlayerAi) {
+        unsafe {
+            if (*ai.0).attack_force[0] == 0 {
+                // attack_clear was used
+                self.current_forces.retain(|x| x.player != player);
+                self.attack_regions.retain(|x| x.player != player);
+            }
+        }
+    }
+
+    fn player_force(&mut self, player: u8) -> &mut AttackForce {
+        if let Some(index) = self.current_forces.iter().position(|x| x.player == player) {
+            &mut self.current_forces[index]
+        } else {
+            self.current_forces.push(AttackForce {
+                units: Vec::new(),
+                player,
+            });
+            self.current_forces.last_mut().unwrap()
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct AttackForce {
+    player: u8,
+    units: Vec<(UnitId, u32)>,
+}
+
+impl AttackForce {
+    fn add_units(&mut self, unit: UnitId, amount: u32, ai: &ai::PlayerAi) {
+        if let Some(index) = self.units.iter().position(|x| x.0 == unit) {
+            self.units[index].1 += amount;
+        } else {
+            self.units.push((unit, amount));
+        }
+        unsafe {
+            if let Some(index) = (*ai.0).attack_force.iter().position(|&x| x == 0) {
+                for out in (*ai.0).attack_force[index..].iter_mut().take(amount as usize) {
+                    *out = unit.0 + 1;
+                }
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct AttackRegion {
+    player: u8,
+    region: u16,
+    target_region: u16,
+    end_second: u32,
+    units: Vec<(UnitId, u32)>,
+}
+
+impl AttackRegion {
+    // Return true on end
+    unsafe fn step_frame(
+        &self,
+        player_ai: &ai::PlayerAi,
+        regions: *mut bw::AiRegion,
+        game: Game,
+        guards: *mut bw::GuardAiList,
+        attack_regions: &[AttackRegion],
+    ) -> bool {
+        fn remove_from_units_needed(units: &mut Vec<(UnitId, u32)>, unit: UnitId) -> bool {
+            for &mut (id, ref mut count) in units {
+                if unit == id {
+                    if *count != 0 {
+                        *count -= 1;
+                        return true;
+                    }
+                }
+            }
+            false
+        }
+
+        if self.is_timed_out(game) {
+            self.do_attack(player_ai, regions, guards);
+            return true;
+        }
+        let mut units_needed = self.units.clone();
+        let mut everyone_near = true;
+        let region = regions.offset(self.region as isize);
+        let region_center = {
+            let region = bw::region(self.region);
+            bw::Point {
+                x: ((*region).x >> 8) as i16,
+                y: ((*region).y >> 8) as i16,
+            }
+        };
+        let attack_force_size: u32 = self.units.iter().map(|x| x.1).sum();
+        let max_distance = ((attack_force_size / 8) * 0x20).max(0x20 * 4);
+        for ai in ai::region_military(region) {
+            let unit = Unit::from_ptr((*ai).parent).expect("No military parent");
+            let found = remove_from_units_needed(&mut units_needed, unit.id());
+            if !found {
+                // TODO go away from attack force?
+            }
+            if bw::distance(unit.position(), region_center) > max_distance {
+                everyone_near = false;
+            }
+        }
+        // Once everyone is inside 10x10 tile box, attack
+        if everyone_near && units_needed.iter().all(|x| x.1 == 0) {
+            self.do_attack(player_ai, regions, guards);
+            return true;
+        }
+
+        for unit in unit::active_units().filter(|x| x.player() == self.player) {
+            if let Some(ai) = unit.building_ai() {
+                for n in 0..5 {
+                    let i = ((*unit.0).current_build_slot as usize + n) % 5;
+                    if (*ai).train_queue_types[i] == 1 {
+                        if (*ai).train_queue_values[i] as *mut bw::AiRegion == region {
+                            let unit_id = UnitId((*unit.0).build_queue[i]);
+                            if unit_id != bw_dat::unit::NONE {
+                                let found = remove_from_units_needed(&mut units_needed, unit_id);
+                                if !found {
+                                    // Could maybe also check completion percent to be enough
+                                    // so it's not worth canceling
+                                    if n == 0 {
+                                        if let Some(new) = ai::unit_ai_region(unit, regions) {
+                                            (*ai).train_queue_values[i] = new as *mut c_void;
+                                        }
+                                    } else {
+                                        // Can just delete the unit from queue
+                                        unit.build_queue_cancel(n);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        'unit_loop: for (unit, mut count) in units_needed {
+            while let Some(unit) = self.find_free_military(unit, region_center, attack_regions) {
+                if count == 0 {
+                    continue 'unit_loop;
+                }
+                ai::move_military(unit, region, player_ai, guards);
+                count -= 1;
+            }
+            let already_in_queue = player_ai.spending_requests().any(|x| {
+                x.ty == 1 && x.val as *mut bw::AiRegion == region && x.id == unit.0
+            });
+            if !already_in_queue {
+                player_ai.add_military_request(unit, region, 60, game);
+            }
+        }
+        false
+    }
+
+    unsafe fn find_free_military(
+        &self,
+        unit_id: UnitId,
+        pos: bw::Point,
+        attack_regions: &[AttackRegion],
+    ) -> Option<Unit> {
+        unit::active_units()
+            .filter(|x| x.player() == self.player)
+            .filter(|x| x.id() == unit_id)
+            .filter(|x| {
+                if let Some(ai) = x.military_ai() {
+                    let region = (*ai).region;
+                    match (*region).state {
+                        1 | 2 | 8 | 9 => false,
+                        0 => {
+                            !attack_regions.iter().any(|y| {
+                                y.player == self.player && y.region == (*region).id
+                            })
+                        }
+                        _ => true,
+                    }
+                } else {
+                    x.guard_ai().is_some()
+                }
+            })
+            .map(|unit| {
+                let distance = bw::distance(unit.position(), pos);
+                (unit, distance)
+            })
+            .min_by_key(|x| x.1)
+            .map(|x| x.0)
+    }
+
+    unsafe fn do_attack(
+        &self,
+        player_ai: &ai::PlayerAi,
+        regions: *mut bw::AiRegion,
+        guards: *mut bw::GuardAiList,
+    ) {
+        let source_region = regions.offset(self.region as isize);
+        let target_region = regions.offset(self.target_region as isize);
+
+        bw::change_ai_region_state(target_region, 1);
+
+        while (*source_region).first_military != null_mut() {
+            let ai = (*source_region).first_military;
+            if let Some(unit) = Unit::from_ptr((*ai).parent) {
+                ai::move_military(unit, target_region, player_ai, guards);
+            } else {
+                error!("Parentless military when attacking???");
+                return;
+            }
+        }
+        bw::change_ai_region_state(source_region, 0);
+    }
+
+    fn is_timed_out(&self, game: Game) -> bool {
+        game.elapsed_seconds() > self.end_second
+    }
+}
+
+pub unsafe extern fn attack_add(script: *mut bw::AiScript) {
+    let amount = read_u8(script);
+    let unit = UnitId(read_u16(script));
+    add_to_attack_force((*script).player as u8, unit, amount.into());
+}
+
+pub unsafe extern fn prep_down(script: *mut bw::AiScript) {
+    let leave = read_u8(script);
+    let max = read_u8(script);
+    let unit = UnitId(read_u16(script));
+    let game = Game::get();
+    let player = (*script).player as u8;
+    let amount = ai::count_units(player, unit, game).saturating_sub(leave as u32).max(max as u32);
+    add_to_attack_force(player, unit, amount);
+}
+
+fn add_to_attack_force(player: u8, unit: UnitId, amount: u32) {
+    let mut forces = ATTACK_FORCES.lock().unwrap();
+    let ai = ai::PlayerAi::get(player);
+    forces.check_attack_clear(player, &ai);
+    let force = forces.player_force(player);
+    force.add_units(unit, amount, &ai);
+}
+
+pub unsafe fn attack_forces_frame_hook(game: Game) {
+    let mut forces = ATTACK_FORCES.lock().unwrap();
+    for player in 0..8 {
+        let ai = ai::PlayerAi::get(player);
+        forces.check_attack_clear(player, &ai);
+        let regions = bw::ai_regions(player as u32);
+        let prepare_region = (*ai.0).attack_grouping_region;
+        if prepare_region != 0 && prepare_region != forces.last_prepare_region[player as usize] {
+            let units = {
+                let force = forces.player_force(player);
+                force.units.clone()
+            };
+            if !units.is_empty() {
+                let region = regions.offset(prepare_region as isize - 1);
+                let timeouts = ATTACK_TIMEOUTS.lock().unwrap();
+                let timeout = timeouts[player as usize].timeout(&ai);
+                forces.attack_regions.push(AttackRegion {
+                    player,
+                    region: prepare_region - 1,
+                    target_region: (*region).target_region_id, // Yes, 0-based
+                    end_second: game.elapsed_seconds() + timeout,
+                    units,
+                });
+            }
+        }
+        forces.last_prepare_region[player as usize] = prepare_region;
+    }
+    let mut i = 0;
+    while i < forces.attack_regions.len() {
+        let remove = {
+            let region = &forces.attack_regions[i];
+            let player = region.player;
+            let ai = ai::PlayerAi::get(player);
+            let regions = bw::ai_regions(player as u32);
+            let guards = bw::guard_ai_list(player);
+            region.step_frame(&ai, regions, game, guards, &forces.attack_regions)
+        };
+        if remove {
+            forces.attack_regions.swap_remove(i);
+        } else {
+            i += 1;
         }
     }
 }

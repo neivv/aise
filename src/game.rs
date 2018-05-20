@@ -32,6 +32,12 @@ impl Game {
         }
     }
 
+    pub fn elapsed_seconds(self) -> u32 {
+        unsafe {
+            (*self.0).elapsed_seconds
+        }
+    }
+
     pub fn upgrade_level(self, player: u8, upgrade: UpgradeId) -> u8 {
         unsafe {
             let upgrade = upgrade.0;

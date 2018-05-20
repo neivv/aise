@@ -106,7 +106,7 @@ fn init() {
         });
         write!(msg, "Backtrace:\n{}", backtrace).unwrap();
         error!("{}", msg);
-        windows::message_box("Ais_attackto panic", &msg);
+        windows::message_box("Aise panic", &msg);
         unsafe { TerminateProcess(GetCurrentProcess(), 0x4230daef); }
     }));
 
@@ -131,6 +131,7 @@ pub extern fn Initialize() {
 unsafe extern fn frame_hook() {
     let game = game::Game::get();
     aiscript::clean_unsatisfiable_requests();
+    aiscript::attack_forces_frame_hook(game);
     aiscript::attack_timeouts_frame_hook(game);
     aiscript::step_idle_orders();
     aiscript::under_attack_frame_hook();

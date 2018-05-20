@@ -76,8 +76,13 @@ pub mod unit {
     use super::UnitId;
     pub const GHOST: UnitId = UnitId(0x1);
     pub const VULTURE: UnitId = UnitId(0x2);
+    pub const SIEGE_TANK_TANK: UnitId = UnitId(0x5);
     pub const SARAH_KERRIGAN: UnitId = UnitId(0x10);
     pub const JIM_RAYNOR_VULTURE: UnitId = UnitId(0x13);
+    pub const EDMUND_DUKE_TANK: UnitId = UnitId(0x17);
+    pub const EDMUND_DUKE_SIEGE: UnitId = UnitId(0x19);
+    pub const SIEGE_TANK_SIEGE: UnitId = UnitId(0x1e);
+    pub const MEDIC: UnitId = UnitId(0x22);
     pub const EGG: UnitId = UnitId(0x24);
     pub const ZERGLING: UnitId = UnitId(0x25);
     pub const HYDRALISK: UnitId = UnitId(0x26);
@@ -179,6 +184,7 @@ pub mod order {
     pub const COMPUTER_AI: OrderId = OrderId(0x9c);
     pub const AI_ATTACK_MOVE: OrderId = OrderId(0x9d);
     pub const REVEAL_TRAP: OrderId = OrderId(0xab);
+    pub const HEAL_MOVE: OrderId = OrderId(0xb1);
     pub const DARK_ARCHON_MELD: OrderId = OrderId(0xb7);
 }
 

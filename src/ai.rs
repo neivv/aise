@@ -16,6 +16,12 @@ impl PlayerAi {
         PlayerAi(bw::player_ai(player.into()), player)
     }
 
+    pub fn spending_requests(&self) -> impl Iterator<Item = &bw::AiSpendingRequest> {
+        unsafe {
+            (&(*self.0).requests[..(*self.0).request_count as usize]).iter()
+        }
+    }
+
     fn train_request_priority(&self, game: Game) -> u8 {
         if game.minerals(self.1) > 1500 && game.gas(self.1) > 1500 {
             160
@@ -31,14 +37,15 @@ impl PlayerAi {
             unsafe {
                 (*self.0).train_unit_id = 0;
             }
-            if let Some(region) = unit_ai_region(self.1, unit) {
+            let regions = bw::ai_regions(self.1 as u32);
+            if let Some(region) = unit_ai_region(unit, regions) {
                 let priority = self.train_request_priority(game);
                 self.add_train_request(unit_id, region, priority, game);
             }
         }
     }
 
-    fn is_campaign(&self) -> bool {
+    pub fn is_campaign(&self) -> bool {
         self.flags() & 0x20 != 0
     }
 
@@ -48,6 +55,17 @@ impl PlayerAi {
         }
     }
 
+    pub fn add_military_request(
+        &self,
+        unit: UnitId,
+        region: *mut bw::AiRegion,
+        priority: u8,
+        game: Game,
+    ) {
+        self.add_spending_request(&SpendingRequest::Military(unit, region), priority, game);
+    }
+
+    /// Idle training
     fn add_train_request(
         &self,
         unit: UnitId,
@@ -61,7 +79,7 @@ impl PlayerAi {
         unsafe {
             (*self.0).flags |= 0x40;
         }
-        self.add_spending_request(&SpendingRequest::Military(unit, region), priority, game);
+        self.add_military_request(unit, region, priority, game);
     }
 
     fn is_at_limit(&self, unit: UnitId, game: Game) -> bool {
@@ -163,7 +181,16 @@ impl PlayerAi {
 }
 
 pub fn count_units(player: u8, unit_id: UnitId, game: Game) -> u32 {
-    let existing = game.unit_count(player, unit_id);
+    let existing = {
+        let extra = match unit_id {
+            unit::SIEGE_TANK_TANK => game.unit_count(player, unit::SIEGE_TANK_SIEGE),
+            unit::SIEGE_TANK_SIEGE => game.unit_count(player, unit::SIEGE_TANK_TANK),
+            unit::EDMUND_DUKE_TANK => game.unit_count(player, unit::EDMUND_DUKE_SIEGE),
+            unit::EDMUND_DUKE_SIEGE => game.unit_count(player, unit::EDMUND_DUKE_TANK),
+            _ => 0,
+        };
+        game.unit_count(player, unit_id) + extra
+    };
     let birth_multiplier = match unit_id.flags() & 0x400 != 0 {
         true => 2,
         false => 1,
@@ -232,12 +259,17 @@ enum SpendingRequest {
     Guard(UnitId, *mut bw::GuardAi),
 }
 
-pub fn unit_ai_region(player: u8, unit: Unit) -> Option<*mut bw::AiRegion> {
-    ai_region(player, unit.position())
+pub fn unit_ai_region(
+    unit: Unit,
+    regions: *mut bw::AiRegion,
+) -> Option<*mut bw::AiRegion> {
+    ai_region(unit.position(), regions)
 }
 
-pub fn ai_region(player: u8, position: bw::Point) -> Option<*mut bw::AiRegion> {
-    let regions = bw::ai_regions(player.into());
+pub fn ai_region(
+    position: bw::Point,
+    regions: *mut bw::AiRegion,
+) -> Option<*mut bw::AiRegion> {
     if regions != null_mut() {
         if let Some(region) = bw::get_region(position) {
             unsafe {
@@ -255,6 +287,7 @@ pub unsafe fn update_guard_needs(game: Game) {
     let seconds = (*game.0).elapsed_seconds;
     for player in 0..8 {
         let ai = PlayerAi::get(player);
+        let regions = bw::ai_regions(player as u32);
         let mut guard = bw::guard_ais(player);
         while guard != null_mut() {
             let previous_update = (*guard).previous_update;
@@ -266,7 +299,7 @@ pub unsafe fn update_guard_needs(game: Game) {
             if !skip {
                 if seconds.saturating_sub(previous_update) > 5 {
                     (*guard).previous_update = seconds;
-                    if let Some(region) = ai_region(player, (*guard).other_home) {
+                    if let Some(region) = ai_region((*guard).other_home, regions) {
                         if region_can_rebuild_guards(region) {
                             if !is_guard_being_trained(player, guard) {
                                 let req = SpendingRequest::Guard(unit_id, guard);
@@ -306,4 +339,162 @@ unsafe fn region_can_rebuild_guards(region: *mut bw::AiRegion) -> bool {
         (*region).air_target == null_mut() &&
         (*region).ground_target == null_mut() &&
         (*region).flags & 0x20 == 0
+}
+
+trait LinkedListObject {
+    unsafe fn next(this: *mut Self) -> *mut *mut Self;
+    unsafe fn prev(this: *mut Self) -> *mut *mut Self;
+}
+
+unsafe fn linked_list_move<T: LinkedListObject>(
+    this: *mut T,
+    old_list: *mut *mut T,
+    new_list: *mut *mut T,
+) {
+    let next = T::next(this);
+    let prev = T::prev(this);
+    if *next != null_mut() {
+        let next_prev = T::prev(*next);
+        assert!(*next_prev == this);
+        *next_prev = *prev;
+    }
+    if *prev != null_mut() {
+        let prev_next = T::next(*prev);
+        assert!(*prev_next == this);
+        *prev_next = *next;
+    } else {
+        assert!(*old_list == this);
+        *old_list = *next;
+    }
+    *prev = null_mut();
+    if *new_list != null_mut() {
+        let old_head_prev = T::prev(*new_list);
+        *old_head_prev = this;
+    }
+    *next = *new_list;
+    *new_list = this;
+}
+
+impl LinkedListObject for bw::GuardAi {
+    unsafe fn next(this: *mut Self) -> *mut *mut bw::GuardAi {
+        &mut (*this).next
+    }
+
+    unsafe fn prev(this: *mut Self) -> *mut *mut bw::GuardAi {
+        &mut (*this).prev
+    }
+}
+
+impl LinkedListObject for bw::MilitaryAi {
+    unsafe fn next(this: *mut Self) -> *mut *mut bw::MilitaryAi {
+        &mut (*this).next
+    }
+
+    unsafe fn prev(this: *mut Self) -> *mut *mut bw::MilitaryAi {
+        &mut (*this).prev
+    }
+}
+
+pub unsafe fn move_military(
+    unit: Unit,
+    region: *mut bw::AiRegion,
+    player_ai: &PlayerAi,
+    guards: *mut bw::GuardAiList,
+) {
+    let mut was_detector = false;
+    if let Some(guard) = unit.guard_ai() {
+        linked_list_move(guard, &mut (*guards).first, &mut (*(*guards).free).first_free);
+        (*unit.0).ai = null_mut();
+    } else if let Some(military) = unit.military_ai() {
+        let old_region = (*military).region;
+        linked_list_move(
+            military,
+            &mut (*old_region).first_military,
+            &mut (*(*old_region).free_ais).first_free
+        );
+        (*unit.0).ai = null_mut();
+        if unit.0 == (*old_region).slowest_military {
+            (*old_region).slowest_military = null_mut();
+        }
+        if unit.0 == (*old_region).detector {
+            (*old_region).detector = null_mut();
+            was_detector = true;
+        }
+        if !unit.is_air() {
+            (*old_region).ground_unit_count = (*old_region).ground_unit_count.saturating_sub(1);
+        }
+    } else {
+        // w/e
+        warn!("Couldn't move unit as military since it wasn't military or guard");
+        return;
+    }
+    let first_free = &mut (*(*region).free_ais).first_free;
+    if *first_free != null_mut() {
+        let ai = *first_free;
+        linked_list_move(ai, first_free, &mut (*region).first_military);
+        (*ai).region = region;
+        (*ai).parent = unit.0;
+        (*ai).ai_type = 4; // Yea this has to be done
+        (*unit.0).ai = ai as *mut c_void;
+        if (*region).detector == null_mut() && was_detector {
+            (*region).detector = unit.0;
+        }
+        if !unit.is_air() {
+            (*region).ground_unit_count = (*region).ground_unit_count.saturating_add(1);
+        }
+        let move_order = match unit.id() {
+            unit::MEDIC => order::HEAL_MOVE,
+            _ => order::AI_ATTACK_MOVE,
+        };
+        let target_pathing_region = bw::region((*region).id);
+        let target_pos = bw::Point {
+            x: ((*target_pathing_region).x >> 8) as i16,
+            y: ((*target_pathing_region).y >> 8) as i16,
+        };
+        bw::issue_order(unit.0, move_order, target_pos, null_mut(), unit::NONE);
+        if player_ai.is_campaign() {
+            unsafe fn slow_key(u: Unit) -> (u8, u32) {
+                (if u.is_air() { 1 } else { 0 }, (*u.0).flingy_top_speed)
+            }
+            let slowest = region_military(region)
+                .filter_map(|x| Unit::from_ptr((*x).parent))
+                .map(|u| (u, slow_key(u)))
+                .min_by_key(|x| x.1);
+            if let Some((slowest, amount)) = slowest {
+                if let Some(unit) = Unit::from_ptr((*region).slowest_military) {
+                    if slow_key(unit) > amount {
+                        (*region).slowest_military = slowest.0;
+                    }
+                } else {
+                    (*region).slowest_military = slowest.0;
+                }
+            } else {
+                (*region).slowest_military = null_mut();
+            }
+        }
+    } else {
+        warn!("Couldn't allocate military ai");
+    }
+}
+
+pub fn region_military(region: *mut bw::AiRegion) -> RegionMilitary {
+    unsafe {
+        RegionMilitary((*region).first_military)
+    }
+}
+
+pub struct RegionMilitary(*mut bw::MilitaryAi);
+
+impl Iterator for RegionMilitary {
+    type Item = *mut bw::MilitaryAi;
+    fn next(&mut self) -> Option<*mut bw::MilitaryAi> {
+        let next = match self.0 == null_mut() {
+            true => None,
+            false => Some(self.0),
+        };
+        if let Some(next) = next {
+            unsafe { self.0 = (*next).next };
+        }
+        next
+    }
 }
