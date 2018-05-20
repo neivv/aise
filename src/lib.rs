@@ -1,4 +1,4 @@
-#[macro_use] extern crate whack;
+extern crate whack;
 extern crate bw_dat;
 
 extern crate backtrace;
@@ -147,7 +147,7 @@ fn patch() {
 unsafe extern fn frame_hook() {
     let game = game::Game::get();
     aiscript::clean_unsatisfiable_requests();
-    aiscript::attack_timeouts_frame_hook();
+    aiscript::attack_timeouts_frame_hook(game);
     aiscript::step_idle_orders();
     aiscript::under_attack_frame_hook();
     ai::update_guard_needs(game);
@@ -178,6 +178,7 @@ unsafe extern fn frame_hook() {
 
 unsafe extern fn frame_hook_after() {
     aiscript::update_towns();
+    aiscript::attack_timeouts_frame_hook_after();
 }
 
 unsafe extern fn step_order_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_void)) {

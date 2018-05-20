@@ -40,8 +40,8 @@ lazy_static! {
     static ref EXEC_HEAP: usize = unsafe {
         HeapCreate(HEAP_CREATE_ENABLE_EXECUTE, 0, 0) as usize
     };
-    static ref ATTACK_TIMEOUTS: Mutex<[u32; 8]> = Mutex::new([!0; 8]);
-    static ref ATTACK_TIMEOUT_USED: Mutex<[bool; 8]> = Mutex::new([false; 8]);
+    static ref ATTACK_TIMEOUTS: Mutex<[AttackTimeoutState; 8]> =
+        Mutex::new([AttackTimeoutState::new(); 8]);
     static ref IDLE_ORDERS: Mutex<IdleOrders> = Mutex::new(Default::default());
     static ref MAX_WORKERS: Mutex<Vec<MaxWorkers>> = Mutex::new(Default::default());
     static ref UNDER_ATTACK_MODE: Mutex<[Option<bool>; 8]> = Mutex::new(Default::default());
@@ -86,8 +86,7 @@ pub fn clear_load_mapping() {
 
 #[derive(Serialize, Deserialize)]
 struct SaveData {
-    attack_timeouts: [u32; 8],
-    attack_timeout_used: [bool; 8],
+    attack_timeouts: [AttackTimeoutState; 8],
     idle_orders: IdleOrders,
     max_workers: Vec<MaxWorkers>,
     under_attack_mode: [Option<bool>; 8],
@@ -102,7 +101,6 @@ pub unsafe extern fn save(set_data: unsafe extern fn(*const u8, usize)) {
     defer!(clear_save_mapping());
     let save = SaveData {
         attack_timeouts: ATTACK_TIMEOUTS.lock().unwrap().clone(),
-        attack_timeout_used: ATTACK_TIMEOUT_USED.lock().unwrap().clone(),
         idle_orders: IDLE_ORDERS.lock().unwrap().clone(),
         max_workers: MAX_WORKERS.lock().unwrap().clone(),
         under_attack_mode: UNDER_ATTACK_MODE.lock().unwrap().clone(),
@@ -136,7 +134,6 @@ pub unsafe extern fn load(ptr: *const u8, len: usize) -> u32 {
     };
     let SaveData {
         attack_timeouts,
-        attack_timeout_used,
         idle_orders,
         max_workers,
         under_attack_mode,
@@ -144,7 +141,6 @@ pub unsafe extern fn load(ptr: *const u8, len: usize) -> u32 {
         call_stacks,
     } = data;
     *ATTACK_TIMEOUTS.lock().unwrap() = attack_timeouts;
-    *ATTACK_TIMEOUT_USED.lock().unwrap() = attack_timeout_used;
     *IDLE_ORDERS.lock().unwrap() = idle_orders;
     *MAX_WORKERS.lock().unwrap() = max_workers;
     *UNDER_ATTACK_MODE.lock().unwrap() = under_attack_mode;
@@ -154,8 +150,7 @@ pub unsafe extern fn load(ptr: *const u8, len: usize) -> u32 {
 }
 
 pub unsafe extern fn init_game() {
-    *ATTACK_TIMEOUTS.lock().unwrap() = [!0; 8];
-    *ATTACK_TIMEOUT_USED.lock().unwrap() = [false; 8];
+    *ATTACK_TIMEOUTS.lock().unwrap() = [AttackTimeoutState::new(); 8];
     *IDLE_ORDERS.lock().unwrap() = Default::default();
     *MAX_WORKERS.lock().unwrap() = Default::default();
     *UNDER_ATTACK_MODE.lock().unwrap() = Default::default();
@@ -250,7 +245,6 @@ pub unsafe fn add_aiscript_opcodes(patcher: &mut whack::ModulePatcher) {
     for &(op, hook) in QUEUED_AI_OPCODES.lock().unwrap().iter() {
         hooks.add_hook(op, hook);
     }
-    patcher.hook_opt(bw::v1161::Ai_IsAttackTimedOut, is_attack_timed_out);
     hooks.apply(patcher);
 }
 
@@ -287,49 +281,65 @@ pub unsafe extern fn attack_to(script: *mut bw::AiScript) {
     (*region).target_region_id = target_region; // Yes, 0-based
 }
 
-pub unsafe extern fn attack_timeout(script: *mut bw::AiScript) {
-    let timeout = read_u32(script);
-    ATTACK_TIMEOUTS.lock().unwrap()[(*script).player as usize] = timeout;
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
+struct AttackTimeoutState {
+    value: Option<u32>,
+    original_start_second: Option<(u32, u32)>,
 }
 
-pub unsafe fn attack_timeouts_frame_hook() {
-    // Just force timeouts if attack timeout has ever happened.
-    // Unlike is_attack_timed_out, this code also runs for SCR.
-    // Actually only for SCR for now due to timeout 1 breaking teippi display
-    // and most likely should not cause difference here
-    if bw::scr() {
-        let mut timeouts_used = ATTACK_TIMEOUT_USED.lock().unwrap();
-        for i in 0..8 {
-            let player_ai = bw::player_ai(i);
-            if (*player_ai).last_attack_second != 0 {
-                timeouts_used[i as usize] = true;
-            }
-            if (*player_ai).last_attack_second == 0 && timeouts_used[i as usize] {
-                (*player_ai).last_attack_second = !100;
-            }
+impl AttackTimeoutState {
+    fn new() -> AttackTimeoutState {
+        AttackTimeoutState {
+            value: None,
+            original_start_second: None,
         }
     }
 }
 
-unsafe fn is_attack_timed_out(player: u32, orig: &Fn(u32) -> u32) -> u32 {
-    let ai_data = bw::player_ai(player);
-    let last_attack_second = (*ai_data).last_attack_second;
-    if last_attack_second == 0 {
-        return 1;
-    }
+pub unsafe extern fn attack_timeout(script: *mut bw::AiScript) {
+    let timeout = read_u32(script);
+    ATTACK_TIMEOUTS.lock().unwrap()[(*script).player as usize].value = Some(timeout);
+}
 
-    let timeout = ATTACK_TIMEOUTS.lock().unwrap()[player as usize];
-    if timeout == !0 {
-        orig(player)
-    } else {
-        let ai_data = bw::player_ai(player);
-        let timeout_second = last_attack_second.saturating_add(timeout);
-        if bw::elapsed_seconds() > timeout_second {
-            ATTACK_TIMEOUTS.lock().unwrap()[player as usize] = !0;
-            (*ai_data).last_attack_second = 0;
-            1
+pub unsafe fn attack_timeouts_frame_hook(game: Game) {
+    let mut timeouts = ATTACK_TIMEOUTS.lock().unwrap();
+    let seconds = (*game.0).elapsed_seconds;
+    for i in 0..8 {
+        let player_ai = bw::player_ai(i as u32);
+        let last_attack_second = (*player_ai).last_attack_second;
+        if last_attack_second == 0 {
+            timeouts[i].value = None;
+        }
+        let new = if last_attack_second == 0 {
+            Some(!400)
         } else {
-            0
+            if let Some(timeout) = timeouts[i].value {
+                if last_attack_second.saturating_add(timeout) < seconds {
+                    Some(!400)
+                } else {
+                    // Don't want to accidentally set it to 0
+                    Some(seconds.max(1))
+                }
+            } else {
+                None
+            }
+        };
+        if let Some(new) = new {
+            (*player_ai).last_attack_second = new;
+            timeouts[i].original_start_second = Some((last_attack_second, new));
+        }
+    }
+}
+
+pub unsafe fn attack_timeouts_frame_hook_after() {
+    // Revert old value for teippi debug, only if it wasn't changed during frame step
+    let mut timeouts = ATTACK_TIMEOUTS.lock().unwrap();
+    for i in 0..8 {
+        if let Some((previous, new)) = timeouts[i].original_start_second.take() {
+            let player_ai = bw::player_ai(i as u32);
+            if (*player_ai).last_attack_second == new {
+                (*player_ai).last_attack_second = previous;
+            }
         }
     }
 }

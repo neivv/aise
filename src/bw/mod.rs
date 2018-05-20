@@ -12,13 +12,6 @@ pub mod structs;
 pub use self::structs::*;
 
 pub mod v1161 {
-    use super::structs::*;
-    whack_hooks!(stdcall, 0x00400000,
-        0x00447090 => Ai_IsAttackTimedOut(@ecx u32) -> u32;
-        0x004D94B0 => StepObjects();
-        0x004EC4D0 => StepOrder(@eax *mut Unit);
-    );
-
     pub const ProgressAiScript_SwitchLimit: usize = 0x0045B885;
     pub const ProgressAiScript_SwitchTable: usize = 0x0045B892;
     pub const ProgressAiScript_Loop: usize = 0x0045B860;
