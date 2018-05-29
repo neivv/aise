@@ -159,13 +159,9 @@ unsafe fn aiscript_opcode(
     opcode: u32,
     hook: unsafe extern fn(*mut bw::AiScript),
 ) {
-    if bw::scr() {
-        let ok = ((*api).hook_aiscript_opcode)(opcode, mem::transmute(hook));
-        if ok == 0 {
-            fatal("Unable to hook aiscript opcodes");
-        }
-    } else {
-        ::aiscript::add_ai_opcode_1161(opcode, hook);
+    let ok = ((*api).hook_aiscript_opcode)(opcode, mem::transmute(hook));
+    if ok == 0 {
+        fatal("Unable to hook aiscript opcodes");
     }
 }
 

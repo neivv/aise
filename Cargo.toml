@@ -36,9 +36,6 @@ thread_local = "0.3.5"
 version = "0.3.3"
 features = ["heapapi", "libloaderapi", "processthreadsapi", "winuser"]
 
-[dependencies.whack]
-git = "https://github.com/neivv/whack/"
-
 [dependencies.bw_dat]
 path = "bw_dat"
 

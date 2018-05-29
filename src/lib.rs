@@ -1,4 +1,3 @@
-extern crate whack;
 extern crate bw_dat;
 
 extern crate backtrace;
@@ -124,23 +123,8 @@ pub extern fn Initialize() {
         let f: fn() = || {
             let ctx = samase_shim::init_1161();
             samase::samase_plugin_init(ctx.api());
-            patch();
         };
         samase_shim::on_win_main(f);
-    }
-}
-
-lazy_static! {
-    static ref PATCHER: whack::Patcher = whack::Patcher::new();
-}
-
-fn patch() {
-    unsafe {
-        let mut active_patcher = PATCHER.lock().unwrap();
-        {
-            let mut exe = active_patcher.patch_exe(0x00400000);
-            aiscript::add_aiscript_opcodes(&mut exe);
-        }
     }
 }
 

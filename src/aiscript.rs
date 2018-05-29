@@ -1,5 +1,4 @@
 use std::cell::RefCell;
-use std::io::Write;
 use std::fmt;
 use std::mem;
 use std::ptr::null_mut;
@@ -11,9 +10,6 @@ use bincode;
 use byteorder::{ReadBytesExt, WriteBytesExt, LE};
 use serde::{Serializer, Serialize, Deserializer, Deserialize};
 use smallvec::SmallVec;
-use winapi::um::heapapi::{HeapAlloc, HeapCreate};
-use winapi::um::winnt::{HANDLE, HEAP_CREATE_ENABLE_EXECUTE};
-use whack;
 
 use bw_dat::{self, UnitId, UpgradeId, TechId};
 
@@ -26,27 +22,12 @@ use swap_retain::SwapRetain;
 
 pub const IDLE_ORDERS_DISABLED: AtomicBool = ATOMIC_BOOL_INIT;
 
-struct AiScriptOpcodes {
-    opcodes: Vec<OpcodeHook>,
-}
-
-struct OpcodeHook {
-    // Has to be position-independent
-    asm: Vec<u8>,
-    id: u32,
-}
-
 lazy_static! {
-    static ref EXEC_HEAP: usize = unsafe {
-        HeapCreate(HEAP_CREATE_ENABLE_EXECUTE, 0, 0) as usize
-    };
     static ref ATTACK_TIMEOUTS: Mutex<[AttackTimeoutState; 8]> =
         Mutex::new([AttackTimeoutState::new(); 8]);
     static ref IDLE_ORDERS: Mutex<IdleOrders> = Mutex::new(Default::default());
     static ref MAX_WORKERS: Mutex<Vec<MaxWorkers>> = Mutex::new(Default::default());
     static ref UNDER_ATTACK_MODE: Mutex<[Option<bool>; 8]> = Mutex::new(Default::default());
-    static ref QUEUED_AI_OPCODES: Mutex<Vec<(u32, unsafe extern fn(*mut bw::AiScript))>> =
-        Mutex::new(Default::default());
     // For tracking deleted towns.
     // If the tracking is updated after step_objects, it shouldn't be possible for a town
     // to be deleted and recreated in the same frame. (As recreation happens in scripts,
@@ -156,96 +137,6 @@ pub unsafe extern fn init_game() {
     *UNDER_ATTACK_MODE.lock().unwrap() = Default::default();
     *TOWNS.lock().unwrap() = Default::default();
     *CALL_STACKS.lock().unwrap() = Default::default();
-}
-
-unsafe fn exec_alloc(size: usize) -> *mut u8 {
-    HeapAlloc(*EXEC_HEAP as HANDLE, 0, size) as *mut u8
-}
-
-impl AiScriptOpcodes {
-    fn new() -> AiScriptOpcodes {
-        AiScriptOpcodes {
-            opcodes: Vec::new(),
-        }
-    }
-
-    fn add_hook(&mut self, id: u32, fun: unsafe extern fn(*mut bw::AiScript)) {
-        let mut asm = Vec::new();
-        asm.write_all(&[
-            0x60, // pushad
-            0x56, // push esi (aiscript)
-            0xb8, // mov eax, ...
-        ]).unwrap();
-        asm.write_u32::<LE>(unsafe { mem::transmute(fun) }).unwrap();
-        asm.write_all(&[
-            0xff, 0xd0, // call eax
-            0x59, // pop ecx
-            0x8b, 0x46, 0x0c, // mov eax, [esi + 0xc] (Script wait)
-            0x31, 0xc9, // xor ecx, ecx
-            0x49, // dec ecx
-            0x39, 0xc8, // cmp eax, ecx
-            0x74, 0x0d, // je wait not set
-            0x61, // popad
-            0xc7, 0x44, 0xe4, 0xfc, // Mov [esp - 4], dword ...
-        ]).unwrap();
-        asm.write_u32::<LE>(bw::v1161::ProgressAiScript_Ret as u32).unwrap();
-        // jmp dword [esp - 4]
-        asm.write_all(&[0xff, 0x64, 0xe4, 0xfc]).unwrap();
-        // wait not set
-        asm.write_all(&[
-            0x61, // popad
-            0xc7, 0x44, 0xe4, 0xfc, // Mov [esp - 4], dword ...
-        ]).unwrap();
-        asm.write_u32::<LE>(bw::v1161::ProgressAiScript_Loop as u32).unwrap();
-        // jmp dword [esp - 4]
-        asm.write_all(&[0xff, 0x64, 0xe4, 0xfc]).unwrap();
-        self.opcodes.push(OpcodeHook {
-            asm,
-            id,
-        });
-    }
-
-    unsafe fn apply(&self, patcher: &mut whack::ModulePatcher) {
-        let largest_opcode = self.opcodes.iter().map(|x| x.id).max().unwrap_or(0) as u8;
-        let mem_size: usize = self.opcodes.iter().map(|x| x.asm.len()).sum();
-        assert!(largest_opcode <= 0x7f, "Opcodes larger than 0x7f are not supported");
-        let old_largest_opcode = *(bw::v1161::ProgressAiScript_SwitchLimit as *const u8);
-        if old_largest_opcode < largest_opcode {
-            patcher.replace_val(bw::v1161::ProgressAiScript_SwitchLimit, largest_opcode);
-        }
-
-        // Always redirect the switch table to avoid having to worry about write access w/ bw's
-        // .rdata
-        let mut new_switch_table = vec![0; largest_opcode as usize + 1];
-        let old_table = slice::from_raw_parts(
-            *(bw::v1161::ProgressAiScript_SwitchTable as *mut *mut usize),
-            old_largest_opcode as usize + 1,
-        );
-
-        (&mut new_switch_table[..old_largest_opcode as usize + 1]).copy_from_slice(old_table);
-        let memory_ptr = exec_alloc(mem_size);
-        let mut memory = slice::from_raw_parts_mut(memory_ptr, mem_size);
-        for hook in &self.opcodes {
-            (&mut memory[..hook.asm.len()]).copy_from_slice(&hook.asm);
-            new_switch_table[hook.id as usize] = memory.as_ptr() as usize;
-            memory = &mut {memory}[hook.asm.len()..];
-        }
-
-        patcher.replace_val(bw::v1161::ProgressAiScript_SwitchTable, new_switch_table.as_mut_ptr());
-        mem::forget(new_switch_table);
-    }
-}
-
-pub fn add_ai_opcode_1161(opcode: u32, hook: unsafe extern fn(*mut bw::AiScript)) {
-    QUEUED_AI_OPCODES.lock().unwrap().push((opcode, hook));
-}
-
-pub unsafe fn add_aiscript_opcodes(patcher: &mut whack::ModulePatcher) {
-    let mut hooks = AiScriptOpcodes::new();
-    for &(op, hook) in QUEUED_AI_OPCODES.lock().unwrap().iter() {
-        hooks.add_hook(op, hook);
-    }
-    hooks.apply(patcher);
 }
 
 pub unsafe extern fn attack_to(script: *mut bw::AiScript) {

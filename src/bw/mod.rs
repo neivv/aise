@@ -11,18 +11,6 @@ pub mod structs;
 
 pub use self::structs::*;
 
-pub mod v1161 {
-    pub const ProgressAiScript_SwitchLimit: usize = 0x0045B885;
-    pub const ProgressAiScript_SwitchTable: usize = 0x0045B892;
-    pub const ProgressAiScript_Loop: usize = 0x0045B860;
-    pub const ProgressAiScript_Ret: usize = 0x0045C9AA;
-}
-
-pub fn scr() -> bool {
-    use std::sync::atomic::Ordering;
-    ::IS_1161.load(Ordering::Acquire) == false
-}
-
 pub fn player_ai(player: u32) -> *mut PlayerAiData {
     samase::player_ai(player)
 }
