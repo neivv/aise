@@ -8,7 +8,6 @@ use std::sync::Mutex;
 
 use bincode;
 use byteorder::{ReadBytesExt, WriteBytesExt, LE};
-use libc::c_void;
 use serde::{Serializer, Serialize, Deserializer, Deserialize};
 use smallvec::SmallVec;
 
@@ -386,8 +385,10 @@ impl AttackRegion {
             if !found {
                 // TODO go away from attack force?
             }
-            if bw::distance(unit.position(), region_center) > max_distance {
-                everyone_near = false;
+            if !is_in_combat(unit) {
+                if bw::distance(unit.position(), region_center) > max_distance {
+                    everyone_near = false;
+                }
             }
         }
         // Once everyone is inside 10x10 tile box, attack
@@ -406,7 +407,7 @@ impl AttackRegion {
                             if unit_id != bw_dat::unit::NONE {
                                 let found = remove_from_units_needed(&mut units_needed, unit_id);
                                 if !found {
-                                    ai_train_not_needed(unit, n, regions);
+                                    ai_train_not_needed(unit, n);
                                 }
                             }
                         }
@@ -459,7 +460,7 @@ impl AttackRegion {
             })
             .map(|unit| {
                 let distance = bw::distance(unit.position(), pos);
-                (unit, distance)
+                (unit, (if unit.in_bunker() { 1 } else { 0 }, distance))
             })
             .min_by_key(|x| x.1)
             .map(|x| x.0)
@@ -500,7 +501,7 @@ impl AttackRegion {
                         if (*ai).train_queue_values[i] as *mut bw::AiRegion == source_region {
                             let unit_id = UnitId((*unit.0).build_queue[i]);
                             if unit_id != bw_dat::unit::NONE {
-                                ai_train_not_needed(unit, n, regions);
+                                ai_train_not_needed(unit, n);
                             }
                         }
                     }
@@ -514,15 +515,18 @@ impl AttackRegion {
     }
 }
 
-unsafe fn ai_train_not_needed(unit: Unit, n: usize, regions: *mut bw::AiRegion) {
+fn is_in_combat(unit: Unit) -> bool {
+    unit.order().is_attack_order() && unit.target().is_some()
+}
+
+unsafe fn ai_train_not_needed(unit: Unit, n: usize) {
     // Could maybe also check completion percent to be enough
     // so it's not worth canceling
     if n == 0 {
         if let Some(ai) = unit.building_ai() {
-            if let Some(new) = ai::unit_ai_region(unit, regions) {
-                let i = ((*unit.0).current_build_slot as usize + n) % 5;
-                (*ai).train_queue_values[i] = new as *mut c_void;
-            }
+            let i = (*unit.0).current_build_slot as usize;
+            (*ai).train_queue_types[i] = 0;
+            (*ai).train_queue_values[i] = null_mut();
         }
     } else {
         // Can just delete the unit from queue

@@ -1,3 +1,4 @@
+use std::f32::consts::PI;
 use std::ptr::null_mut;
 
 use libc::c_void;
@@ -453,7 +454,11 @@ pub unsafe fn move_military(
             x: ((*target_pathing_region).x >> 8) as i16,
             y: ((*target_pathing_region).y >> 8) as i16,
         };
-        let target_pos = offset_pos(&region_center, region_unit_count as u32, game);
+        let target_pos = move_to_direction(
+            &offset_pos(&region_center, region_unit_count as u32, game),
+            direction(&unit.position(), &region_center),
+            0x20 * 3,
+        );
         let target_pos = {
             if let Some(offset_pathing_region) = bw::pathing_region(target_pos) {
                 if (*target_pathing_region).group == (*offset_pathing_region).group {
@@ -489,6 +494,42 @@ pub unsafe fn move_military(
     } else {
         warn!("Couldn't allocate military ai");
     }
+}
+
+fn to_rad(direction: u8) -> f32 {
+    (0u8.wrapping_sub(direction).wrapping_add(64) as f32) * (2.0 * PI / 256.0)
+}
+
+#[test]
+fn test_to_rad() {
+    assert!((to_rad(0) - PI / 2.0).abs() < 0.001);
+    assert!((to_rad(64) - 0.0).abs() < 0.001);
+    assert!((to_rad(128) - 3.0 * PI / 2.0).abs() < 0.001);
+    assert!((to_rad(192) - PI).abs() < 0.001);
+}
+
+fn from_rad(direction: f32) -> u8 {
+    0u8.wrapping_sub(((direction * (256.0 / (2.0 * PI))) as u8).wrapping_sub(64))
+}
+
+#[test]
+fn test_from_rad() {
+    assert_eq!(from_rad(0.0), 64);
+    assert_eq!(from_rad(PI / 2.0), 0);
+    assert_eq!(from_rad(PI), 192);
+    assert_eq!(from_rad(3.0 * PI / 2.0), 128);
+}
+
+fn move_to_direction(pos: &bw::Point, direction: u8, amount: i16) -> bw::Point {
+    let (sin, cos) = to_rad(direction).sin_cos();
+    bw::Point {
+        x: pos.x + (cos * amount as f32) as i16,
+        y: pos.y + (sin * amount as f32) as i16,
+    }
+}
+
+fn direction(src: &bw::Point, dest: &bw::Point) -> u8 {
+    from_rad((dest.y as f32 - src.y as f32).atan2(dest.x as f32 - src.x as f32))
 }
 
 fn spread_offset(index: u32) -> Option<bw::Point> {

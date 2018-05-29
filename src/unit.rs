@@ -182,6 +182,10 @@ impl Unit {
         unsafe { (*self.0).flags & 0x4 != 0 }
     }
 
+    pub fn in_bunker(&self) -> bool {
+        unsafe { (*self.0).flags & 0x20 != 0 }
+    }
+
     /// Is the unit cloaked or burrowed (So it requires detection)
     pub fn is_invisible(&self) -> bool {
         unsafe { (*self.0).flags & 0x300 != 0 }
