@@ -522,6 +522,9 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
                             return false;
                         }
                     }
+                    5 => {
+                        flags.order = Some(OrderId((val & 0xff) as u8));
+                    }
                     _ => bw::print_text("idle_orders: invalid encoding"),
                 }
             }
@@ -530,12 +533,14 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
             simple: 0,
             status_required: 0,
             status_not: 0,
+            order: None,
             numeric: Vec::new(),
         };
         self_flags = IdleOrderFlags {
             simple: 0,
             status_required: 0,
             status_not: 0,
+            order: None,
             numeric: Vec::new(),
         };
         let ok = parse_flags(script, &mut target_flags, Some(&mut self_flags), &mut delete_flags);
@@ -934,6 +939,7 @@ struct IdleOrderFlags {
     simple: u8,
     status_required: u8,
     status_not: u8,
+    order: Option<OrderId>,
     numeric: Vec<(IdleOrderNumeric, Comparision, i32)>,
 }
 
@@ -966,6 +972,11 @@ impl UnitMatch {
 impl IdleOrderFlags {
     fn match_status(&self, unit: &Unit) -> bool {
         unsafe {
+            if let Some(order) = self.order {
+                if unit.order() != order {
+                    return false;
+                }
+            }
             let status_ok = if self.status_required != 0 || self.status_not != 0 {
                 let flags = (if (*unit.0).ensnare_timer != 0 { 1 } else { 0 } << 0) |
                     (if (*unit.0).plague_timer != 0 { 1 } else { 0 } << 1) |
