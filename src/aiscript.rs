@@ -28,6 +28,7 @@ lazy_static! {
     static ref IDLE_ORDERS: Mutex<IdleOrders> = Mutex::new(Default::default());
     static ref MAX_WORKERS: Mutex<Vec<MaxWorkers>> = Mutex::new(Default::default());
     static ref UNDER_ATTACK_MODE: Mutex<[Option<bool>; 8]> = Mutex::new(Default::default());
+    static ref WAIT_FOR_RESOURCES: Mutex<[bool; 8]> = Mutex::new([true; 8]);
     // For tracking deleted towns.
     // If the tracking is updated after step_objects, it shouldn't be possible for a town
     // to be deleted and recreated in the same frame. (As recreation happens in scripts,
@@ -36,6 +37,10 @@ lazy_static! {
     static ref CALL_STACKS: Mutex<CallStacks> = Mutex::new(CallStacks {
         stacks: Vec::new(),
     });
+}
+
+fn wait_for_resources(player: u8) -> bool {
+    WAIT_FOR_RESOURCES.lock().unwrap()[player as usize]
 }
 
 ome2_thread_local! {
@@ -71,6 +76,7 @@ struct SaveData {
     idle_orders: IdleOrders,
     max_workers: Vec<MaxWorkers>,
     under_attack_mode: [Option<bool>; 8],
+    wait_for_resources: [bool; 8],
     towns: Vec<Town>,
     call_stacks: CallStacks,
 }
@@ -85,6 +91,7 @@ pub unsafe extern fn save(set_data: unsafe extern fn(*const u8, usize)) {
         idle_orders: IDLE_ORDERS.lock().unwrap().clone(),
         max_workers: MAX_WORKERS.lock().unwrap().clone(),
         under_attack_mode: UNDER_ATTACK_MODE.lock().unwrap().clone(),
+        wait_for_resources: WAIT_FOR_RESOURCES.lock().unwrap().clone(),
         towns: TOWNS.lock().unwrap().clone(),
         call_stacks: CALL_STACKS.lock().unwrap().clone(),
     };
@@ -118,6 +125,7 @@ pub unsafe extern fn load(ptr: *const u8, len: usize) -> u32 {
         idle_orders,
         max_workers,
         under_attack_mode,
+        wait_for_resources,
         towns,
         call_stacks,
     } = data;
@@ -125,6 +133,7 @@ pub unsafe extern fn load(ptr: *const u8, len: usize) -> u32 {
     *IDLE_ORDERS.lock().unwrap() = idle_orders;
     *MAX_WORKERS.lock().unwrap() = max_workers;
     *UNDER_ATTACK_MODE.lock().unwrap() = under_attack_mode;
+    *WAIT_FOR_RESOURCES.lock().unwrap() = wait_for_resources;
     *TOWNS.lock().unwrap() = towns;
     *CALL_STACKS.lock().unwrap() = call_stacks;
     1
@@ -135,6 +144,7 @@ pub unsafe extern fn init_game() {
     *IDLE_ORDERS.lock().unwrap() = Default::default();
     *MAX_WORKERS.lock().unwrap() = Default::default();
     *UNDER_ATTACK_MODE.lock().unwrap() = Default::default();
+    *WAIT_FOR_RESOURCES.lock().unwrap() = [true; 8];
     *TOWNS.lock().unwrap() = Default::default();
     *CALL_STACKS.lock().unwrap() = Default::default();
 }
@@ -664,6 +674,18 @@ pub unsafe fn under_attack_frame_hook() {
             }
             None => (),
         }
+    }
+}
+
+pub unsafe extern fn aicontrol(script: *mut bw::AiScript) {
+    // 0 = Never, 1 = Default, 2 = Always
+    let mode = read_u8(script);
+    let player = (*script).player as usize;
+    let mut wait = WAIT_FOR_RESOURCES.lock().unwrap();
+    match mode {
+        0 => wait[player] = true,
+        1 => wait[player] = false,
+        _ => panic!("Invalid aicontrol {:x}", mode),
     }
 }
 
@@ -1389,11 +1411,12 @@ unsafe fn read_u32(script: *mut bw::AiScript) -> u32 {
 pub unsafe fn clean_unsatisfiable_requests() {
     let game = Game::get();
     for player in 0..8 {
+        let wait = wait_for_resources(player);
         let ai_data = bw::player_ai(player as u32);
         let requests = &mut ((*ai_data).requests)[..(*ai_data).request_count as usize];
         let remove_count = requests.iter()
             .take_while(|x| {
-                let can = can_satisfy_request(game, player, x);
+                let can = can_satisfy_request(game, player, x, wait);
                 if !can {
                     debug!("Player {} can't satisfy request {:x}/{:x}", player, x.ty, x.id);
                 }
@@ -1406,19 +1429,38 @@ pub unsafe fn clean_unsatisfiable_requests() {
     }
 }
 
-unsafe fn can_satisfy_request(game: Game, player: u8, request: &bw::AiSpendingRequest) -> bool {
+unsafe fn can_satisfy_request(
+    game: Game,
+    player: u8,
+    request: &bw::AiSpendingRequest,
+    wait_resources: bool,
+) -> bool {
     match request.ty {
-        1 | 2 | 3 | 4 => can_satisfy_unit_request(game, player, UnitId(request.id)),
+        1 | 2 | 3 | 4 => {
+            let unit_id = UnitId(request.id);
+            if !wait_resources && !has_resources(game, player, &ai::unit_cost(unit_id)) {
+                return false;
+            }
+            can_satisfy_unit_request(game, player, unit_id)
+        }
         5 => {
-            let mut reqs = match bw::upgrade_dat_requirements(UpgradeId(request.id)) {
+            let upgrade_id = UpgradeId(request.id);
+            if !wait_resources && !has_resources(game, player, &ai::upgrade_cost(upgrade_id)) {
+                return false;
+            }
+            let mut reqs = match bw::upgrade_dat_requirements(upgrade_id) {
                 Some(s) => s,
                 None => return true,
             };
-            let level = game.upgrade_level(player as u8, UpgradeId(request.id));
+            let level = game.upgrade_level(player as u8, upgrade_id);
             can_satisfy_nonunit_request(game, player, reqs, level)
         }
         6 => {
-            let mut reqs = match bw::tech_research_dat_requirements(TechId(request.id)) {
+            let tech_id = TechId(request.id);
+            if !wait_resources && !has_resources(game, player, &ai::tech_cost(tech_id)) {
+                return false;
+            }
+            let mut reqs = match bw::tech_research_dat_requirements(tech_id) {
                 Some(s) => s,
                 None => return true,
             };
@@ -1426,6 +1468,12 @@ unsafe fn can_satisfy_request(game: Game, player: u8, request: &bw::AiSpendingRe
         }
         _ => true,
     }
+}
+
+fn has_resources(game: Game, player: u8, cost: &ai::Cost) -> bool {
+    // TODO supply
+    game.minerals(player) >= cost.minerals &&
+        game.gas(player) >= cost.gas
 }
 
 enum MatchRequirement {

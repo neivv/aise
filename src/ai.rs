@@ -2,7 +2,7 @@ use std::ptr::null_mut;
 
 use libc::c_void;
 
-use bw_dat::{order, unit, UnitId};
+use bw_dat::{order, unit, UnitId, UpgradeId, TechId};
 
 use bw;
 use game::Game;
@@ -211,18 +211,34 @@ pub fn count_units(player: u8, unit_id: UnitId, game: Game) -> u32 {
     morphing + existing
 }
 
-struct Cost {
-    minerals: u32,
-    gas: u32,
-    supply: u32,
+pub struct Cost {
+    pub minerals: u32,
+    pub gas: u32,
+    pub supply: u32,
 }
 
-fn unit_cost(unit: UnitId) -> Cost {
+pub fn unit_cost(unit: UnitId) -> Cost {
     let dual_birth = unit.flags() & 0x400 != 0;
     Cost {
         minerals: unit.mineral_cost(),
         gas: unit.gas_cost(),
         supply: unit.supply_cost() * if dual_birth { 2 } else { 1 },
+    }
+}
+
+pub fn upgrade_cost(upgrade: UpgradeId) -> Cost {
+    Cost {
+        minerals: upgrade.mineral_cost(),
+        gas: upgrade.gas_cost(),
+        supply: 0,
+    }
+}
+
+pub fn tech_cost(tech: TechId) -> Cost {
+    Cost {
+        minerals: tech.mineral_cost(),
+        gas: tech.gas_cost(),
+        supply: 0,
     }
 }
 
