@@ -53,7 +53,7 @@ fn init() {
                     message))
             })
             .level(log::LevelFilter::Trace)
-            .chain(fern::log_file("ais_attackto.log").unwrap())
+            .chain(fern::log_file("aise.log").unwrap())
             .apply();
     }
     std::panic::set_hook(Box::new(|info| {

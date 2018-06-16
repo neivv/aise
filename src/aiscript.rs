@@ -678,7 +678,6 @@ pub unsafe fn under_attack_frame_hook() {
 }
 
 pub unsafe extern fn aicontrol(script: *mut bw::AiScript) {
-    // 0 = Never, 1 = Default, 2 = Always
     let mode = read_u8(script);
     let player = (*script).player as usize;
     let mut wait = WAIT_FOR_RESOURCES.lock().unwrap();
