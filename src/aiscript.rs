@@ -1281,6 +1281,54 @@ pub unsafe extern fn deaths(script: *mut bw::AiScript) {
     }
 }
 
+
+pub unsafe extern fn bring_jump(script: *mut bw::AiScript) {
+    enum Modifier {
+        AtLeast,
+        AtMost,
+        Exactly,
+    }
+    let player = read_u8(script);
+    let modifier = read_u8(script);
+    let amount = read_u32(script);
+    let unit_id = read_unit_match(script);
+    let mut src = read_position(script);
+    let radius = read_u16(script);
+    src.extend_area(radius as i16);
+    let dest = read_u16(script);
+
+    let player = match player {
+        x @ 0 ... 11 => x,
+        13 => (*script).player as u8,
+        x => {
+            bw::print_text(format!("Unsupported player in bringjump: {:x}", x));
+            return;
+        }
+    };
+    let modifier = match modifier {
+        // Matching trigger conditions
+        0 => Modifier::AtLeast,
+        1 => Modifier::AtMost,
+        10 => Modifier::Exactly,
+        x => {
+            bw::print_text(format!("Unsupported modifier in bringjump: {:x}", x));
+            return;
+        }
+    }; //
+    let units = unit::find_units(&src.area, |u| {
+        u.player() == player && unit_id.matches(u)
+    });
+    let count = units.len() as u32;
+    let jump = match modifier {
+        Modifier::AtLeast => count >= amount,
+        Modifier::AtMost => count <= amount,
+        Modifier::Exactly => count == amount,
+    };
+    if jump {
+        (*script).pos = dest as u32;
+    }
+}
+
 unsafe fn ai_region(player: u32, region: u16) -> *mut bw::AiRegion {
     bw::ai_regions(player).offset(region as isize)
 }
