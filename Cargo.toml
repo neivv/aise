@@ -1,6 +1,6 @@
 [package]
 name = "aise"
-version = "2.6.8"
+version = "2.6.9"
 authors = ["Markus Heikkinen <ittevien@gmail.com>"]
 
 [lib]
@@ -20,6 +20,7 @@ lto = true
 [dependencies]
 backtrace = "0.3"
 bincode = "1.0"
+bitflags = "1.0"
 byteorder = "1.1"
 chrono = "0.4"
 fern = "0.5"

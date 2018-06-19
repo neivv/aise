@@ -2,6 +2,7 @@ extern crate bw_dat;
 
 #[cfg(debug_assertions)] extern crate backtrace;
 extern crate bincode;
+#[macro_use] extern crate bitflags;
 extern crate byteorder;
 extern crate chrono;
 extern crate fern;

@@ -1,9 +1,10 @@
 [[package]]
 name = "aise"
-version = "2.6.8"
+version = "2.6.9"
 dependencies = [
  "backtrace 0.3.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "bincode 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bitflags 1.0.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "bw_dat 0.1.0",
  "byteorder 1.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "chrono 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",

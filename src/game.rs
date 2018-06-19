@@ -67,4 +67,10 @@ impl Game {
             (*self.0).completed_units_count[unit.0 as usize][player as usize]
         }
     }
+
+    pub fn allied(self, player: u8, other: u8) -> bool {
+        unsafe {
+            (*self.0).alliances[player as usize][other as usize] != 0
+        }
+    }
 }
