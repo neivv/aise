@@ -36,6 +36,13 @@ pub fn game() -> *mut Game {
     samase::game()
 }
 
+pub fn rng_seed() -> u32 {
+    samase::rng_seed().unwrap_or_else(|| {
+        // Oh well, rng.rs only uses this for the initial seed
+        unsafe { (*game()).frame_count.wrapping_add(1234) }
+    })
+}
+
 pub fn elapsed_seconds() -> u32 {
     unsafe { (*game()).elapsed_seconds }
 }

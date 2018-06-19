@@ -141,6 +141,17 @@ pub fn print_text(msg: *const u8) {
     }
 }
 
+static mut RNG_SEED: GlobalFunc<fn() -> u32> = GlobalFunc(None);
+pub fn rng_seed() -> Option<u32> {
+    unsafe {
+        if let Some(rng) = RNG_SEED.0 {
+            Some(rng())
+        } else {
+            None
+        }
+    }
+}
+
 static mut READ_FILE: GlobalFunc<fn(*const u8, *mut usize) -> *mut u8> = GlobalFunc(None);
 pub fn read_file(name: &str) -> Option<*mut u8> {
     // Uh, should work fine
@@ -250,6 +261,7 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
         bw_dat::init_orders(orders_dat());
     }
     PRINT_TEXT.0 = Some(mem::transmute(((*api).print_text)()));
+    RNG_SEED.0 = Some(mem::transmute(((*api).rng_seed)()));
     let result = ((*api).extend_save)(
         "aise\0".as_ptr(),
         Some(::aiscript::save),

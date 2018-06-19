@@ -17,6 +17,7 @@ use ai;
 use bw;
 use game::Game;
 use order::{self, OrderId};
+use rng;
 use unit::{self, Unit};
 use swap_retain::SwapRetain;
 
@@ -79,6 +80,7 @@ struct SaveData {
     wait_for_resources: [bool; 8],
     towns: Vec<Town>,
     call_stacks: CallStacks,
+    rng: Option<rng::Rng>,
 }
 
 pub unsafe extern fn save(set_data: unsafe extern fn(*const u8, usize)) {
@@ -94,6 +96,7 @@ pub unsafe extern fn save(set_data: unsafe extern fn(*const u8, usize)) {
         wait_for_resources: WAIT_FOR_RESOURCES.lock().unwrap().clone(),
         towns: TOWNS.lock().unwrap().clone(),
         call_stacks: CALL_STACKS.lock().unwrap().clone(),
+        rng: rng::save_rng(),
     };
     match bincode::serialize(&save) {
         Ok(o) => {
@@ -128,6 +131,7 @@ pub unsafe extern fn load(ptr: *const u8, len: usize) -> u32 {
         wait_for_resources,
         towns,
         call_stacks,
+        rng,
     } = data;
     *ATTACK_TIMEOUTS.lock().unwrap() = attack_timeouts;
     *IDLE_ORDERS.lock().unwrap() = idle_orders;
@@ -136,6 +140,7 @@ pub unsafe extern fn load(ptr: *const u8, len: usize) -> u32 {
     *WAIT_FOR_RESOURCES.lock().unwrap() = wait_for_resources;
     *TOWNS.lock().unwrap() = towns;
     *CALL_STACKS.lock().unwrap() = call_stacks;
+    rng::load_rng(rng);
     1
 }
 
@@ -147,6 +152,7 @@ pub unsafe extern fn init_game() {
     *WAIT_FOR_RESOURCES.lock().unwrap() = [true; 8];
     *TOWNS.lock().unwrap() = Default::default();
     *CALL_STACKS.lock().unwrap() = Default::default();
+    rng::init_rng();
 }
 
 pub unsafe extern fn attack_to(script: *mut bw::AiScript) {
@@ -1227,6 +1233,7 @@ pub unsafe extern fn deaths(script: *mut bw::AiScript) {
         Add,
         Subtract,
         Exactly,
+        Randomize,
     }
     // deaths(player, modifier, amount, unit, dest)
     let player = read_u8(script);
@@ -1250,6 +1257,7 @@ pub unsafe extern fn deaths(script: *mut bw::AiScript) {
         8 => Modifier::Add,
         9 => Modifier::Subtract,
         10 => Modifier::Exactly,
+        11 => Modifier::Randomize,
         x => {
             bw::print_text(format!("Unsupported modifier in deaths: {:x}", x));
             return;
@@ -1259,23 +1267,29 @@ pub unsafe extern fn deaths(script: *mut bw::AiScript) {
         .deaths.get_mut(unit_id as usize).and_then(|x| x.get_mut(player as usize));
     if let Some(deaths) = deaths {
         let jump = match modifier {
-            Modifier::AtLeast => Some(*deaths >= amount),
-            Modifier::AtMost => Some(*deaths <= amount),
-            Modifier::Exactly => Some(*deaths == amount),
+            Modifier::AtLeast => *deaths >= amount,
+            Modifier::AtMost => *deaths <= amount,
+            Modifier::Exactly => *deaths == amount,
             Modifier::Set => {
                 *deaths = amount;
-                None
+                false
             }
             Modifier::Add => {
                 *deaths = deaths.saturating_add(amount);
-                None
+                false
             }
             Modifier::Subtract => {
                 *deaths = deaths.saturating_sub(amount);
-                None
+                false
+            }
+            Modifier::Randomize => {
+                if amount != 0 {
+                    *deaths = rng::synced_rand(0..amount);
+                }
+                false
             }
         };
-        if jump == Some(true) {
+        if jump {
             (*script).pos = dest as u32;
         }
     }
