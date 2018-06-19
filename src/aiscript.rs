@@ -432,6 +432,17 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
                     5 => {
                         flags.order = Some(OrderId((val & 0xff) as u8));
                     }
+                    6 => {
+                        let units_dat_flags = read_u32(script);
+                        match val & 0xff {
+                            0 => flags.units_dat_required = units_dat_flags,
+                            1 => flags.units_dat_not = units_dat_flags,
+                            _ => {
+                                bw::print_text("idle_orders: invalid encoding");
+                                return false;
+                            }
+                        }
+                    }
                     _ => bw::print_text("idle_orders: invalid encoding"),
                 }
             }
@@ -440,6 +451,8 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
             simple: 0,
             status_required: 0,
             status_not: 0,
+            units_dat_required: 0,
+            units_dat_not: 0,
             order: None,
             numeric: Vec::new(),
         };
@@ -447,6 +460,8 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
             simple: 0,
             status_required: 0,
             status_not: 0,
+            units_dat_required: 0,
+            units_dat_not: 0,
             order: None,
             numeric: Vec::new(),
         };
@@ -857,6 +872,8 @@ struct IdleOrderFlags {
     simple: u8,
     status_required: u8,
     status_not: u8,
+    units_dat_required: u32,
+    units_dat_not: u32,
     order: Option<OrderId>,
     numeric: Vec<(IdleOrderNumeric, Comparision, i32)>,
 }
@@ -911,6 +928,15 @@ impl IdleOrderFlags {
             };
             if !status_ok {
                 return false;
+            }
+            if self.units_dat_required != 0 || self.units_dat_not != 0 {
+                let flags = unit.id().flags();
+                if flags & self.units_dat_required != self.units_dat_required {
+                    return false;
+                }
+                if flags & self.units_dat_not != 0 {
+                    return false;
+                }
             }
             self.numeric.iter().all(|&(ty, compare, amount)| {
                 let id = unit.id();
