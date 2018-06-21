@@ -194,7 +194,7 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
     aiscript_opcode(api, 0x72, ::aiscript::attack_timeout);
     aiscript_opcode(api, 0x73, ::aiscript::issue_order);
     aiscript_opcode(api, 0x74, ::aiscript::deaths);
-    aiscript_opcode(api, 0x75, ::aiscript::idle_orders);
+    aiscript_opcode(api, 0x75, ::idle_orders::idle_orders);
     aiscript_opcode(api, 0x76, ::aiscript::if_attacking);
     aiscript_opcode(api, 0x77, ::aiscript::unstart_campaign);
     aiscript_opcode(api, 0x78, ::aiscript::max_workers);
@@ -247,7 +247,7 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
     let result = ((*api).hook_step_order)(::step_order_hook);
     if result == 0 {
         ((*api).warn_unsupported_feature)(b"Ai script idle_orders\0".as_ptr());
-        ::aiscript::IDLE_ORDERS_DISABLED.store(true, ::std::sync::atomic::Ordering::Release);
+        ::idle_orders::IDLE_ORDERS_DISABLED.store(true, ::std::sync::atomic::Ordering::Release);
     }
     UNITS_DAT.init(((*api).dat)(0).map(|x| mem::transmute(x)), "units.dat");
     bw_dat::init_units(units_dat());
@@ -255,7 +255,7 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
     dat_ok |= ORDERS_DAT.try_init(((*api).dat)(7).map(|x| mem::transmute(x)));
     if !dat_ok {
         ((*api).warn_unsupported_feature)(b"Ai script idle_orders\0".as_ptr());
-        ::aiscript::IDLE_ORDERS_DISABLED.store(true, ::std::sync::atomic::Ordering::Release);
+        ::idle_orders::IDLE_ORDERS_DISABLED.store(true, ::std::sync::atomic::Ordering::Release);
     } else {
         bw_dat::init_techdata(techdata_dat());
         bw_dat::init_orders(orders_dat());

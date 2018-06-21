@@ -29,6 +29,7 @@ mod aiscript;
 mod bw;
 mod datreq;
 mod game;
+mod idle_orders;
 mod rng;
 mod unit;
 mod order;
@@ -149,7 +150,7 @@ unsafe extern fn frame_hook() {
     let game = game::Game::get();
     aiscript::clean_unsatisfiable_requests();
     aiscript::attack_timeouts_frame_hook(game);
-    aiscript::step_idle_orders();
+    idle_orders::step_frame();
     aiscript::under_attack_frame_hook();
     ai::update_guard_needs(game);
     for unit in unit::active_units() {
@@ -186,7 +187,7 @@ unsafe extern fn step_order_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_v
     let unit = unit::Unit(u as *mut bw::Unit);
     match unit.order() {
         order::id::DIE => {
-            aiscript::remove_from_idle_orders(&unit);
+            idle_orders::remove_from_idle_orders(&unit);
         }
         order::id::COMPUTER_AI => {
             if let Some(_) = unit.building_ai() {
