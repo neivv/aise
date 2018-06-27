@@ -89,6 +89,11 @@ pub fn units_dat() -> *mut bw_dat::DatTable {
     unsafe { UNITS_DAT.get()() }
 }
 
+static mut UPGRADES_DAT: GlobalFunc<fn() -> *mut bw_dat::DatTable> = GlobalFunc(None);
+pub fn upgrades_dat() -> *mut bw_dat::DatTable {
+    unsafe { UPGRADES_DAT.get()() }
+}
+
 static mut TECHDATA_DAT: GlobalFunc<fn() -> *mut bw_dat::DatTable> = GlobalFunc(None);
 pub fn techdata_dat() -> *mut bw_dat::DatTable {
     unsafe { TECHDATA_DAT.get()() }
@@ -251,15 +256,13 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
     }
     UNITS_DAT.init(((*api).dat)(0).map(|x| mem::transmute(x)), "units.dat");
     bw_dat::init_units(units_dat());
-    let mut dat_ok = TECHDATA_DAT.try_init(((*api).dat)(4).map(|x| mem::transmute(x)));
-    dat_ok |= ORDERS_DAT.try_init(((*api).dat)(7).map(|x| mem::transmute(x)));
-    if !dat_ok {
-        ((*api).warn_unsupported_feature)(b"Ai script idle_orders\0".as_ptr());
-        ::idle_orders::IDLE_ORDERS_DISABLED.store(true, ::std::sync::atomic::Ordering::Release);
-    } else {
-        bw_dat::init_techdata(techdata_dat());
-        bw_dat::init_orders(orders_dat());
-    }
+    UPGRADES_DAT.init(((*api).dat)(3).map(|x| mem::transmute(x)), "upgrades.dat");
+    bw_dat::init_upgrades(upgrades_dat());
+    TECHDATA_DAT.init(((*api).dat)(4).map(|x| mem::transmute(x)), "techdata.dat");
+    bw_dat::init_techdata(techdata_dat());
+    ORDERS_DAT.init(((*api).dat)(7).map(|x| mem::transmute(x)), "orders.dat");
+    bw_dat::init_orders(orders_dat());
+
     PRINT_TEXT.0 = Some(mem::transmute(((*api).print_text)()));
     RNG_SEED.0 = Some(mem::transmute(((*api).rng_seed)()));
     let result = ((*api).extend_save)(
