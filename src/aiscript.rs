@@ -646,6 +646,61 @@ impl UnitMatch {
     }
 }
 
+struct PlayerMatch {
+    players: [bool; 12],
+}
+
+impl PlayerMatch {
+    pub fn matches(&self, player: u8) -> bool {
+        self.players.get(player as usize).cloned().unwrap_or(false)
+    }
+
+    pub fn players<'a>(&'a self) -> impl Iterator<Item = u8> + 'a {
+        self.players.iter().enumerate().filter(|x| *x.1 == true).map(|x| x.0 as u8)
+    }
+}
+
+unsafe fn read_player_match(script: *mut bw::AiScript, game: Game) -> PlayerMatch {
+    let mut cont = true;
+    let mut result = PlayerMatch {
+        players: [false; 12],
+    };
+    let current_player = (*script).player as u8;
+    while cont {
+        let byte = read_u8(script);
+        cont = byte & 0x80 != 0;
+        let player = byte & 0x7f;
+        match player {
+            x @ 0 ... 11 => result.players[x as usize] = true,
+            13 => result.players[current_player as usize] = true,
+            // Foes, allies
+            14 | 15 => {
+                let allies = player == 15;
+                let players = (0..12)
+                    .filter(|&x| x != current_player)
+                    .filter(|&x| game.allied(current_player, x) == allies);
+                for player in players {
+                    result.players[player as usize] = true;
+                }
+            }
+            // All players
+            17 => result.players = [true; 12],
+            // Forces
+            18 | 19 | 20 | 21 => {
+                // Forces are 1-based
+                let force = 1 + player - 18;
+                for player in (0..8).filter(|&x| (*game.0).player_forces[x as usize] == force) {
+                    result.players[player as usize] = true;
+                }
+            }
+            x => {
+                bw::print_text(format!("Unsupported player: {:x}", x));
+            }
+        };
+    }
+    result
+}
+
 pub unsafe extern fn deaths(script: *mut bw::AiScript) {
     enum Modifier {
         AtLeast,
@@ -656,20 +711,13 @@ pub unsafe extern fn deaths(script: *mut bw::AiScript) {
         Exactly,
         Randomize,
     }
+    let game = Game::get();
     // deaths(player, modifier, amount, unit, dest)
-    let player = read_u8(script);
+    let players = read_player_match(script, game);
     let modifier = read_u8(script);
     let amount = read_u32(script);
     let unit_id = read_u16(script);
     let dest = read_u16(script);
-    let player = match player {
-        x @ 0 ... 11 => x,
-        13 => (*script).player as u8,
-        x => {
-            bw::print_text(format!("Unsupported player in deaths: {:x}", x));
-            return;
-        }
-    };
     let modifier = match modifier {
         // Matching trigger conditions
         0 => Modifier::AtLeast,
@@ -684,34 +732,44 @@ pub unsafe extern fn deaths(script: *mut bw::AiScript) {
             return;
         }
     };
-    let deaths = (*bw::game())
-        .deaths.get_mut(unit_id as usize).and_then(|x| x.get_mut(player as usize));
-    if let Some(deaths) = deaths {
-        let jump = match modifier {
-            Modifier::AtLeast => *deaths >= amount,
-            Modifier::AtMost => *deaths <= amount,
-            Modifier::Exactly => *deaths == amount,
-            Modifier::Set => {
-                *deaths = amount;
-                false
+    match modifier {
+        Modifier::AtLeast | Modifier::AtMost | Modifier::Exactly => {
+            let sum: u32 = players.players().map(|player| {
+                (*game.0).deaths
+                    .get_mut(unit_id as usize)
+                    .and_then(|x| x.get_mut(player as usize))
+                    .cloned()
+                    .unwrap_or(0)
+            }).sum();
+            let jump = match modifier {
+                Modifier::AtLeast => sum >= amount,
+                Modifier::AtMost => sum <= amount,
+                Modifier::Exactly => sum == amount,
+                _ => false,
+            };
+            if jump {
+                (*script).pos = dest as u32;
             }
-            Modifier::Add => {
-                *deaths = deaths.saturating_add(amount);
-                false
-            }
-            Modifier::Subtract => {
-                *deaths = deaths.saturating_sub(amount);
-                false
-            }
-            Modifier::Randomize => {
-                if amount != 0 {
-                    *deaths = rng::synced_rand(0..amount);
+        }
+        Modifier::Set | Modifier::Add | Modifier::Subtract | Modifier::Randomize => {
+            for player in players.players() {
+                let deaths = (*game.0).deaths
+                    .get_mut(unit_id as usize)
+                    .and_then(|x| x.get_mut(player as usize));
+                if let Some(deaths) = deaths {
+                    match modifier {
+                        Modifier::Set => *deaths = amount,
+                        Modifier::Add => *deaths = deaths.saturating_add(amount),
+                        Modifier::Subtract => *deaths = deaths.saturating_sub(amount),
+                        Modifier::Randomize => {
+                            if amount != 0 {
+                                *deaths = rng::synced_rand(0..amount);
+                            }
+                        }
+                        _ => (),
+                    }
                 }
-                false
             }
-        };
-        if jump {
-            (*script).pos = dest as u32;
         }
     }
 }
@@ -723,7 +781,8 @@ pub unsafe extern fn bring_jump(script: *mut bw::AiScript) {
         AtMost,
         Exactly,
     }
-    let player = read_u8(script);
+    let game = Game::get();
+    let players = read_player_match(script, game);
     let modifier = read_u8(script);
     let amount = read_u32(script);
     let unit_id = read_unit_match(script);
@@ -732,14 +791,6 @@ pub unsafe extern fn bring_jump(script: *mut bw::AiScript) {
     src.extend_area(radius as i16);
     let dest = read_u16(script);
 
-    let player = match player {
-        x @ 0 ... 11 => x,
-        13 => (*script).player as u8,
-        x => {
-            bw::print_text(format!("Unsupported player in bringjump: {:x}", x));
-            return;
-        }
-    };
     let modifier = match modifier {
         // Matching trigger conditions
         0 => Modifier::AtLeast,
@@ -751,7 +802,7 @@ pub unsafe extern fn bring_jump(script: *mut bw::AiScript) {
         }
     }; //
     let units = unit::find_units(&src.area, |u| {
-        u.player() == player && unit_id.matches(u)
+        players.matches(u.player()) && unit_id.matches(u)
     });
     let count = units.len() as u32;
     let jump = match modifier {
