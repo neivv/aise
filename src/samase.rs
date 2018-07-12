@@ -267,9 +267,9 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
     RNG_SEED.0 = Some(mem::transmute(((*api).rng_seed)()));
     let result = ((*api).extend_save)(
         "aise\0".as_ptr(),
-        Some(::aiscript::save),
-        Some(::aiscript::load),
-        ::aiscript::init_game,
+        Some(::globals::save),
+        Some(::globals::load),
+        ::globals::init_game,
     );
     if result == 0 {
         ((*api).warn_unsupported_feature)(b"Saving\0".as_ptr());

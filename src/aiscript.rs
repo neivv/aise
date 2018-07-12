@@ -2,10 +2,7 @@ use std::cell::RefCell;
 use std::fmt;
 use std::mem;
 use std::ptr::null_mut;
-use std::slice;
-use std::sync::Mutex;
 
-use bincode;
 use byteorder::{ReadBytesExt, WriteBytesExt, LE};
 use serde::{Serializer, Serialize, Deserializer, Deserialize};
 use smallvec::SmallVec;
@@ -15,31 +12,13 @@ use bw_dat::{self, UnitId, UpgradeId, TechId};
 use ai;
 use bw;
 use game::Game;
-use idle_orders::IdleOrders;
+use globals::Globals;
 use order::{self, OrderId};
-use rng;
 use unit::{self, Unit};
 use swap_retain::SwapRetain;
 
-lazy_static! {
-    static ref ATTACK_TIMEOUTS: Mutex<[AttackTimeoutState; 8]> =
-        Mutex::new([AttackTimeoutState::new(); 8]);
-    pub static ref IDLE_ORDERS: Mutex<IdleOrders> = Mutex::new(Default::default());
-    static ref MAX_WORKERS: Mutex<Vec<MaxWorkers>> = Mutex::new(Default::default());
-    static ref UNDER_ATTACK_MODE: Mutex<[Option<bool>; 8]> = Mutex::new(Default::default());
-    static ref WAIT_FOR_RESOURCES: Mutex<[bool; 8]> = Mutex::new([true; 8]);
-    // For tracking deleted towns.
-    // If the tracking is updated after step_objects, it shouldn't be possible for a town
-    // to be deleted and recreated in the same frame. (As recreation happens in scripts,
-    // and deletion happens on last unit dying) Better solutions won't obviously hurt though.
-    static ref TOWNS: Mutex<Vec<Town>> = Mutex::new(Vec::new());
-    static ref CALL_STACKS: Mutex<CallStacks> = Mutex::new(CallStacks {
-        stacks: Vec::new(),
-    });
-}
-
-fn wait_for_resources(player: u8) -> bool {
-    WAIT_FOR_RESOURCES.lock().unwrap()[player as usize]
+fn wait_for_resources(globals: &mut Globals, player: u8) -> bool {
+    globals.wait_for_resources[player as usize]
 }
 
 ome2_thread_local! {
@@ -47,10 +26,10 @@ ome2_thread_local! {
     SAVE_SCRIPTS: RefCell<Vec<Script>> = script_id_mapping(RefCell::new(Vec::new()));
 }
 
-pub fn init_save_mapping() {
+pub fn init_save_mapping(globals: &mut Globals) {
     *town_id_mapping().borrow_mut() = towns();
     let scripts = scripts();
-    CALL_STACKS.lock().unwrap().retain_only(&scripts);
+    globals.call_stacks.retain_only(&scripts);
     *script_id_mapping().borrow_mut() = scripts;
 }
 
@@ -67,90 +46,6 @@ pub fn init_load_mapping() {
 pub fn clear_load_mapping() {
     town_id_mapping().borrow_mut().clear();
     script_id_mapping().borrow_mut().clear();
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct SaveData {
-    attack_timeouts: [AttackTimeoutState; 8],
-    idle_orders: IdleOrders,
-    max_workers: Vec<MaxWorkers>,
-    under_attack_mode: [Option<bool>; 8],
-    wait_for_resources: [bool; 8],
-    towns: Vec<Town>,
-    call_stacks: CallStacks,
-    rng: Option<rng::Rng>,
-}
-
-pub unsafe extern fn save(set_data: unsafe extern fn(*const u8, usize)) {
-    unit::init_save_mapping();
-    defer!(unit::clear_save_mapping());
-    init_save_mapping();
-    defer!(clear_save_mapping());
-    let save = SaveData {
-        attack_timeouts: ATTACK_TIMEOUTS.lock().unwrap().clone(),
-        idle_orders: IDLE_ORDERS.lock().unwrap().clone(),
-        max_workers: MAX_WORKERS.lock().unwrap().clone(),
-        under_attack_mode: UNDER_ATTACK_MODE.lock().unwrap().clone(),
-        wait_for_resources: WAIT_FOR_RESOURCES.lock().unwrap().clone(),
-        towns: TOWNS.lock().unwrap().clone(),
-        call_stacks: CALL_STACKS.lock().unwrap().clone(),
-        rng: rng::save_rng(),
-    };
-    match bincode::serialize(&save) {
-        Ok(o) => {
-            set_data(o.as_ptr(), o.len());
-        }
-        Err(e) => {
-            error!("Couldn't save game: {}", e);
-            bw::print_text(format!("(Aise) Couldn't save game: {}", e));
-        }
-    }
-}
-
-pub unsafe extern fn load(ptr: *const u8, len: usize) -> u32 {
-    unit::init_load_mapping();
-    defer!(unit::clear_load_mapping());
-    init_load_mapping();
-    defer!(clear_load_mapping());
-
-    let slice = slice::from_raw_parts(ptr, len);
-    let data: SaveData = match bincode::deserialize(slice) {
-        Ok(o) => o,
-        Err(e) => {
-            error!("Couldn't load game: {}", e);
-            return 0
-        }
-    };
-    let SaveData {
-        attack_timeouts,
-        idle_orders,
-        max_workers,
-        under_attack_mode,
-        wait_for_resources,
-        towns,
-        call_stacks,
-        rng,
-    } = data;
-    *ATTACK_TIMEOUTS.lock().unwrap() = attack_timeouts;
-    *IDLE_ORDERS.lock().unwrap() = idle_orders;
-    *MAX_WORKERS.lock().unwrap() = max_workers;
-    *UNDER_ATTACK_MODE.lock().unwrap() = under_attack_mode;
-    *WAIT_FOR_RESOURCES.lock().unwrap() = wait_for_resources;
-    *TOWNS.lock().unwrap() = towns;
-    *CALL_STACKS.lock().unwrap() = call_stacks;
-    rng::load_rng(rng);
-    1
-}
-
-pub unsafe extern fn init_game() {
-    *ATTACK_TIMEOUTS.lock().unwrap() = [AttackTimeoutState::new(); 8];
-    *IDLE_ORDERS.lock().unwrap() = Default::default();
-    *MAX_WORKERS.lock().unwrap() = Default::default();
-    *UNDER_ATTACK_MODE.lock().unwrap() = Default::default();
-    *WAIT_FOR_RESOURCES.lock().unwrap() = [true; 8];
-    *TOWNS.lock().unwrap() = Default::default();
-    *CALL_STACKS.lock().unwrap() = Default::default();
-    rng::init_rng();
 }
 
 pub unsafe extern fn attack_to(script: *mut bw::AiScript) {
@@ -187,13 +82,13 @@ pub unsafe extern fn attack_to(script: *mut bw::AiScript) {
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
-struct AttackTimeoutState {
+pub struct AttackTimeoutState {
     value: Option<u32>,
     original_start_second: Option<(u32, u32)>,
 }
 
 impl AttackTimeoutState {
-    fn new() -> AttackTimeoutState {
+    pub fn new() -> AttackTimeoutState {
         AttackTimeoutState {
             value: None,
             original_start_second: None,
@@ -203,22 +98,21 @@ impl AttackTimeoutState {
 
 pub unsafe extern fn attack_timeout(script: *mut bw::AiScript) {
     let timeout = read_u32(script);
-    ATTACK_TIMEOUTS.lock().unwrap()[(*script).player as usize].value = Some(timeout);
+    Globals::get().attack_timeouts[(*script).player as usize].value = Some(timeout);
 }
 
-pub unsafe fn attack_timeouts_frame_hook(game: Game) {
-    let mut timeouts = ATTACK_TIMEOUTS.lock().unwrap();
+pub unsafe fn attack_timeouts_frame_hook(globals: &mut Globals, game: Game) {
     let seconds = (*game.0).elapsed_seconds;
     for i in 0..8 {
         let player_ai = bw::player_ai(i as u32);
         let last_attack_second = (*player_ai).last_attack_second;
         if last_attack_second == 0 {
-            timeouts[i].value = None;
+            globals.attack_timeouts[i].value = None;
         }
         let new = if last_attack_second == 0 {
             Some(!400)
         } else {
-            if let Some(timeout) = timeouts[i].value {
+            if let Some(timeout) = globals.attack_timeouts[i].value {
                 if last_attack_second.saturating_add(timeout) < seconds {
                     Some(!400)
                 } else {
@@ -231,16 +125,15 @@ pub unsafe fn attack_timeouts_frame_hook(game: Game) {
         };
         if let Some(new) = new {
             (*player_ai).last_attack_second = new;
-            timeouts[i].original_start_second = Some((last_attack_second, new));
+            globals.attack_timeouts[i].original_start_second = Some((last_attack_second, new));
         }
     }
 }
 
-pub unsafe fn attack_timeouts_frame_hook_after() {
+pub unsafe fn attack_timeouts_frame_hook_after(globals: &mut Globals) {
     // Revert old value for teippi debug, only if it wasn't changed during frame step
-    let mut timeouts = ATTACK_TIMEOUTS.lock().unwrap();
     for i in 0..8 {
-        if let Some((previous, new)) = timeouts[i].original_start_second.take() {
+        if let Some((previous, new)) = globals.attack_timeouts[i].original_start_second.take() {
             let player_ai = bw::player_ai(i as u32);
             if (*player_ai).last_attack_second == new {
                 (*player_ai).last_attack_second = previous;
@@ -366,7 +259,7 @@ pub unsafe extern fn unstart_campaign(script: *mut bw::AiScript) {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-struct MaxWorkers {
+pub struct MaxWorkers {
     town: Town,
     count: u8,
 }
@@ -402,19 +295,17 @@ fn scripts() -> Vec<Script> {
     result
 }
 
-pub fn update_towns() {
-    let mut towns_global = TOWNS.lock().unwrap();
-    let mut max_workers = MAX_WORKERS.lock().unwrap();
-    let old = mem::replace(&mut *towns_global, towns());
+pub fn update_towns(globals: &mut Globals) {
+    let old = mem::replace(&mut globals.towns, towns());
     for old in old {
-        if !towns_global.iter().any(|&x| x == old) {
-            max_workers.swap_retain(|x| x.town != old);
+        if !globals.towns.iter().any(|&x| x == old) {
+            globals.max_workers.swap_retain(|x| x.town != old);
         }
     }
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
-struct Town(*mut bw::AiTown);
+pub struct Town(*mut bw::AiTown);
 
 impl Town {
     fn from_ptr(ptr: *mut bw::AiTown) -> Option<Town> {
@@ -458,40 +349,38 @@ pub unsafe extern fn max_workers(script: *mut bw::AiScript) {
             return;
         }
     };
-    let mut workers = MAX_WORKERS.lock().unwrap();
-    workers.swap_retain(|x| x.town != town);
+    let mut globals = Globals::get();
+    globals.max_workers.swap_retain(|x| x.town != town);
     if count != 255 {
-        workers.push(MaxWorkers {
+        globals.max_workers.push(MaxWorkers {
             town,
             count,
         });
     }
 }
 
-pub extern fn max_workers_for(town: *mut bw::AiTown) -> Option<u8> {
-    let workers = MAX_WORKERS.lock().unwrap();
-    workers.iter().find(|x| x.town.0 == town).map(|x| x.count)
+pub extern fn max_workers_for(globals: &mut Globals, town: *mut bw::AiTown) -> Option<u8> {
+    globals.max_workers.iter().find(|x| x.town.0 == town).map(|x| x.count)
 }
 
 pub unsafe extern fn under_attack(script: *mut bw::AiScript) {
     // 0 = Never, 1 = Default, 2 = Always
     let mode = read_u8(script);
     let player = (*script).player as usize;
-    let mut under_attack = UNDER_ATTACK_MODE.lock().unwrap();
-    match mode {
-        0 => under_attack[player] = Some(false),
-        1 => under_attack[player] = None,
-        2 => under_attack[player] = Some(true),
+    let mut globals = Globals::get();
+    globals.under_attack_mode[player] = match mode {
+        0 => Some(false),
+        1 => None,
+        2 => Some(true),
         _ => {
             bw::print_text(&format!("Invalid `under_attack` mode: {}", mode));
             return;
         }
-    }
+    };
 }
 
-pub unsafe fn under_attack_frame_hook() {
-    let under_attack = UNDER_ATTACK_MODE.lock().unwrap();
-    for (player, mode) in under_attack.iter().cloned().enumerate() {
+pub unsafe fn under_attack_frame_hook(globals: &mut Globals) {
+    for (player, mode) in globals.under_attack_mode.iter().cloned().enumerate() {
         match mode {
             Some(true) => {
                 (*bw::player_ai(player as u32)).previous_building_hit_second =
@@ -508,26 +397,26 @@ pub unsafe fn under_attack_frame_hook() {
 pub unsafe extern fn aicontrol(script: *mut bw::AiScript) {
     let mode = read_u8(script);
     let player = (*script).player as usize;
-    let mut wait = WAIT_FOR_RESOURCES.lock().unwrap();
-    match mode {
-        0 => wait[player] = true,
-        1 => wait[player] = false,
+    let mut globals = Globals::get();
+    globals.wait_for_resources[player] = match mode {
+        0 => true,
+        1 => false,
         _ => panic!("Invalid aicontrol {:x}", mode),
-    }
+    };
 }
 
 pub unsafe extern fn call(script: *mut bw::AiScript) {
     let dest = read_u16(script) as u32;
     let ret = (*script).pos;
     (*script).pos = dest;
-    let mut stacks = CALL_STACKS.lock().unwrap();
-    stacks.push(Script(script), ret);
+    let mut globals = Globals::get();
+    globals.call_stacks.push(Script(script), ret);
 }
 
 pub unsafe extern fn ret(script: *mut bw::AiScript) {
-    let mut stacks = CALL_STACKS.lock().unwrap();
+    let mut globals = Globals::get();
     let script = Script(script);
-    match stacks.pop(script) {
+    match globals.call_stacks.pop(script) {
         Some(s) => {
             (*script.0).pos = s;
         }
@@ -599,7 +488,7 @@ impl<'de> Deserialize<'de> for Script {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-struct CallStacks {
+pub struct CallStacks {
     stacks: Vec<(Script, Vec<u32>)>,
 }
 
@@ -734,6 +623,7 @@ pub unsafe extern fn deaths(script: *mut bw::AiScript) {
             return;
         }
     };
+    let mut globals = Globals::get();
     match modifier {
         Modifier::AtLeast | Modifier::AtMost | Modifier::Exactly => {
             let sum: u32 = players.players().map(|player| {
@@ -765,7 +655,7 @@ pub unsafe extern fn deaths(script: *mut bw::AiScript) {
                         Modifier::Subtract => *deaths = deaths.saturating_sub(amount),
                         Modifier::Randomize => {
                             if amount != 0 {
-                                *deaths = rng::synced_rand(0..amount);
+                                *deaths = globals.rng.synced_rand(0..amount);
                             }
                         }
                         _ => (),
@@ -943,10 +833,10 @@ pub unsafe fn read_u32(script: *mut bw::AiScript) -> u32 {
     val
 }
 
-pub unsafe fn clean_unsatisfiable_requests() {
+pub unsafe fn clean_unsatisfiable_requests(globals: &mut Globals) {
     let game = Game::get();
     for player in 0..8 {
-        let wait = wait_for_resources(player);
+        let wait = wait_for_resources(globals, player);
         let ai_data = bw::player_ai(player as u32);
         let requests = &mut ((*ai_data).requests)[..(*ai_data).request_count as usize];
         let remove_count = requests.iter()

@@ -3,9 +3,10 @@ use std::sync::atomic::{Ordering, AtomicBool, ATOMIC_BOOL_INIT};
 
 use bw_dat::{self, UnitId, OrderId, order};
 
-use aiscript::{self, read_u8, read_u16, read_u32, read_unit_match, UnitMatch};
+use aiscript::{read_u8, read_u16, read_u32, read_unit_match, UnitMatch};
 use bw;
 use game::Game;
+use globals::Globals;
 use unit::{self, Unit};
 use swap_retain::SwapRetain;
 
@@ -17,6 +18,152 @@ pub struct IdleOrders {
     deathrattles: Vec<IdleOrder>,
     ongoing: Vec<OngoingOrder>,
     returning_cloaked: Vec<ReturningCloaked>,
+}
+
+impl IdleOrders {
+    pub fn unit_removed(&mut self, unit: Unit) {
+        for x in self.ongoing.iter().filter(|x| x.target == Some(unit)) {
+            unsafe {
+                bw::issue_order(x.user.0, order::MOVE, x.home, null_mut(), unit::id::NONE);
+            }
+        }
+        self.ongoing.swap_retain(|x| unit != x.user && Some(unit) != x.target);
+        self.returning_cloaked.swap_retain(|x| unit != x.unit);
+    }
+
+    pub unsafe fn step_frame(&mut self) {
+        for i in 0..8 {
+            let ai = bw::player_ai(i);
+            if (*ai).spell_cooldown > 200 {
+                // Keep spell cooldown active if default spellcasting was disabled
+                (*ai).spell_cooldown = 250;
+            }
+        }
+        let game = Game::get();
+        let current_frame = game.frame_count();
+        let deathrattles = &self.deathrattles;
+        let ongoing = &mut self.ongoing;
+        let returning_cloaked = &mut self.returning_cloaked;
+        // Yes, it may consider an order ongoing even if the unit is targeting the
+        // target for other reasons. Acceptable?
+        ongoing.swap_retain(|o| {
+            let retain = match o.target {
+                None => o.user.orders().any(|x| x.id == o.order),
+                Some(target) => o.user.orders().filter_map(|x| x.target).any(|x| x == target),
+            };
+            if !retain {
+                bw::issue_order(o.user.0, order::MOVE, o.home, null_mut(), unit::id::NONE);
+                if o.cloaked {
+                    returning_cloaked.push(ReturningCloaked {
+                        unit: o.user,
+                        start_point: o.user.position(),
+                    });
+                }
+            } else {
+                fn can_personnel_cloak(id: UnitId) -> bool {
+                    use bw_dat::unit::*;
+                    match id {
+                        GHOST | SAMIR_DURAN | INFESTED_DURAN | SARAH_KERRIGAN |
+                            INFESTED_KERRIGAN | ALEXEI_STUKOV => true,
+                        _ => false,
+                    }
+                }
+                if o.user.health() < o.panic_health {
+                    for decl in deathrattles {
+                        if decl.unit_valid(&o.user, &[], CheckTargetingFlags::Yes, game) {
+                            let ctx = decl.target_validation_context(game, Some(o.user));
+                            let panic_target = find_target(&o.user, &decl, &[], &ctx);
+                            if let Some((target, distance)) = panic_target {
+                                if distance < decl.radius as u32 {
+                                    let (target, pos) = target_pos(&target, decl);
+                                    // Prevent panicing in future
+                                    o.panic_health = 0;
+                                    o.target = target;
+                                    o.order = decl.order;
+                                    let target_ptr = target.map(|x| x.0).unwrap_or(null_mut());
+                                    bw::issue_order(
+                                        o.user.0,
+                                        decl.order,
+                                        pos,
+                                        target_ptr,
+                                        unit::id::NONE
+                                    );
+                                }
+                            }
+                        }
+                    }
+                } else if can_personnel_cloak(o.user.id()) {
+                    step_cloak(o, game);
+                }
+            }
+            retain
+        });
+        returning_cloaked.swap_retain(|ret| {
+            if !ret.unit.is_invisible() {
+                return false;
+            }
+            let pos = ret.unit.position();
+            let distance = bw::distance(pos, ret.start_point);
+            if distance > 32 * 12 || ((*ret.unit.0).move_target == pos && distance > 32 * 2) {
+                ret.unit.issue_secondary_order(bw_dat::order::DECLOAK);
+                false
+            } else {
+                true
+            }
+        });
+        for &mut (ref decl, ref mut state) in self.orders.iter_mut().rev() {
+            if state.next_frame <= current_frame {
+                if let Some((user, target)) = find_user_target_pair(decl, &ongoing, game) {
+                    let (order_target, pos) = target_pos(&target, decl);
+                    let home = match user.order() {
+                        order::MOVE => (*user.0).order_target_pos,
+                        _ => user.position(),
+                    };
+                    let target_ptr = order_target.map(|x| x.0).unwrap_or(null_mut());
+                    bw::issue_order(user.0, decl.order, pos, target_ptr, unit::id::NONE);
+                    ongoing.push(OngoingOrder {
+                        user,
+                        target: order_target,
+                        home,
+                        order: decl.order,
+                        panic_health: panic_health(&user),
+                        cloaked: false,
+                    });
+                    // Round to multiple of decl.rate so that priority is somewhat useful.
+                    // Adds [rate, rate * 2) frames of wait.
+                    let rate = decl.rate as u32;
+                    state.next_frame = current_frame.saturating_sub(1)
+                        .checked_div(rate).unwrap_or(current_frame)
+                        .saturating_add(2) *
+                        rate;
+                } else {
+                    state.next_frame = current_frame + 24 * 10;
+                }
+            }
+        }
+    }
+}
+
+unsafe fn step_cloak(order: &mut OngoingOrder, game: Game) {
+    if !order.cloaked && !order.user.is_invisible() {
+        let tech = bw_dat::tech::PERSONNEL_CLOAKING;
+        let order_energy = order.order.tech().map(|x| x.energy_cost()).unwrap_or(0);
+        let min_energy = tech.energy_cost()
+            .saturating_add(25)
+            .saturating_add(order_energy)
+            .saturating_mul(256);
+        if order.user.energy() as u32 > min_energy {
+            let has_tech = game.tech_researched(order.user.player(), tech) ||
+                order.user.id().is_hero();
+            if has_tech {
+                let distance = bw::distance(order.user.position(), (*order.user.0).move_target);
+                if distance < 32 * 24 {
+                    order.user.issue_secondary_order(bw_dat::order::CLOAK);
+                    order.cloaked = true;
+                }
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -253,7 +400,8 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
         }
         return;
     }
-    let mut orders = aiscript::IDLE_ORDERS.lock().unwrap();
+    let mut globals = Globals::get();
+    let orders = &mut globals.idle_orders;
     let deathrattle = target_flags.simple & 0x40 != 0;
     if delete_flags != 0 {
         let silent_fail = delete_flags & 0x4000 != 0;
@@ -431,144 +579,6 @@ struct IdleOrderTargetContext {
     acceptable_players: [bool; 12],
     game: Game,
     current_unit: Option<Unit>,
-}
-
-pub fn remove_from_idle_orders(unit: &Unit) {
-    let mut orders = aiscript::IDLE_ORDERS.lock().unwrap();
-    for x in orders.ongoing.iter().filter(|x| x.target == Some(*unit)) {
-        unsafe {
-            bw::issue_order(x.user.0, order::MOVE, x.home, null_mut(), unit::id::NONE);
-        }
-    }
-    orders.ongoing.swap_retain(|x| *unit != x.user && Some(*unit) != x.target);
-    orders.returning_cloaked.swap_retain(|x| *unit != x.unit);
-}
-
-pub unsafe fn step_frame() {
-    for i in 0..8 {
-        let ai = bw::player_ai(i);
-        if (*ai).spell_cooldown > 200 {
-            // Keep spell cooldown active if default spellcasting was disabled
-            (*ai).spell_cooldown = 250;
-        }
-    }
-    let game = Game::get();
-    let current_frame = game.frame_count();
-    let mut orders = aiscript::IDLE_ORDERS.lock().unwrap();
-    let orders = &mut *orders;
-    let deathrattles = &orders.deathrattles;
-    let ongoing = &mut orders.ongoing;
-    let returning_cloaked = &mut orders.returning_cloaked;
-    // Yes, it may consider an order ongoing even if the unit is targeting the
-    // target for other reasons. Acceptable?
-    ongoing.swap_retain(|o| {
-        let retain = match o.target {
-            None => o.user.orders().any(|x| x.id == o.order),
-            Some(target) => o.user.orders().filter_map(|x| x.target).any(|x| x == target),
-        };
-        if !retain {
-            bw::issue_order(o.user.0, order::MOVE, o.home, null_mut(), unit::id::NONE);
-            if o.cloaked {
-                returning_cloaked.push(ReturningCloaked {
-                    unit: o.user,
-                    start_point: o.user.position(),
-                });
-            }
-        } else {
-            fn can_personnel_cloak(id: UnitId) -> bool {
-                use bw_dat::unit::*;
-                match id {
-                    GHOST | SAMIR_DURAN | INFESTED_DURAN | SARAH_KERRIGAN | INFESTED_KERRIGAN |
-                        ALEXEI_STUKOV => true,
-                    _ => false,
-                }
-            }
-            if o.user.health() < o.panic_health {
-                for decl in deathrattles {
-                    if decl.unit_valid(&o.user, &[], CheckTargetingFlags::Yes, game) {
-                        let ctx = decl.target_validation_context(game, Some(o.user));
-                        let panic_target = find_target(&o.user, &decl, &[], &ctx);
-                        if let Some((target, distance)) = panic_target {
-                            if distance < decl.radius as u32 {
-                                let (target, pos) = target_pos(&target, decl);
-                                // Prevent panicing in future
-                                o.panic_health = 0;
-                                o.target = target;
-                                o.order = decl.order;
-                                let target_ptr = target.map(|x| x.0).unwrap_or(null_mut());
-                                bw::issue_order(
-                                    o.user.0,
-                                    decl.order,
-                                    pos,
-                                    target_ptr,
-                                    unit::id::NONE
-                                );
-                            }
-                        }
-                    }
-                }
-            } else if can_personnel_cloak(o.user.id()) && !o.cloaked && !o.user.is_invisible() {
-                let tech = bw_dat::tech::PERSONNEL_CLOAKING;
-                let order_energy = o.order.tech().map(|x| x.energy_cost()).unwrap_or(0);
-                let min_energy = tech.energy_cost()
-                    .saturating_add(25)
-                    .saturating_add(order_energy)
-                    .saturating_mul(256);
-                if o.user.energy() as u32 > min_energy {
-                    if game.tech_researched(o.user.player(), tech) || o.user.id().is_hero() {
-                        if bw::distance(o.user.position(), (*o.user.0).move_target) < 32 * 24 {
-                            o.user.issue_secondary_order(bw_dat::order::CLOAK);
-                            o.cloaked = true;
-                        }
-                    }
-                }
-            }
-        }
-        retain
-    });
-    returning_cloaked.swap_retain(|ret| {
-        if !ret.unit.is_invisible() {
-            return false;
-        }
-        let pos = ret.unit.position();
-        let distance = bw::distance(pos, ret.start_point);
-        if distance > 32 * 12 || ((*ret.unit.0).move_target == pos && distance > 32 * 2) {
-            ret.unit.issue_secondary_order(bw_dat::order::DECLOAK);
-            false
-        } else {
-            true
-        }
-    });
-    for &mut (ref decl, ref mut state) in orders.orders.iter_mut().rev() {
-        if state.next_frame <= current_frame {
-            if let Some((user, target)) = find_user_target_pair(decl, &ongoing, game) {
-                let (order_target, pos) = target_pos(&target, decl);
-                let home = match user.order() {
-                    order::MOVE => (*user.0).order_target_pos,
-                    _ => user.position(),
-                };
-                let target_ptr = order_target.map(|x| x.0).unwrap_or(null_mut());
-                bw::issue_order(user.0, decl.order, pos, target_ptr, unit::id::NONE);
-                ongoing.push(OngoingOrder {
-                    user,
-                    target: order_target,
-                    home,
-                    order: decl.order,
-                    panic_health: panic_health(&user),
-                    cloaked: false,
-                });
-                // Round to multiple of decl.rate so that priority is somewhat useful.
-                // Adds [rate, rate * 2) frames of wait.
-                let rate = decl.rate as u32;
-                state.next_frame = current_frame.saturating_sub(1)
-                    .checked_div(rate).unwrap_or(current_frame)
-                    .saturating_add(2) *
-                    rate;
-            } else {
-                state.next_frame = current_frame + 24 * 10;
-            }
-        }
-    }
 }
 
 fn target_pos(target: &Unit, decl: &IdleOrder) -> (Option<Unit>, bw::Point) {

@@ -29,6 +29,7 @@ mod aiscript;
 mod bw;
 mod datreq;
 mod game;
+mod globals;
 mod idle_orders;
 mod rng;
 mod unit;
@@ -42,6 +43,8 @@ use std::sync::atomic::{AtomicBool, ATOMIC_BOOL_INIT, Ordering};
 use libc::c_void;
 
 use winapi::um::processthreadsapi::{GetCurrentProcess, TerminateProcess};
+
+use globals::Globals;
 
 fn init() {
     if cfg!(debug_assertions) {
@@ -147,17 +150,18 @@ pub extern fn Initialize() {
 }
 
 unsafe extern fn frame_hook() {
+    let mut globals = Globals::get();
     let game = game::Game::get();
-    aiscript::clean_unsatisfiable_requests();
-    aiscript::attack_timeouts_frame_hook(game);
-    idle_orders::step_frame();
-    aiscript::under_attack_frame_hook();
+    aiscript::clean_unsatisfiable_requests(&mut globals);
+    aiscript::attack_timeouts_frame_hook(&mut globals, game);
+    globals.idle_orders.step_frame();
+    aiscript::under_attack_frame_hook(&mut globals);
     ai::update_guard_needs(game);
     for unit in unit::active_units() {
         if let Some(ai) = unit.building_ai() {
             let town = (*ai).town;
             if town != null_mut() {
-                if let Some(max_workers) = aiscript::max_workers_for(town) {
+                if let Some(max_workers) = aiscript::max_workers_for(&mut globals, town) {
                     (*town).worker_limit = max_workers;
                 }
             }
@@ -179,15 +183,17 @@ unsafe extern fn frame_hook() {
 }
 
 unsafe extern fn frame_hook_after() {
-    aiscript::update_towns();
-    aiscript::attack_timeouts_frame_hook_after();
+    let mut globals = Globals::get();
+    aiscript::update_towns(&mut globals);
+    aiscript::attack_timeouts_frame_hook_after(&mut globals);
 }
 
 unsafe extern fn step_order_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_void)) {
     let unit = unit::Unit(u as *mut bw::Unit);
     match unit.order() {
         order::id::DIE => {
-            idle_orders::remove_from_idle_orders(&unit);
+            let mut globals = Globals::get();
+            globals.idle_orders.unit_removed(unit);
         }
         order::id::COMPUTER_AI => {
             if let Some(_) = unit.building_ai() {
