@@ -419,7 +419,9 @@ impl IdleOrder {
             }
         }
         let already_targeted_count = ongoing.iter()
-            .filter(|x| x.target == Some(unit) && x.order == self.order)
+            .filter(|x| {
+                x.target == Some(unit) && x.order == self.order && x.user.player() == player as u8
+            })
             .count();
         already_targeted_count < self.limit as usize
     }
