@@ -528,6 +528,36 @@ pub struct UnitMatch {
 }
 
 impl UnitMatch {
+    pub fn iter_flatten_groups<'a>(&'a mut self) -> impl Iterator<Item = UnitId> + 'a {
+        // Ineffective but w/e, simpler than ignoring duplicates
+        if self.units.iter().any(|&x| x == unit::id::ANY_UNIT) {
+            self.units = (0..unit::id::NONE.0).map(UnitId).collect();
+        } else {
+            let mut group_flags = 0;
+            for &id in &self.units {
+                group_flags |= match id {
+                    unit::id::GROUP_MEN => 0x8,
+                    unit::id::GROUP_BUILDINGS => 0x10,
+                    unit::id::GROUP_FACTORIES => 0x20,
+                    _ => 0x0,
+                };
+            }
+            if group_flags != 0 {
+                self.units.retain(|&unit_id| {
+                    match unit_id {
+                        x if x.0 >= unit::id::NONE.0 => false,
+                        x => x.group_flags() & group_flags == 0,
+                    }
+                });
+                let new_units = (0..unit::id::NONE.0)
+                    .map(UnitId)
+                    .filter(|x| x.group_flags() & group_flags != 0);
+                self.units.extend(new_units);
+            }
+        }
+        self.units.iter().cloned()
+    }
+
     pub fn matches(&self, unit: &Unit) -> bool {
         self.units.iter().any(|&x| unit.matches_id(x))
     }
@@ -607,7 +637,7 @@ pub unsafe extern fn deaths(script: *mut bw::AiScript) {
     let players = read_player_match(script, game);
     let modifier = read_u8(script);
     let amount = read_u32(script);
-    let unit_id = read_u16(script);
+    let mut units = read_unit_match(script);
     let dest = read_u16(script);
     let modifier = match modifier {
         // Matching trigger conditions
@@ -626,13 +656,16 @@ pub unsafe extern fn deaths(script: *mut bw::AiScript) {
     let mut globals = Globals::get();
     match modifier {
         Modifier::AtLeast | Modifier::AtMost | Modifier::Exactly => {
-            let sum: u32 = players.players().map(|player| {
-                (*game.0).deaths
-                    .get_mut(unit_id as usize)
-                    .and_then(|x| x.get_mut(player as usize))
-                    .cloned()
-                    .unwrap_or(0)
-            }).sum();
+            let sum = units.iter_flatten_groups().map(|unit_id| {
+                players.players().map(|player| {
+                    (*game.0).deaths
+                        .get_mut(unit_id.0 as usize)
+                        .and_then(|x| x.get_mut(player as usize))
+                        .cloned()
+                        .unwrap_or(0)
+                }).sum::<u32>()
+            }).sum::<u32>();
+
             let jump = match modifier {
                 Modifier::AtLeast => sum >= amount,
                 Modifier::AtMost => sum <= amount,
@@ -644,21 +677,23 @@ pub unsafe extern fn deaths(script: *mut bw::AiScript) {
             }
         }
         Modifier::Set | Modifier::Add | Modifier::Subtract | Modifier::Randomize => {
-            for player in players.players() {
-                let deaths = (*game.0).deaths
-                    .get_mut(unit_id as usize)
-                    .and_then(|x| x.get_mut(player as usize));
-                if let Some(deaths) = deaths {
-                    match modifier {
-                        Modifier::Set => *deaths = amount,
-                        Modifier::Add => *deaths = deaths.saturating_add(amount),
-                        Modifier::Subtract => *deaths = deaths.saturating_sub(amount),
-                        Modifier::Randomize => {
-                            if amount != 0 {
-                                *deaths = globals.rng.synced_rand(0..amount);
+            for unit_id in units.iter_flatten_groups() {
+                for player in players.players() {
+                    let deaths = (*game.0).deaths
+                        .get_mut(unit_id.0 as usize)
+                        .and_then(|x| x.get_mut(player as usize));
+                    if let Some(deaths) = deaths {
+                        match modifier {
+                            Modifier::Set => *deaths = amount,
+                            Modifier::Add => *deaths = deaths.saturating_add(amount),
+                            Modifier::Subtract => *deaths = deaths.saturating_sub(amount),
+                            Modifier::Randomize => {
+                                if amount != 0 {
+                                    *deaths = globals.rng.synced_rand(0..amount);
+                                }
                             }
+                            _ => (),
                         }
-                        _ => (),
                     }
                 }
             }
