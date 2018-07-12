@@ -16,7 +16,7 @@ fn synced_rng() -> MutexGuard<'static, Option<Rng>> {
     SYNCED_RNG.lock().unwrap()
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Rng(XorShiftRng);
 
 pub fn init_rng() {

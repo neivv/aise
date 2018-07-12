@@ -69,7 +69,7 @@ pub fn clear_load_mapping() {
     script_id_mapping().borrow_mut().clear();
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 struct SaveData {
     attack_timeouts: [AttackTimeoutState; 8],
     idle_orders: IdleOrders,
@@ -533,6 +533,8 @@ pub unsafe extern fn ret(script: *mut bw::AiScript) {
         }
         None => {
             bw::print_text(format!("Script {} used return without call", script.debug_string()));
+            (*script.0).wait = !1;
+            (*script.0).pos -= 1;
         }
     }
 }
@@ -590,7 +592,7 @@ impl<'de> Deserialize<'de> for Script {
         use serde::de::Error;
         let id = u32::deserialize(deserializer)?;
         match script_id_mapping().borrow().get(id as usize) {
-            Some(&town) => Ok(town),
+            Some(&script) => Ok(script),
             None => Err(S::Error::custom(format!("Couldn't get script for id {:?}", id))),
         }
     }
