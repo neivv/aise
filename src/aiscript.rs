@@ -744,6 +744,7 @@ unsafe fn read_position(script: *mut bw::AiScript) -> Position {
         };
         Position::from_rect32(&location.area)
     } else {
+        // !1, !1 is used for inherit position in create_script
         Position::from_point(x as i16, y as i16)
     }
 }
@@ -1155,8 +1156,8 @@ struct SerializeBwScript {
     pos: u32,
     wait: u32,
     player: u32,
-    area: [u32; 4],
-    center: [u32; 2],
+    area: bw::Rect32,
+    center: bw::Point32,
     town: Option<Town>,
     flags: u32,
 }
@@ -1267,7 +1268,7 @@ impl Script {
         unsafe {
             format!(
                 "Player {}, pos {}, {}",
-                self.bw.player, self.bw.center[0], self.bw.center[1],
+                self.bw.player, self.bw.center.x, self.bw.center.y,
             )
         }
     }
@@ -1410,6 +1411,63 @@ unsafe fn take_bw_allocated_scripts(
         }
     }
     (first_new.unwrap_or(first), first_new_free.unwrap_or(first_free))
+}
+
+pub unsafe extern fn create_script(script: *mut bw::AiScript) {
+    // create_script(pos, player, area, town, resarea)
+    let pos = read_u16(script);
+    let player = match read_u8(script) {
+        255 => (*script).player as u8,
+        x => x,
+    };
+    let mut area = read_position(script);
+    let radius = read_u16(script);
+    area.extend_area(radius as i16);
+    if area.center.x == -2 && area.center.y == -2 {
+        area = Position::from_rect32(&(*script).area)
+    }
+    let town = read_u8(script);
+    let resarea = match read_u8(script) {
+        255 => (((*script).flags >> 3) & 0xff) as u8,
+        x => x,
+    };
+    let town = match town {
+        0 => null_mut(),
+        255 => (*script).town,
+        _ => {
+            bw::print_text("Invalid town in create_script");
+            return;
+        }
+    };
+
+    let mut globals = Globals::get();
+    let flags = ((*script).flags & 1) | ((resarea as u32) << 3);
+    let first_ai_script = bw::first_ai_script();
+    let script = globals.ai_scripts.alloc(Script {
+        bw: bw::AiScript {
+            next: first_ai_script,
+            prev: null_mut(),
+            pos: pos as u32,
+            wait: 0,
+            player: player as u32,
+            area: bw::Rect32 {
+                left: i32::from(area.area.left),
+                top: i32::from(area.area.top),
+                right: i32::from(area.area.right),
+                bottom: i32::from(area.area.bottom),
+            },
+            center: bw::Point32 {
+                x: i32::from(area.center.x),
+                y: i32::from(area.center.y),
+            },
+            town,
+            flags,
+        },
+        delete_mark: false,
+        call_stack: Vec::new(),
+    });
+    (*first_ai_script).prev = &mut (*script).bw;
+    bw::set_first_ai_script(&mut (*script).bw);
 }
 
 #[cfg(test)]

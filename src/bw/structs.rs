@@ -8,8 +8,8 @@ pub struct AiScript {
     pub pos: u32,
     pub wait: u32,
     pub player: u32,
-    pub area: [u32; 4],
-    pub center: [u32; 2],
+    pub area: Rect32,
+    pub center: Point32,
     pub town: *mut AiTown,
     pub flags: u32,
 }
@@ -239,7 +239,7 @@ pub struct Order {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Rect32 {
     pub left: i32,
     pub top: i32,
@@ -264,7 +264,7 @@ pub struct Point {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Point32 {
     pub x: i32,
     pub y: i32,
