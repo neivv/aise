@@ -1,9 +1,11 @@
+use std::ptr::null_mut;
 use std::slice;
 use std::sync::{Mutex, MutexGuard};
 
 use bincode;
 
-use aiscript::{self, AttackTimeoutState, MaxWorkers, Town, CallStacks};
+use aiscript::{self, AttackTimeoutState, MaxWorkers, Town};
+use block_alloc::BlockAllocSet;
 use bw;
 use idle_orders::IdleOrders;
 use rng::Rng;
@@ -11,9 +13,17 @@ use unit;
 
 lazy_static! {
     static ref GLOBALS: Mutex<Globals> = Mutex::new(Globals::new());
+    static ref SAVE_STATE: Mutex<Option<SaveState>> = Mutex::new(None);
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+pub struct SaveState {
+    pub first_ai_script: SendPtr<bw::AiScript>,
+}
+
+pub struct SendPtr<T>(pub *mut T);
+unsafe impl<T> Send for SendPtr<T> {}
+
+#[derive(Serialize, Deserialize)]
 pub struct Globals {
     pub attack_timeouts: [AttackTimeoutState; 8],
     pub idle_orders: IdleOrders,
@@ -25,8 +35,10 @@ pub struct Globals {
     // to be deleted and recreated in the same frame. (As recreation happens in scripts,
     // and deletion happens on last unit dying) Better solutions won't obviously hurt though.
     pub towns: Vec<Town>,
-    pub call_stacks: CallStacks,
     pub rng: Rng,
+    #[serde(serialize_with = "aiscript::serialize_scripts")]
+    #[serde(deserialize_with = "aiscript::deserialize_scripts")]
+    pub ai_scripts: BlockAllocSet<aiscript::Script>,
 }
 
 impl Globals {
@@ -38,8 +50,8 @@ impl Globals {
             under_attack_mode: [None; 8],
             wait_for_resources: [true; 8],
             towns: Vec::new(),
-            call_stacks: Default::default(),
             rng: Default::default(),
+            ai_scripts: BlockAllocSet::new(),
         }
     }
 
@@ -50,16 +62,44 @@ impl Globals {
     }
 }
 
+pub fn save_state() -> MutexGuard<'static, Option<SaveState>> {
+    SAVE_STATE.lock().unwrap()
+}
+
 pub unsafe extern fn init_game() {
     *GLOBALS.lock().unwrap() = Globals::new();
 }
 
-pub unsafe extern fn save(set_data: unsafe extern fn(*const u8, usize)) {
+pub unsafe extern fn wrap_save(
+    data: *const u8,
+    len: u32,
+    _player: u32,
+    _unique_player: u32,
+    orig: unsafe extern fn(*const u8, u32),
+) {
+    trace!("Saving..");
     let mut globals = GLOBALS.lock().unwrap();
+    aiscript::claim_bw_allocated_scripts(&mut globals);
+
+    let first_ai_script = bw::first_ai_script();
+    bw::set_first_ai_script(null_mut());
+    defer!({
+        bw::set_first_ai_script(first_ai_script);
+    });
+    *SAVE_STATE.lock().unwrap() = Some(SaveState {
+        first_ai_script: SendPtr(first_ai_script),
+    });
+    drop(globals);
+
+    orig(data, len);
+}
+
+pub unsafe extern fn save(set_data: unsafe extern fn(*const u8, usize)) {
+    let globals = GLOBALS.lock().unwrap();
     unit::init_save_mapping();
-    defer!(unit::clear_save_mapping());
-    aiscript::init_save_mapping(&mut globals);
+    aiscript::init_save_mapping();
     defer!(aiscript::clear_save_mapping());
+    defer!(unit::clear_save_mapping());
     match bincode::serialize(&*globals) {
         Ok(o) => {
             set_data(o.as_ptr(), o.len());

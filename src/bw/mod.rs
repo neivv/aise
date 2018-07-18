@@ -73,6 +73,18 @@ pub fn first_ai_script() -> *mut AiScript {
     samase::first_ai_script()
 }
 
+pub fn set_first_ai_script(script: *mut AiScript) {
+    samase::set_first_ai_script(script)
+}
+
+pub fn first_free_ai_script() -> *mut AiScript {
+    samase::first_free_ai_script()
+}
+
+pub fn set_first_free_ai_script(script: *mut AiScript) {
+    samase::set_first_free_ai_script(script)
+}
+
 pub fn guard_ais(player: u8) -> *mut GuardAi {
     unsafe {
         assert!(player < 8);

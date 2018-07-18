@@ -9,6 +9,7 @@ extern crate fern;
 #[macro_use] extern crate lazy_static;
 extern crate libc;
 #[macro_use] extern crate log;
+#[macro_use] extern crate memoffset;
 extern crate rand;
 #[macro_use] extern crate scopeguard;
 extern crate serde;
@@ -26,6 +27,7 @@ pub mod samase;
 
 mod ai;
 mod aiscript;
+mod block_alloc;
 mod bw;
 mod datreq;
 mod game;
@@ -152,6 +154,7 @@ pub extern fn Initialize() {
 unsafe extern fn frame_hook() {
     let mut globals = Globals::get();
     let game = game::Game::get();
+    aiscript::claim_bw_allocated_scripts(&mut globals);
     aiscript::clean_unsatisfiable_requests(&mut globals);
     aiscript::attack_timeouts_frame_hook(&mut globals, game);
     globals.idle_orders.step_frame();

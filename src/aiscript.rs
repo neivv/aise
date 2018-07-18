@@ -4,15 +4,16 @@ use std::mem;
 use std::ptr::null_mut;
 
 use byteorder::{ReadBytesExt, WriteBytesExt, LE};
-use serde::{Serializer, Serialize, Deserializer, Deserialize};
+use serde::{self, Serializer, Serialize, Deserializer, Deserialize};
 use smallvec::SmallVec;
 
 use bw_dat::{self, UnitId, UpgradeId, TechId};
 
 use ai;
+use block_alloc::BlockAllocSet;
 use bw;
 use game::Game;
-use globals::Globals;
+use globals::{self, Globals};
 use order::{self, OrderId};
 use unit::{self, Unit};
 use swap_retain::SwapRetain;
@@ -23,29 +24,22 @@ fn wait_for_resources(globals: &mut Globals, player: u8) -> bool {
 
 ome2_thread_local! {
     SAVE_TOWNS: RefCell<Vec<Town>> = town_id_mapping(RefCell::new(Vec::new()));
-    SAVE_SCRIPTS: RefCell<Vec<Script>> = script_id_mapping(RefCell::new(Vec::new()));
 }
 
-pub fn init_save_mapping(globals: &mut Globals) {
+pub fn init_save_mapping() {
     *town_id_mapping().borrow_mut() = towns();
-    let scripts = scripts();
-    globals.call_stacks.retain_only(&scripts);
-    *script_id_mapping().borrow_mut() = scripts;
 }
 
 pub fn clear_save_mapping() {
     town_id_mapping().borrow_mut().clear();
-    script_id_mapping().borrow_mut().clear();
 }
 
 pub fn init_load_mapping() {
     *town_id_mapping().borrow_mut() = towns();
-    *script_id_mapping().borrow_mut() = scripts();
 }
 
 pub fn clear_load_mapping() {
     town_id_mapping().borrow_mut().clear();
-    script_id_mapping().borrow_mut().clear();
 }
 
 pub unsafe extern fn attack_to(script: *mut bw::AiScript) {
@@ -54,7 +48,7 @@ pub unsafe extern fn attack_to(script: *mut bw::AiScript) {
     let grouping_region = match bw::get_region(grouping.center) {
         Some(s) => s,
         None => {
-            bw::print_text(&format!(
+            bw::print_text(format!(
                 "Aiscript attackto (player {}): invalid grouping coordinates {}",
                 (*script).player,
                 grouping,
@@ -65,7 +59,7 @@ pub unsafe extern fn attack_to(script: *mut bw::AiScript) {
     let target_region = match bw::get_region(target.center) {
         Some(s) => s,
         None => {
-            bw::print_text(&format!(
+            bw::print_text(format!(
                 "Aiscript attackto (player {}): invalid target coordinates {}",
                 (*script).player,
                 target,
@@ -162,7 +156,7 @@ pub unsafe extern fn issue_order(script: *mut bw::AiScript) {
     let target_misc = read_unit_match(script);
     let flags = read_u16(script);
     if flags & 0xffe0 != 0 {
-        bw::print_text(&format!("Aiscript issue_order: Unknown flags 0x{:x}", flags));
+        bw::print_text(format!("Aiscript issue_order: Unknown flags 0x{:x}", flags));
         return;
     }
     let mut count = 0;
@@ -283,18 +277,6 @@ fn towns() -> Vec<Town> {
     result
 }
 
-fn scripts() -> Vec<Script> {
-    let mut result = Vec::with_capacity(32);
-    let mut script = bw::first_ai_script();
-    while script != null_mut() {
-        result.push(Script(script));
-        unsafe {
-            script = (*script).next;
-        }
-    }
-    result
-}
-
 pub fn update_towns(globals: &mut Globals) {
     let old = mem::replace(&mut globals.towns, towns());
     for old in old {
@@ -345,7 +327,7 @@ pub unsafe extern fn max_workers(script: *mut bw::AiScript) {
     let town = match Town::from_ptr((*script).town) {
         Some(s) => s,
         None => {
-            bw::print_text(&format!("Used `max_workers {}` without town", count));
+            bw::print_text(format!("Used `max_workers {}` without town", count));
             return;
         }
     };
@@ -373,7 +355,7 @@ pub unsafe extern fn under_attack(script: *mut bw::AiScript) {
         1 => None,
         2 => Some(true),
         _ => {
-            bw::print_text(&format!("Invalid `under_attack` mode: {}", mode));
+            bw::print_text(format!("Invalid `under_attack` mode: {}", mode));
             return;
         }
     };
@@ -409,21 +391,21 @@ pub unsafe extern fn call(script: *mut bw::AiScript) {
     let dest = read_u16(script) as u32;
     let ret = (*script).pos;
     (*script).pos = dest;
-    let mut globals = Globals::get();
-    globals.call_stacks.push(Script(script), ret);
+    (*Script::ptr_from_bw(script)).call_stack.push(ret);
 }
 
 pub unsafe extern fn ret(script: *mut bw::AiScript) {
-    let mut globals = Globals::get();
-    let script = Script(script);
-    match globals.call_stacks.pop(script) {
+    let script = Script::ptr_from_bw(script);
+    match (*script).call_stack.pop() {
         Some(s) => {
-            (*script.0).pos = s;
+            (*script).bw.pos = s;
         }
         None => {
-            bw::print_text(format!("Script {} used return without call", script.debug_string()));
-            (*script.0).wait = !1;
-            (*script.0).pos -= 1;
+            bw::print_text(
+                format!("Script {} used return without call", (*script).debug_string())
+            );
+            (*script).bw.wait = !1;
+            (*script).bw.pos -= 1;
         }
     }
 }
@@ -447,78 +429,6 @@ pub unsafe extern fn train(script: *mut bw::AiScript) {
         (*ai.0).train_unit_id = unit_id.0 + 1;
         (*script).pos -= 4;
         (*script).wait = 30;
-    }
-}
-
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-struct Script(*mut bw::AiScript);
-
-unsafe impl Send for Script {}
-
-impl Script {
-    fn debug_string(&self) -> String {
-        unsafe {
-            format!(
-                "Player {}, pos {}, {}",
-                (*self.0).player, (*self.0).center[0], (*self.0).center[1],
-            )
-        }
-    }
-}
-
-impl Serialize for Script {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        use serde::ser::Error;
-        match script_id_mapping().borrow().iter().enumerate().find(|&(_, x)| x == self) {
-            Some((id, _)) => (id as u32).serialize(serializer),
-            None => Err(S::Error::custom(format!("Couldn't get id for script {:?}", self))),
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for Script {
-    fn deserialize<S: Deserializer<'de>>(deserializer: S) -> Result<Self, S::Error> {
-        use serde::de::Error;
-        let id = u32::deserialize(deserializer)?;
-        match script_id_mapping().borrow().get(id as usize) {
-            Some(&script) => Ok(script),
-            None => Err(S::Error::custom(format!("Couldn't get script for id {:?}", id))),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct CallStacks {
-    stacks: Vec<(Script, Vec<u32>)>,
-}
-
-impl CallStacks {
-    fn push(&mut self, script: Script, ret: u32) {
-        let index = match self.stacks.iter().position(|x| x.0 == script) {
-            Some(s) => s,
-            None => {
-                self.stacks.push((script, Vec::new()));
-                self.stacks.len() - 1
-            }
-        };
-        self.stacks[index].1.push(ret);
-    }
-
-    fn pop(&mut self, script: Script) -> Option<u32> {
-        match self.stacks.iter().position(|x| x.0 == script) {
-            Some(s) => {
-                let result = self.stacks[s].1.pop();
-                if self.stacks[s].1.is_empty() {
-                    self.stacks.swap_remove(s);
-                }
-                result
-            }
-            None => None,
-        }
-    }
-
-    fn retain_only(&mut self, scripts: &[Script]) {
-        self.stacks.retain(|x| scripts.iter().any(|&y| y == x.0))
     }
 }
 
@@ -1229,4 +1139,410 @@ unsafe fn can_satisfy_nonunit_request(
         .filter(|&x| !is_busy(x))
         .filter(|&x| match_requirements.iter().all(|r| r.matches(x)))
         .next().is_some()
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct Script {
+    #[serde(serialize_with = "serialize_bw_script")]
+    #[serde(deserialize_with = "deserialize_bw_script")]
+    bw: bw::AiScript,
+    delete_mark: bool,
+    call_stack: Vec<u32>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct SerializeBwScript {
+    pos: u32,
+    wait: u32,
+    player: u32,
+    area: [u32; 4],
+    center: [u32; 2],
+    town: Option<Town>,
+    flags: u32,
+}
+
+fn serialize_bw_script<S: Serializer>(script: &bw::AiScript, s: S) -> Result<S::Ok, S::Error> {
+    let bw::AiScript {
+        next: _,
+        prev: _,
+        pos,
+        wait,
+        player,
+        area,
+        center,
+        town,
+        flags,
+    } = *script;
+    SerializeBwScript {
+        pos,
+        wait,
+        player,
+        area,
+        center,
+        town: Town::from_ptr(town),
+        flags,
+    }.serialize(s)
+}
+
+// The deserialization of next/prev is handled in the container deserialization.
+fn deserialize_bw_script<'de, D: Deserializer<'de>>(d: D) -> Result<bw::AiScript, D::Error> {
+    let result: SerializeBwScript = SerializeBwScript::deserialize(d)?;
+    Ok(bw::AiScript {
+        next: null_mut(),
+        prev: null_mut(),
+        pos: result.pos,
+        wait: result.wait,
+        player: result.player,
+        area: result.area,
+        center: result.center,
+        town: result.town.map(|x| x.0).unwrap_or_else(null_mut),
+        flags: result.flags,
+    })
+}
+
+pub fn serialize_scripts<S: Serializer>(
+    scripts: &BlockAllocSet<Script>,
+    s: S,
+) -> Result<S::Ok, S::Error> {
+    use serde::ser::SerializeSeq;
+
+    let mut state = globals::save_state();
+    let state = state.as_mut().expect("Serializing AI scripts without state init");
+    debug!("Serializing {} scripts", scripts.len());
+    let mut s = s.serialize_seq(Some(scripts.len()))?;
+    let mut script = state.first_ai_script.0;
+    while !script.is_null() {
+        unsafe {
+            s.serialize_element(&*Script::ptr_from_bw(script))?;
+            script = (*script).next;
+        }
+    }
+    s.end()
+}
+
+pub fn deserialize_scripts<'de, D: Deserializer<'de>>(d: D)
+    -> Result<BlockAllocSet<Script>, D::Error>
+{
+    struct Visitor;
+    impl<'de> serde::de::Visitor<'de> for Visitor {
+        type Value = (*mut bw::AiScript, BlockAllocSet<Script>);
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            write!(formatter, "a sequence of AI scripts")
+        }
+
+        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+        where A: serde::de::SeqAccess<'de>,
+        {
+            let mut first_script: *mut bw::AiScript = null_mut();
+            let mut latest = null_mut();
+            let mut container = BlockAllocSet::new();
+            while let Some(script) = seq.next_element::<Script>()? {
+                let ptr = container.alloc(script);
+                unsafe {
+                    if first_script.is_null() {
+                        first_script = &mut (*ptr).bw;
+                    }
+                    (*ptr).bw.prev = latest;
+                    if !latest.is_null() {
+                        (*latest).next = &mut (*ptr).bw;
+                    }
+                    latest = &mut (*ptr).bw;
+                }
+            }
+            Ok((first_script, container))
+        }
+    }
+    let (first_script, container) = d.deserialize_seq(Visitor)?;
+    debug!("Deserialized {} scripts, first {:?}", container.len(), first_script);
+    bw::set_first_ai_script(first_script);
+    Ok(container)
+}
+
+impl Script {
+    pub fn ptr_from_bw(bw: *mut bw::AiScript) -> *mut Script {
+        ((bw as usize) - offset_of!(Script, bw)) as *mut Script
+    }
+
+    fn debug_string(&self) -> String {
+        unsafe {
+            format!(
+                "Player {}, pos {}, {}",
+                self.bw.player, self.bw.center[0], self.bw.center[1],
+            )
+        }
+    }
+}
+
+const AISCRIPT_LIMIT: usize = 8192;
+
+pub fn claim_bw_allocated_scripts(globals: &mut Globals) {
+    if globals.ai_scripts.len() >= AISCRIPT_LIMIT {
+        return;
+    }
+    unsafe {
+        let first = bw::first_ai_script();
+        let first_free = bw::first_free_ai_script();
+        if first_free.is_null() {
+            bw::print_text(
+                "Warning: ran out of AI scripts for the frame, some of the scripts
+                may not have started.",
+            );
+        }
+        let (new_first, new_first_free) =
+            take_bw_allocated_scripts(&mut globals.ai_scripts, first, first_free);
+        if new_first != first {
+            bw::set_first_ai_script(new_first);
+        }
+        if new_first_free != first_free {
+            bw::set_first_free_ai_script(new_first_free);
+        }
+        let mut delete_count = clear_deleted_scripts(&mut globals.ai_scripts, new_first);
+        if delete_count != 0 {
+            // Remove aise objects from bw's free list
+            let mut script = first_free;
+            let mut even_newer_first_free = new_first_free;
+            while !script.is_null() && delete_count != 0 {
+                if globals.ai_scripts.contains(Script::ptr_from_bw(script)) {
+                    if !(*script).prev.is_null() {
+                        (*(*script).prev).next = (*script).next;
+                    } else {
+                        even_newer_first_free = (*script).next;
+                    }
+                    if !(*script).next.is_null() {
+                        (*(*script).next).prev = (*script).prev;
+                    }
+                    delete_count -= 1;
+                }
+                script = (*script).next;
+            }
+            if even_newer_first_free != new_first_free {
+                bw::set_first_free_ai_script(even_newer_first_free);
+            }
+            assert_eq!(delete_count, 0);
+        }
+    }
+}
+
+// return delete count
+unsafe fn clear_deleted_scripts(
+    scripts: &mut BlockAllocSet<Script>,
+    bw_list: *mut bw::AiScript,
+) -> usize {
+    for script in scripts.iter() {
+        (*script).delete_mark = true;
+    }
+    let mut script = bw_list;
+    let mut count = 0;
+    while script != null_mut() {
+        (*Script::ptr_from_bw(script)).delete_mark = false;
+        script = (*script).next;
+        count += 1;
+    }
+    let delete_count = scripts.len() - count;
+    if delete_count != 0 {
+        scripts.retain(|x| !(*x).delete_mark);
+    }
+    delete_count
+}
+
+unsafe fn take_bw_allocated_scripts(
+    scripts: &mut BlockAllocSet<Script>,
+    first: *mut bw::AiScript,
+    first_free: *mut bw::AiScript,
+) -> (*mut bw::AiScript, *mut bw::AiScript) {
+    let mut script = first;
+    let mut last_new_free = None;
+    let mut first_new_free = None;
+    let mut first_new: Option<*mut bw::AiScript> = None;
+    let mut prev: Option<*mut bw::AiScript> = None;
+    // Break out once we run into a script which is already owned by us,
+    // bw inserts new scripts at start of the list.
+    while !script.is_null() && !scripts.contains(Script::ptr_from_bw(script)) {
+        if scripts.len() == AISCRIPT_LIMIT {
+            bw::print_text("AI script limit reached.");
+            break;
+        }
+        let taken = scripts.alloc(Script {
+            bw: *script,
+            delete_mark: false,
+            call_stack: Vec::new(),
+        });
+        if let Some(prev) = prev {
+            (*prev).next = &mut (*taken).bw;
+        }
+        (*taken).bw.prev = prev.unwrap_or_else(null_mut);
+        if first_new.is_none() {
+            first_new = Some(&mut (*taken).bw);
+            first_new_free = Some(script);
+        }
+        prev = Some(&mut (*taken).bw);
+        last_new_free = Some(script);
+        script = (*script).next;
+    }
+    if let Some(prev) = prev {
+        (*prev).next = script;
+        if !script.is_null() {
+            (*script).prev = prev;
+        }
+    }
+    if let Some(new_free) = last_new_free {
+        (*new_free).next = first_free;
+        if !first_free.is_null() {
+            (*first_free).prev = new_free;
+        }
+    }
+    (first_new.unwrap_or(first), first_new_free.unwrap_or(first_free))
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    #[test]
+    fn take_scripts_none() {
+        unsafe {
+            let mut scripts = BlockAllocSet::new();
+            let (new_first, first_free) =
+                take_bw_allocated_scripts(&mut scripts, null_mut(), null_mut());
+            assert!(new_first.is_null());
+            assert!(first_free.is_null());
+            assert_eq!(scripts.len(), 0);
+            clear_deleted_scripts(&mut scripts, null_mut());
+            assert_eq!(scripts.len(), 0);
+        }
+    }
+
+    fn dummy_script(num: u32) -> bw::AiScript {
+        let mut script: bw::AiScript = unsafe { mem::zeroed() };
+        script.pos = num;
+        script
+    }
+
+    unsafe fn dummy_list(amt: usize, base: u32) -> Vec<bw::AiScript> {
+        let mut external = Vec::new();
+        for i in 0..amt {
+            external.push(dummy_script(base + i as u32));
+        }
+        let mut prev = null_mut();
+        for i in 0..amt {
+            external[i].prev = prev;
+            if i != 0 {
+                external[i - 1].next = &mut external[i];
+            }
+            prev = &mut external[i];
+        }
+        validate_links(&mut external[0], amt);
+        external
+    }
+
+    unsafe fn validate_links(start: *mut bw::AiScript, expected_len: usize) {
+        let mut len = 0;
+        let mut script = start;
+        assert!((*script).prev.is_null());
+        while !script.is_null() {
+            if !(*script).prev.is_null() {
+                assert_eq!((*(*script).prev).next, script, "Script {} prevnext", len);
+            }
+            if !(*script).next.is_null() {
+                assert_eq!((*(*script).next).prev, script, "Script {} nextprev", len);
+            }
+            script = (*script).next;
+            len += 1;
+        }
+        assert_eq!(len, expected_len);
+    }
+
+    #[test]
+    fn take_scripts() {
+        unsafe {
+            let mut scripts = BlockAllocSet::new();
+            let mut external = dummy_list(10, 0);
+
+            let mut lone_free = dummy_script(123);
+            let (new_first, first_free) =
+                take_bw_allocated_scripts(&mut scripts, &mut external[0], &mut lone_free);
+            assert!(!new_first.is_null());
+            assert!(external.iter_mut().any(|x| (&mut *x) as *mut _ == first_free));
+            assert_eq!(scripts.len(), 10);
+            validate_links(new_first, 10);
+            validate_links(first_free, 11);
+
+            let mut external = dummy_list(20, 100);
+            external[19].next = new_first;
+            (*new_first).prev = &mut external[19];
+            let (new_first, first_free) =
+                take_bw_allocated_scripts(&mut scripts, &mut external[0], first_free);
+            assert!(!new_first.is_null());
+            assert!(external.iter_mut().any(|x| (&mut *x) as *mut _ == first_free));
+            assert_eq!(scripts.len(), 30);
+            validate_links(new_first, 30);
+            validate_links(first_free, 31);
+
+            let mut script = new_first;
+            let mut i = 0;
+            while !script.is_null() {
+                if i < 20 {
+                    assert_eq!((*script).pos, 100 + i);
+                } else {
+                    assert_eq!((*script).pos, i - 20);
+                }
+                script = (*script).next;
+                i += 1;
+            }
+        }
+    }
+
+    #[test]
+    fn delete_scripts() {
+        unsafe {
+            let mut scripts = BlockAllocSet::new();
+            let mut external = dummy_list(10, 0);
+
+            let (new_first, first_free) =
+                take_bw_allocated_scripts(&mut scripts, &mut external[0], null_mut());
+            assert_eq!(scripts.len(), 10);
+            validate_links(new_first, 10);
+            validate_links(first_free, 10);
+
+            let (new_first, first_free) =
+                take_bw_allocated_scripts(&mut scripts, new_first, first_free);
+            assert_eq!(scripts.len(), 10);
+            validate_links(new_first, 10);
+            validate_links(first_free, 10);
+
+            // Remove the first script
+            let second = (*new_first).next;
+            (*new_first).next = first_free;
+            (*first_free).prev = new_first;
+            let first_free = new_first;
+            let new_first = second;
+            (*new_first).prev = null_mut();
+            validate_links(new_first, 9);
+            validate_links(first_free, 11);
+            clear_deleted_scripts(&mut scripts, new_first);
+            assert_eq!(scripts.len(), 9);
+
+            // Remove the second and fourth script
+            let second = (*new_first).next;
+            let fourth = (*(*second).next).next;
+            (*(*second).next).prev = (*second).prev;
+            (*(*second).prev).next = (*second).next;
+            (*(*fourth).next).prev = (*fourth).prev;
+            (*(*fourth).prev).next = (*fourth).next;
+            // Too lazy to add them to free list D:
+            validate_links(new_first, 7);
+            clear_deleted_scripts(&mut scripts, new_first);
+            assert_eq!(scripts.len(), 7);
+
+            // Remove the 4th, 6th and 7th scripts
+            let second = (*new_first).next;
+            let fourth = (*(*second).next).next;
+            let fifth = (*fourth).next;
+            (*(*fourth).next).prev = (*fourth).prev;
+            (*(*fourth).prev).next = (*fourth).next;
+            (*fifth).next = null_mut();
+            validate_links(new_first, 4);
+            clear_deleted_scripts(&mut scripts, new_first);
+            assert_eq!(scripts.len(), 4);
+        }
+    }
 }

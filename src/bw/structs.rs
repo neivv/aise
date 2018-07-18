@@ -1,6 +1,7 @@
 use libc::c_void;
 
 #[repr(C, packed)]
+#[derive(Clone, Copy)]
 pub struct AiScript {
     pub next: *mut AiScript,
     pub prev: *mut AiScript,
@@ -12,6 +13,8 @@ pub struct AiScript {
     pub town: *mut AiTown,
     pub flags: u32,
 }
+
+unsafe impl Send for AiScript {}
 
 #[repr(C, packed)]
 pub struct AiTown {

@@ -79,6 +79,21 @@ pub fn first_ai_script() -> *mut bw::AiScript {
     unsafe { FIRST_AI_SCRIPT.0.map(|x| x()).unwrap_or(null_mut()) }
 }
 
+static mut SET_FIRST_AI_SCRIPT: GlobalFunc<fn(*mut bw::AiScript)> = GlobalFunc(None);
+pub fn set_first_ai_script(value: *mut bw::AiScript) {
+    unsafe { SET_FIRST_AI_SCRIPT.0.map(|x| x(value)); }
+}
+
+static mut FIRST_FREE_AI_SCRIPT: GlobalFunc<fn() -> *mut bw::AiScript> = GlobalFunc(None);
+pub fn first_free_ai_script() -> *mut bw::AiScript {
+    unsafe { FIRST_FREE_AI_SCRIPT.0.map(|x| x()).unwrap_or(null_mut()) }
+}
+
+static mut SET_FIRST_FREE_AI_SCRIPT: GlobalFunc<fn(*mut bw::AiScript)> = GlobalFunc(None);
+pub fn set_first_free_ai_script(value: *mut bw::AiScript) {
+    unsafe { SET_FIRST_FREE_AI_SCRIPT.0.map(|x| x(value)); }
+}
+
 static mut GUARD_AIS: GlobalFunc<fn() -> *mut bw::GuardAiList> = GlobalFunc(None);
 pub fn guard_ais() -> *mut bw::GuardAiList {
     unsafe { GUARD_AIS.0.map(|x| x()).unwrap_or(null_mut()) }
@@ -183,7 +198,7 @@ unsafe fn aiscript_opcode(
 
 #[no_mangle]
 pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
-    let required_version = 7;
+    let required_version = 9;
     if (*api).version < required_version {
         fatal(&format!(
             "Newer samase is required. (Plugin API version {}, this plugin requires version {})",
@@ -227,6 +242,18 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
         ((*api).first_ai_script)().map(|x| mem::transmute(x)),
         "first_ai_script",
     );
+    SET_FIRST_AI_SCRIPT.init(
+        ((*api).set_first_ai_script)().map(|x| mem::transmute(x)),
+        "set_first_ai_script",
+    );
+    FIRST_FREE_AI_SCRIPT.init(
+        ((*api).first_free_ai_script)().map(|x| mem::transmute(x)),
+        "first_free_ai_script",
+    );
+    SET_FIRST_FREE_AI_SCRIPT.init(
+        ((*api).set_first_free_ai_script)().map(|x| mem::transmute(x)),
+        "set_first_free_ai_script",
+    );
     GUARD_AIS.init(
         ((*api).first_guard_ai)().map(|x| mem::transmute(x)),
         "guard ais",
@@ -265,12 +292,15 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
 
     PRINT_TEXT.0 = Some(mem::transmute(((*api).print_text)()));
     RNG_SEED.0 = Some(mem::transmute(((*api).rng_seed)()));
-    let result = ((*api).extend_save)(
+    let mut result = ((*api).extend_save)(
         "aise\0".as_ptr(),
         Some(::globals::save),
         Some(::globals::load),
         ::globals::init_game,
     );
+    if result != 0 {
+        result = ((*api).hook_ingame_command)(6, ::globals::wrap_save, None);
+    }
     if result == 0 {
         ((*api).warn_unsupported_feature)(b"Saving\0".as_ptr());
     }
