@@ -1276,51 +1276,69 @@ impl Script {
 const AISCRIPT_LIMIT: usize = 8192;
 
 pub fn claim_bw_allocated_scripts(globals: &mut Globals) {
-    if globals.ai_scripts.len() >= AISCRIPT_LIMIT {
-        return;
-    }
     unsafe {
         let first = bw::first_ai_script();
         let first_free = bw::first_free_ai_script();
+
+        if globals.ai_scripts.len() >= AISCRIPT_LIMIT {
+            let (_, new_first_free) =
+                clean_free_scripts(&globals.ai_scripts, first_free, !0);
+            if let Some(x) = new_first_free {
+                bw::set_first_free_ai_script(x);
+            }
+            return;
+        }
+
         if first_free.is_null() {
             bw::print_text(
                 "Warning: ran out of AI scripts for the frame, some of the scripts
                 may not have started.",
             );
         }
-        let (new_first, new_first_free) =
+        let (new_first, mut new_first_free) =
             take_bw_allocated_scripts(&mut globals.ai_scripts, first, first_free);
         if new_first != first {
             bw::set_first_ai_script(new_first);
         }
+        let delete_count = clear_deleted_scripts(&mut globals.ai_scripts, new_first);
+        if delete_count != 0 {
+            let (deleted, even_newer_first_free) =
+                clean_free_scripts(&globals.ai_scripts, first_free, delete_count);
+            if let Some(x) = even_newer_first_free {
+                new_first_free = x;
+            }
+            assert_eq!(delete_count, deleted);
+        }
         if new_first_free != first_free {
             bw::set_first_free_ai_script(new_first_free);
         }
-        let mut delete_count = clear_deleted_scripts(&mut globals.ai_scripts, new_first);
-        if delete_count != 0 {
-            // Remove aise objects from bw's free list
-            let mut script = first_free;
-            let mut even_newer_first_free = new_first_free;
-            while !script.is_null() && delete_count != 0 {
-                if globals.ai_scripts.contains(Script::ptr_from_bw(script)) {
-                    if !(*script).prev.is_null() {
-                        (*(*script).prev).next = (*script).next;
-                    } else {
-                        even_newer_first_free = (*script).next;
-                    }
-                    if !(*script).next.is_null() {
-                        (*(*script).next).prev = (*script).prev;
-                    }
-                    delete_count -= 1;
-                }
-                script = (*script).next;
-            }
-            if even_newer_first_free != new_first_free {
-                bw::set_first_free_ai_script(even_newer_first_free);
-            }
-            assert_eq!(delete_count, 0);
-        }
     }
+}
+
+// Remove aise objects from bw's free list
+unsafe fn clean_free_scripts(
+    scripts: &BlockAllocSet<Script>,
+    free_list_pos: *mut bw::AiScript,
+    delete_count: usize,
+) -> (usize, Option<*mut bw::AiScript>) {
+    let mut script = free_list_pos;
+    let mut new_first_free = None;
+    let mut deleted = 0;
+    while !script.is_null() && delete_count != deleted {
+        if scripts.contains(Script::ptr_from_bw(script)) {
+            if !(*script).prev.is_null() {
+                (*(*script).prev).next = (*script).next;
+            } else {
+                new_first_free = Some((*script).next);
+            }
+            if !(*script).next.is_null() {
+                (*(*script).next).prev = (*script).prev;
+            }
+            deleted += 1;
+        }
+        script = (*script).next;
+    }
+    (deleted, new_first_free)
 }
 
 // return delete count
