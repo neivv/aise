@@ -1370,32 +1370,51 @@ unsafe fn take_bw_allocated_scripts(
     first_free: *mut bw::AiScript,
 ) -> (*mut bw::AiScript, *mut bw::AiScript) {
     let mut script = first;
-    let mut last_new_free = None;
+    let mut last_new_free: Option<*mut bw::AiScript> = None;
     let mut first_new_free = None;
     let mut first_new: Option<*mut bw::AiScript> = None;
     let mut prev: Option<*mut bw::AiScript> = None;
     // Break out once we run into a script which is already owned by us,
     // bw inserts new scripts at start of the list.
-    while !script.is_null() && !scripts.contains(Script::ptr_from_bw(script)) {
+    while !script.is_null() {
         if scripts.len() == AISCRIPT_LIMIT {
             bw::print_text("AI script limit reached.");
             break;
         }
-        let taken = scripts.alloc(Script {
-            bw: *script,
-            delete_mark: false,
-            call_stack: Vec::new(),
-        });
-        if let Some(prev) = prev {
-            (*prev).next = &mut (*taken).bw;
+        if !scripts.contains(Script::ptr_from_bw(script)) {
+            let taken = scripts.alloc(Script {
+                bw: *script,
+                delete_mark: false,
+                call_stack: Vec::new(),
+            });
+            if let Some(prev) = prev {
+                (*prev).next = &mut (*taken).bw;
+            }
+            (*taken).bw.prev = prev.unwrap_or_else(null_mut);
+            if first_new.is_none() {
+                first_new = Some(&mut (*taken).bw);
+            }
+            if first_new_free.is_none() {
+                first_new_free = Some(script);
+            }
+            prev = Some(&mut (*taken).bw);
+            if let Some(last_new_free) = last_new_free {
+                (*last_new_free).next = script;
+                (*script).prev = last_new_free;
+            } else {
+                (*script).prev = null_mut();
+            }
+            last_new_free = Some(script);
+        } else {
+            if first_new.is_none() {
+                first_new = Some(script);
+            }
+            if let Some(prev) = prev {
+                (*prev).next = script;
+            }
+            (*script).prev = prev.unwrap_or_else(null_mut);
+            prev = Some(script);
         }
-        (*taken).bw.prev = prev.unwrap_or_else(null_mut);
-        if first_new.is_none() {
-            first_new = Some(&mut (*taken).bw);
-            first_new_free = Some(script);
-        }
-        prev = Some(&mut (*taken).bw);
-        last_new_free = Some(script);
         script = (*script).next;
     }
     if let Some(prev) = prev {
