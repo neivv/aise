@@ -611,7 +611,17 @@ pub unsafe extern fn deaths(script: *mut bw::AiScript) {
     }
 }
 
-pub unsafe extern "C" fn kills_command(script: *mut bw::AiScript) {
+pub unsafe extern fn wait_rand(script: *mut bw::AiScript) {
+    let mut r1 = read_u32(script);
+    let mut r2 = read_u32(script);
+    let mut globals = Globals::get();
+    if r1 > r2 {
+        mem::swap(&mut r1, &mut r2);
+    }
+    (*script).wait = globals.rng.synced_rand(r1..r2 + 1);
+}
+
+pub unsafe extern fn kills_command(script: *mut bw::AiScript) {
     enum Modifier {
         AtLeast,
         AtMost,
@@ -710,6 +720,27 @@ pub unsafe fn increment_deaths(
         globals.kills_table.try_add(kpos, amount);
     }
     orig(target, attacker_p_id);
+}
+
+pub unsafe extern fn player_jump(script: *mut bw::AiScript) {
+    let player = read_string(script);
+    let dest = read_u16(script);
+    if bw::is_scr() {
+        bw::print_text("player_jump is not supported in SCR");
+        return;
+    }
+    if *bw::is_multiplayer != 0 {
+        // Not doing this since it'd desync
+        return;
+    }
+    let player_name = {
+        let len = bw::player_name.iter().position(|&x| x == 0)
+            .unwrap_or_else(|| bw::player_name.len());
+        &bw::player_name[..len]
+    };
+    if player_name.eq_ignore_ascii_case(&player) {
+        (*script).pos = dest as u32;
+    }
 }
 
 pub unsafe extern fn bring_jump(script: *mut bw::AiScript) {
@@ -877,6 +908,24 @@ pub unsafe fn read_u32(script: *mut bw::AiScript) -> u32 {
     let val = *(script_bytes.offset((*script).pos as isize) as *const u32);
     (*script).pos += 4;
     val
+}
+
+unsafe fn read_string(script: *mut bw::AiScript) -> Vec<u8> {
+    let script_bytes = match (*script).flags & 0x1 != 0 {
+        false => bw::aiscript_bin(),
+        true => bw::bwscript_bin(),
+    };
+    let mut result = Vec::new();
+    loop {
+        let val = *(script_bytes.offset((*script).pos as isize) as *const u8);
+        (*script).pos += 1;
+        if val == 0 {
+            break;
+        } else {
+            result.push(val);
+        }
+    }
+    result
 }
 
 pub unsafe fn clean_unsatisfiable_requests(globals: &mut Globals) {

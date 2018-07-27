@@ -2,6 +2,7 @@
 #![allow(non_camel_case_types)]
 
 use std::ptr::null;
+use std::sync::atomic::{AtomicBool, ATOMIC_BOOL_INIT, Ordering};
 
 use bw_dat::{UnitId, OrderId, TechId, UpgradeId};
 
@@ -10,6 +11,12 @@ use samase;
 pub mod structs;
 
 pub use self::structs::*;
+
+pub static IS_1161: AtomicBool = ATOMIC_BOOL_INIT;
+
+pub fn is_scr() -> bool {
+    IS_1161.load(Ordering::Acquire) == false
+}
 
 pub fn player_ai(player: u32) -> *mut PlayerAiData {
     samase::player_ai(player)
@@ -172,4 +179,9 @@ pub fn distance(a: Point, b: Point) -> u32 {
 
 whack_hooks!(stdcall, 0x00400000,
     0x00488AF0 => increment_death_scores(@edi *mut Unit, @edx u8);
+);
+
+whack_vars!(init_vars, 0x00400000,
+    0x0057EE9C => player_name: [u8; 0x19];
+    0x0057F0B4 => is_multiplayer: u8;
 );
