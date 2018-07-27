@@ -23,10 +23,97 @@ pub struct SaveState {
 pub struct SendPtr<T>(pub *mut T);
 unsafe impl<T> Send for SendPtr<T> {}
 
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct KCPos {
+    player1: u8,
+    player2: u8,
+    unit: u16,
+}
+
+impl KCPos {
+    pub fn new(player1: u8, player2: u8, unit: u16) -> KCPos {
+        KCPos {
+            player1,
+            player2,
+            unit,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct KillCount {
+    pos: KCPos,
+    value: u32,
+}
+
+impl KillCount {
+    pub fn new(pos: KCPos, value: u32) -> KillCount {
+        KillCount { pos, value }
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct KillsTable {
+    pub kills: Vec<KillCount>,
+}
+
+impl KillsTable {
+    pub fn try_add(&mut self, kt_pos: KCPos, amount: u32) {
+        match self.kills.iter_mut().position(|i| i.pos == kt_pos) {
+            Some(pos) => {
+                let i = &mut self.kills[pos];
+                i.value = i.value.saturating_add(amount);
+            }
+            None => {
+                self.kills.push(KillCount::new(kt_pos, amount));
+            }
+        }
+    }
+
+    pub fn try_set(&mut self, kt_pos: KCPos, amount: u32) {
+        match self.kills.iter_mut().position(|i| i.pos == kt_pos) {
+            Some(pos) => {
+                let i = &mut self.kills[pos];
+                i.value = amount;
+            }
+            None => {
+                self.kills.push(KillCount::new(kt_pos, amount));
+            }
+        }
+    }
+
+    pub fn count_kills(&mut self, p1: u8, p2: u8, uid: u16) -> u32 {
+        let mut count: u32 = 0;
+        for i in &self.kills {
+            if i.pos.player1 == p1 && i.pos.player2 == p2 {
+                if uid == i.pos.unit {
+                    count += i.value;
+                    break;
+                }
+            }
+        }
+        count
+    }
+
+    pub fn try_sub(&mut self, kt_pos: KCPos, amount: u32) {
+        match self.kills.iter_mut().position(|i| i.pos == kt_pos) {
+            Some(pos) => {
+                if amount < self.kills[pos].value {
+                    self.kills[pos].value -= amount;
+                } else {
+                    self.kills.swap_remove(pos);
+                }
+            }
+            None => (),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct Globals {
     pub attack_timeouts: [AttackTimeoutState; 8],
     pub idle_orders: IdleOrders,
+    pub kills_table: KillsTable,
     pub max_workers: Vec<MaxWorkers>,
     pub under_attack_mode: [Option<bool>; 8],
     pub wait_for_resources: [bool; 8],
@@ -46,6 +133,7 @@ impl Globals {
         Globals {
             attack_timeouts: [AttackTimeoutState::new(); 8],
             idle_orders: Default::default(),
+            kills_table: Default::default(),
             max_workers: Vec::new(),
             under_attack_mode: [None; 8],
             wait_for_resources: [true; 8],

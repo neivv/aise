@@ -18,6 +18,7 @@ extern crate smallvec;
 extern crate thread_local;
 extern crate winapi;
 
+#[macro_use] extern crate whack;
 extern crate samase_shim;
 
 #[macro_use] mod macros;
@@ -47,6 +48,10 @@ use libc::c_void;
 use winapi::um::processthreadsapi::{GetCurrentProcess, TerminateProcess};
 
 use globals::Globals;
+
+lazy_static! {
+    static ref PATCHER: whack::Patcher = whack::Patcher::new();
+}
 
 fn init() {
     if cfg!(debug_assertions) {
@@ -148,6 +153,11 @@ pub extern fn Initialize() {
             samase::samase_plugin_init(ctx.api());
         };
         samase_shim::on_win_main(f);
+
+        let mut active_patcher = ::PATCHER.lock().unwrap();
+        let mut exe = active_patcher.patch_exe(0x00400000);
+
+        exe.hook_opt(bw::increment_death_scores, aiscript::increment_deaths);
     }
 }
 

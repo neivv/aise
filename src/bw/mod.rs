@@ -169,3 +169,7 @@ pub fn distance(a: Point, b: Point) -> u32 {
         greater * 59 / 64 + lesser * 99 / 256
     }
 }
+
+whack_hooks!(stdcall, 0x00400000,
+    0x00488AF0 => increment_death_scores(@edi *mut Unit, @edx u8);
+);

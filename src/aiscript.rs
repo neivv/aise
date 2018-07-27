@@ -4,10 +4,10 @@ use std::mem;
 use std::ptr::null_mut;
 
 use byteorder::{ReadBytesExt, WriteBytesExt, LE};
-use serde::{self, Serializer, Serialize, Deserializer, Deserialize};
+use serde::{self, Deserialize, Deserializer, Serialize, Serializer};
 use smallvec::SmallVec;
 
-use bw_dat::{self, UnitId, UpgradeId, TechId};
+use bw_dat::{self, TechId, UnitId, UpgradeId};
 
 use ai;
 use block_alloc::BlockAllocSet;
@@ -15,8 +15,8 @@ use bw;
 use game::Game;
 use globals::{self, Globals};
 use order::{self, OrderId};
-use unit::{self, Unit};
 use swap_retain::SwapRetain;
+use unit::{self, Unit};
 
 fn wait_for_resources(globals: &mut Globals, player: u8) -> bool {
     globals.wait_for_resources[player as usize]
@@ -611,6 +611,106 @@ pub unsafe extern fn deaths(script: *mut bw::AiScript) {
     }
 }
 
+pub unsafe extern "C" fn kills_command(script: *mut bw::AiScript) {
+    enum Modifier {
+        AtLeast,
+        AtMost,
+        Set,
+        Add,
+        Subtract,
+        Exactly,
+        Randomize,
+    }
+    let game = Game::get();
+    // kills(player1, player2, modifier, amount, unit, dest)
+    let player1 = read_player_match(script, game);
+    let player2 = read_player_match(script, game);
+    let modifier = read_u8(script);
+    let amount = read_u32(script);
+    let mut units = read_unit_match(script);
+    let dest = read_u16(script);
+    let mut globals = Globals::get();
+    let modifier = match modifier {
+        // Matching trigger conditions
+        0 => Modifier::AtLeast,
+        1 => Modifier::AtMost,
+        7 => Modifier::Set,
+        8 => Modifier::Add,
+        9 => Modifier::Subtract,
+        10 => Modifier::Exactly,
+        11 => Modifier::Randomize,
+        x => {
+            bw::print_text(format!("Unsupported modifier in kills: {:x}", x));
+            return;
+        }
+    };
+
+    match modifier {
+        Modifier::AtLeast | Modifier::AtMost | Modifier::Exactly => {
+            let sum = units
+                .iter_flatten_groups()
+                .map(|unit_id| {
+                    player1
+                        .players()
+                        .map(|p1| {
+                            player2
+                                .players()
+                                .map(|p2| globals.kills_table.count_kills(p1, p2, unit_id.0))
+                                .sum::<u32>()
+                        })
+                        .sum::<u32>()
+                })
+                .sum::<u32>();
+
+            let jump = match modifier {
+                Modifier::AtLeast => sum >= amount,
+                Modifier::AtMost => sum <= amount,
+                Modifier::Exactly => sum == amount,
+                _ => false,
+            };
+            if jump {
+                (*script).pos = dest as u32;
+            }
+        }
+        Modifier::Set | Modifier::Add | Modifier::Subtract | Modifier::Randomize => {
+            for unit_id in units.iter_flatten_groups() {
+                for p1 in player1.players() {
+                    for p2 in player2.players() {
+                        let mut kpos = globals::KCPos::new(p1, p2, unit_id.0);
+                        match modifier {
+                            Modifier::Set => globals.kills_table.try_set(kpos, amount),
+                            Modifier::Add => globals.kills_table.try_add(kpos, amount),
+                            Modifier::Subtract => globals.kills_table.try_sub(kpos, amount),
+                            Modifier::Randomize => {
+                                if amount != 0 {
+                                    let random = globals.rng.synced_rand(0..amount);
+                                    globals.kills_table.try_set(kpos, random);
+                                }
+                            }
+                            _ => (),
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub unsafe fn increment_deaths(
+    target: *mut bw::Unit,
+    attacker_p_id: u8,
+    orig: &Fn(*mut bw::Unit, u8),
+) {
+    let unit_id = (*target).unit_id;
+    let amount = 1;
+    let player = (*target).player;
+    {
+        let mut globals = Globals::get();
+        let kpos = globals::KCPos::new(attacker_p_id, player, unit_id);
+        globals.kills_table.try_add(kpos, amount);
+    }
+    orig(target, attacker_p_id);
+}
 
 pub unsafe extern fn bring_jump(script: *mut bw::AiScript) {
     enum Modifier {
@@ -670,7 +770,7 @@ impl Position {
                 right: x.saturating_add(1),
                 top: y,
                 bottom: y.saturating_add(1),
-            }
+            },
         }
     }
 
@@ -685,7 +785,7 @@ impl Position {
                 right: rect.right as i16,
                 top: rect.top as i16,
                 bottom: rect.bottom as i16,
-            }
+            },
         }
     }
 

@@ -45,5 +45,8 @@ features = ["heapapi", "libloaderapi", "processthreadsapi", "winuser"]
 [dependencies.bw_dat]
 path = "bw_dat"
 
+[dependencies.whack]
+git = "https://github.com/neivv/whack/"
+
 [dependencies.samase_shim]
 git = "https://github.com/neivv/samase_plugin"
