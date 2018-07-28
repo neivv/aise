@@ -574,10 +574,11 @@ pub unsafe extern fn deaths(script: *mut bw::AiScript) {
     // deaths(player, modifier, amount, unit, dest)
     let players = read_player_match(script, game);
     let modifier = read_u8(script);
+    let call_instead_of_jump = modifier & 0x80 != 0;
     let amount = read_u32(script);
     let mut units = read_unit_match(script);
     let dest = read_u16(script);
-    let modifier = match modifier {
+    let modifier = match modifier & 0x7f {
         // Matching trigger conditions
         0 => Modifier::AtLeast,
         1 => Modifier::AtMost,
@@ -591,6 +592,7 @@ pub unsafe extern fn deaths(script: *mut bw::AiScript) {
             return;
         }
     };
+
     let mut globals = Globals::get();
     match modifier {
         Modifier::AtLeast | Modifier::AtMost | Modifier::Exactly => {
@@ -618,7 +620,13 @@ pub unsafe extern fn deaths(script: *mut bw::AiScript) {
                 _ => false,
             };
             if jump {
-                (*script).pos = dest as u32;
+                if call_instead_of_jump == true {
+                    let ret = (*script).pos;
+                    (*script).pos = dest as u32;
+                    (*Script::ptr_from_bw(script)).call_stack.push(ret);
+                } else {
+                    (*script).pos = dest as u32;
+                }
             }
         }
         Modifier::Set | Modifier::Add | Modifier::Subtract | Modifier::Randomize => {
@@ -672,11 +680,12 @@ pub unsafe extern fn kills_command(script: *mut bw::AiScript) {
     let player1 = read_player_match(script, game);
     let player2 = read_player_match(script, game);
     let modifier = read_u8(script);
+    let call_instead_of_jump = modifier & 0x80 != 0;
     let amount = read_u32(script);
     let mut units = read_unit_match(script);
     let dest = read_u16(script);
     let mut globals = Globals::get();
-    let modifier = match modifier {
+    let modifier = match modifier & 0x7f {
         // Matching trigger conditions
         0 => Modifier::AtLeast,
         1 => Modifier::AtMost,
@@ -715,7 +724,13 @@ pub unsafe extern fn kills_command(script: *mut bw::AiScript) {
                 _ => false,
             };
             if jump {
-                (*script).pos = dest as u32;
+                if call_instead_of_jump == true {
+                    let ret = (*script).pos;
+                    (*script).pos = dest as u32;
+                    (*Script::ptr_from_bw(script)).call_stack.push(ret);
+                } else {
+                    (*script).pos = dest as u32;
+                }
             }
         }
         Modifier::Set | Modifier::Add | Modifier::Subtract | Modifier::Randomize => {
@@ -791,10 +806,11 @@ pub unsafe extern fn upgrade_jump(script: *mut bw::AiScript) {
 
     let players = read_player_match(script, game);
     let modifier = read_u8(script);
+    let call_instead_of_jump = modifier & 0x80 != 0;
     let upgrade = UpgradeId(read_u16(script));
     let level = read_u8(script);
     let dest = read_u16(script);
-    let modifier = match modifier {
+    let modifier = match modifier & 0x7f {
         // Matching trigger conditions
         0 => Modifier::AtLeast,
         1 => Modifier::AtMost,
@@ -813,7 +829,13 @@ pub unsafe extern fn upgrade_jump(script: *mut bw::AiScript) {
         }
     });
     if jump {
-        (*script).pos = dest as u32;
+        if call_instead_of_jump == true {
+            let ret = (*script).pos;
+            (*script).pos = dest as u32;
+            (*Script::ptr_from_bw(script)).call_stack.push(ret);
+        } else {
+            (*script).pos = dest as u32;
+        }
     }
 }
 
@@ -825,10 +847,11 @@ pub unsafe extern fn tech_jump(script: *mut bw::AiScript) {
     let players = read_player_match(script, game);
 
     let modifier = read_u8(script);
+    let call_instead_of_jump = modifier & 0x80 != 0;
     let tech = TechId(read_u16(script));
     let level = read_u8(script);
     let dest = read_u16(script);
-    let modifier = match modifier {
+    let modifier = match modifier & 0x7f {
         // Matching trigger conditions
         10 => Modifier::Exactly,
         x => {
@@ -846,7 +869,13 @@ pub unsafe extern fn tech_jump(script: *mut bw::AiScript) {
         }
     });
     if jump {
-        (*script).pos = dest as u32;
+        if call_instead_of_jump == true {
+            let ret = (*script).pos;
+            (*script).pos = dest as u32;
+            (*Script::ptr_from_bw(script)).call_stack.push(ret);
+        } else {
+            (*script).pos = dest as u32;
+        }
     }
 }
 
@@ -858,7 +887,7 @@ pub unsafe extern fn random_call(script: *mut bw::AiScript) {
     let random = globals.rng.synced_rand(0..256);
     if u32::from(chance) > random {
         let ret = (*script).pos;
-        (*script).pos = dest;
+        (*script).pos = dest as u32;
         (*Script::ptr_from_bw(script)).call_stack.push(ret);
     }
 }
@@ -872,6 +901,7 @@ pub unsafe extern fn bring_jump(script: *mut bw::AiScript) {
     let game = Game::get();
     let players = read_player_match(script, game);
     let modifier = read_u8(script);
+    let call_instead_of_jump = modifier & 0x80 != 0;
     let amount = read_u32(script);
     let unit_id = read_unit_match(script);
     let mut src = read_position(script);
@@ -879,7 +909,7 @@ pub unsafe extern fn bring_jump(script: *mut bw::AiScript) {
     src.extend_area(radius as i16);
     let dest = read_u16(script);
 
-    let modifier = match modifier {
+    let modifier = match modifier & 0x7f {
         // Matching trigger conditions
         0 => Modifier::AtLeast,
         1 => Modifier::AtMost,
@@ -899,7 +929,13 @@ pub unsafe extern fn bring_jump(script: *mut bw::AiScript) {
         Modifier::Exactly => count == amount,
     };
     if jump {
-        (*script).pos = dest as u32;
+        if call_instead_of_jump == true {
+            let ret = (*script).pos;
+            (*script).pos = dest as u32;
+            (*Script::ptr_from_bw(script)).call_stack.push(ret);
+        } else {
+            (*script).pos = dest as u32;
+        }
     }
 }
 
