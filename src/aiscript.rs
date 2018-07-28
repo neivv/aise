@@ -781,6 +781,88 @@ pub unsafe extern fn player_jump(script: *mut bw::AiScript) {
     }
 }
 
+pub unsafe extern fn upgrade_jump(script: *mut bw::AiScript) {
+    enum Modifier {
+        AtLeast,
+        AtMost,
+        Exactly,
+    }
+    let game = Game::get();
+
+    let players = read_player_match(script, game);
+    let modifier = read_u8(script);
+    let upgrade = UpgradeId(read_u16(script));
+    let level = read_u8(script);
+    let dest = read_u16(script);
+    let modifier = match modifier {
+        // Matching trigger conditions
+        0 => Modifier::AtLeast,
+        1 => Modifier::AtMost,
+        10 => Modifier::Exactly,
+        x => {
+            bw::print_text(format!("Unsupported modifier in upgrade_jump: {:x}", x));
+            return;
+        }
+    };
+    let jump = players.players().any(|player| {
+        let up_lev = game.upgrade_level(player, upgrade);
+        match modifier {
+            Modifier::AtLeast => up_lev >= level,
+            Modifier::AtMost => up_lev <= level,
+            Modifier::Exactly => up_lev == level,
+        }
+    });
+    if jump {
+        (*script).pos = dest as u32;
+    }
+}
+
+pub unsafe extern fn tech_jump(script: *mut bw::AiScript) {
+    enum Modifier {
+        Exactly,
+    }
+    let game = Game::get();
+    let players = read_player_match(script, game);
+
+    let modifier = read_u8(script);
+    let tech = TechId(read_u16(script));
+    let level = read_u8(script);
+    let dest = read_u16(script);
+    let modifier = match modifier {
+        // Matching trigger conditions
+        10 => Modifier::Exactly,
+        x => {
+            bw::print_text(format!("Unsupported modifier in tech_jump: {:x}", x));
+            return;
+        }
+    };
+    let jump = players.players().any(|player| {
+        let tech_level = match game.tech_researched(player, tech) {
+            true => 1,
+            false => 0,
+        };
+        match modifier {
+            Modifier::Exactly => tech_level == level,
+        }
+    });
+    if jump {
+        (*script).pos = dest as u32;
+    }
+}
+
+pub unsafe extern fn random_call(script: *mut bw::AiScript) {
+    let chance = read_u8(script);
+    let dest = read_u16(script) as u32;
+
+    let mut globals = Globals::get();
+    let random = globals.rng.synced_rand(0..256);
+    if u32::from(chance) > random {
+        let ret = (*script).pos;
+        (*script).pos = dest;
+        (*Script::ptr_from_bw(script)).call_stack.push(ret);
+    }
+}
+
 pub unsafe extern fn bring_jump(script: *mut bw::AiScript) {
     enum Modifier {
         AtLeast,
