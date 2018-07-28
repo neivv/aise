@@ -1,0 +1,6 @@
+comment_width = 100
+imports_indent = "block"
+force_explicit_abi = false
+binop_separator = "Back"
+newline_style = "Unix"
+struct_lit_single_line = false

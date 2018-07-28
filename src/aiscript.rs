@@ -225,12 +225,17 @@ pub unsafe extern fn issue_order(script: *mut bw::AiScript) {
             order::id::PLACE_ADDON | order::id::BUILD_ADDON => {
                 let unit_id = target_misc.get_one();
                 (&mut (*unit.0).unit_specific[4..])
-                    .write_u16::<LE>(unit_id.0).unwrap();
+                    .write_u16::<LE>(unit_id.0)
+                    .unwrap();
             }
-            order::id::DRONE_BUILD | order::id::SCV_BUILD | order::id::PROBE_BUILD |
-                order::id::UNIT_MORPH | order::id::BUILDING_MORPH | order::id::TRAIN |
-                order::id::TRAIN_FIGHTER | order::id::BUILD_NYDUS_EXIT =>
-            {
+            order::id::DRONE_BUILD |
+            order::id::SCV_BUILD |
+            order::id::PROBE_BUILD |
+            order::id::UNIT_MORPH |
+            order::id::BUILDING_MORPH |
+            order::id::TRAIN |
+            order::id::TRAIN_FIGHTER |
+            order::id::BUILD_NYDUS_EXIT => {
                 let unit_id = target_misc.get_one();
                 (*unit.0).build_queue[(*unit.0).current_build_slot as usize] = unit_id.0;
             }
@@ -304,9 +309,17 @@ unsafe impl Send for Town {}
 impl Serialize for Town {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::Error;
-        match town_id_mapping().borrow().iter().enumerate().find(|&(_, x)| x == self) {
+        match town_id_mapping()
+            .borrow()
+            .iter()
+            .enumerate()
+            .find(|&(_, x)| x == self)
+        {
             Some((id, _)) => (id as u32).serialize(serializer),
-            None => Err(S::Error::custom(format!("Couldn't get id for town {:?}", self))),
+            None => Err(S::Error::custom(format!(
+                "Couldn't get id for town {:?}",
+                self
+            ))),
         }
     }
 }
@@ -317,7 +330,10 @@ impl<'de> Deserialize<'de> for Town {
         let id = u32::deserialize(deserializer)?;
         match town_id_mapping().borrow().get(id as usize) {
             Some(&town) => Ok(town),
-            None => Err(S::Error::custom(format!("Couldn't get town for id {:?}", id))),
+            None => Err(S::Error::custom(format!(
+                "Couldn't get town for id {:?}",
+                id
+            ))),
         }
     }
 }
@@ -342,7 +358,11 @@ pub unsafe extern fn max_workers(script: *mut bw::AiScript) {
 }
 
 pub extern fn max_workers_for(globals: &mut Globals, town: *mut bw::AiTown) -> Option<u8> {
-    globals.max_workers.iter().find(|x| x.town.0 == town).map(|x| x.count)
+    globals
+        .max_workers
+        .iter()
+        .find(|x| x.town.0 == town)
+        .map(|x| x.count)
 }
 
 pub unsafe extern fn under_attack(script: *mut bw::AiScript) {
@@ -401,9 +421,10 @@ pub unsafe extern fn ret(script: *mut bw::AiScript) {
             (*script).bw.pos = s;
         }
         None => {
-            bw::print_text(
-                format!("Script {} used return without call", (*script).debug_string())
-            );
+            bw::print_text(format!(
+                "Script {} used return without call",
+                (*script).debug_string()
+            ));
             (*script).bw.wait = !1;
             (*script).bw.pos -= 1;
         }
@@ -453,11 +474,9 @@ impl UnitMatch {
                 };
             }
             if group_flags != 0 {
-                self.units.retain(|&unit_id| {
-                    match unit_id {
-                        x if x.0 >= unit::id::NONE.0 => false,
-                        x => x.group_flags() & group_flags == 0,
-                    }
+                self.units.retain(|&unit_id| match unit_id {
+                    x if x.0 >= unit::id::NONE.0 => false,
+                    x => x.group_flags() & group_flags == 0,
                 });
                 let new_units = (0..unit::id::NONE.0)
                     .map(UnitId)
@@ -473,7 +492,12 @@ impl UnitMatch {
     }
 
     pub fn get_one(&self) -> UnitId {
-        self.units.iter().cloned().filter(|x| x.0 < unit::id::NONE.0).next().unwrap_or(UnitId(0))
+        self.units
+            .iter()
+            .cloned()
+            .filter(|x| x.0 < unit::id::NONE.0)
+            .next()
+            .unwrap_or(UnitId(0))
     }
 }
 
@@ -487,7 +511,11 @@ impl PlayerMatch {
     }
 
     pub fn players<'a>(&'a self) -> impl Iterator<Item = u8> + 'a {
-        self.players.iter().enumerate().filter(|x| *x.1 == true).map(|x| x.0 as u8)
+        self.players
+            .iter()
+            .enumerate()
+            .filter(|x| *x.1 == true)
+            .map(|x| x.0 as u8)
     }
 }
 
@@ -502,7 +530,7 @@ unsafe fn read_player_match(script: *mut bw::AiScript, game: Game) -> PlayerMatc
         cont = byte & 0x80 != 0;
         let player = byte & 0x7f;
         match player {
-            x @ 0 ... 11 => result.players[x as usize] = true,
+            x @ 0...11 => result.players[x as usize] = true,
             13 => result.players[current_player as usize] = true,
             // Foes, allies
             14 | 15 => {
@@ -566,15 +594,22 @@ pub unsafe extern fn deaths(script: *mut bw::AiScript) {
     let mut globals = Globals::get();
     match modifier {
         Modifier::AtLeast | Modifier::AtMost | Modifier::Exactly => {
-            let sum = units.iter_flatten_groups().map(|unit_id| {
-                players.players().map(|player| {
-                    (*game.0).deaths
-                        .get_mut(unit_id.0 as usize)
-                        .and_then(|x| x.get_mut(player as usize))
-                        .cloned()
-                        .unwrap_or(0)
-                }).sum::<u32>()
-            }).sum::<u32>();
+            let sum = units
+                .iter_flatten_groups()
+                .map(|unit_id| {
+                    players
+                        .players()
+                        .map(|player| {
+                            (*game.0)
+                                .deaths
+                                .get_mut(unit_id.0 as usize)
+                                .and_then(|x| x.get_mut(player as usize))
+                                .cloned()
+                                .unwrap_or(0)
+                        })
+                        .sum::<u32>()
+                })
+                .sum::<u32>();
 
             let jump = match modifier {
                 Modifier::AtLeast => sum >= amount,
@@ -589,7 +624,8 @@ pub unsafe extern fn deaths(script: *mut bw::AiScript) {
         Modifier::Set | Modifier::Add | Modifier::Subtract | Modifier::Randomize => {
             for unit_id in units.iter_flatten_groups() {
                 for player in players.players() {
-                    let deaths = (*game.0).deaths
+                    let deaths = (*game.0)
+                        .deaths
                         .get_mut(unit_id.0 as usize)
                         .and_then(|x| x.get_mut(player as usize));
                     if let Some(deaths) = deaths {
@@ -734,7 +770,9 @@ pub unsafe extern fn player_jump(script: *mut bw::AiScript) {
         return;
     }
     let player_name = {
-        let len = bw::player_name.iter().position(|&x| x == 0)
+        let len = bw::player_name
+            .iter()
+            .position(|&x| x == 0)
             .unwrap_or_else(|| bw::player_name.len());
         &bw::player_name[..len]
     };
@@ -795,7 +833,10 @@ struct Position {
 impl Position {
     pub fn from_point(x: i16, y: i16) -> Position {
         Position {
-            center: bw::Point { x, y },
+            center: bw::Point {
+                x,
+                y,
+            },
             area: bw::Rect {
                 left: x,
                 right: x.saturating_add(1),
@@ -830,7 +871,12 @@ impl Position {
 
 impl fmt::Display for Position {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let bw::Rect { left, right, top, bottom } = self.area;
+        let bw::Rect {
+            left,
+            right,
+            top,
+            bottom,
+        } = self.area;
 
         if left == right - 1 && top == bottom - 1 {
             write!(f, "{}, {}", left, right)
@@ -844,9 +890,7 @@ pub unsafe fn read_unit_match(script: *mut bw::AiScript) -> UnitMatch {
     let val = read_u16(script);
     if val > 0xff00 {
         let repeat = val & 0xff;
-        let units = (0..repeat).map(|_| {
-            UnitId(read_u16(script))
-        }).collect();
+        let units = (0..repeat).map(|_| UnitId(read_u16(script))).collect();
         UnitMatch {
             units,
         }
@@ -934,14 +978,19 @@ pub unsafe fn clean_unsatisfiable_requests(globals: &mut Globals) {
         let wait = wait_for_resources(globals, player);
         let ai_data = bw::player_ai(player as u32);
         let requests = &mut ((*ai_data).requests)[..(*ai_data).request_count as usize];
-        let remove_count = requests.iter()
+        let remove_count = requests
+            .iter()
             .take_while(|x| {
                 let can = can_satisfy_request(game, player, x, wait);
                 if !can {
-                    debug!("Player {} can't satisfy request {:x}/{:x}", player, x.ty, x.id);
+                    debug!(
+                        "Player {} can't satisfy request {:x}/{:x}",
+                        player, x.ty, x.id
+                    );
                 }
                 !can
-            }).count();
+            })
+            .count();
         (*ai_data).request_count -= remove_count as u8;
         for i in 0..(*ai_data).request_count as usize {
             requests[i] = requests[i + remove_count];
@@ -992,8 +1041,7 @@ unsafe fn can_satisfy_request(
 
 fn has_resources(game: Game, player: u8, cost: &ai::Cost) -> bool {
     // TODO supply
-    game.minerals(player) >= cost.minerals &&
-        game.gas(player) >= cost.gas
+    game.minerals(player) >= cost.minerals && game.gas(player) >= cost.gas
 }
 
 enum MatchRequirement {
@@ -1057,7 +1105,7 @@ unsafe fn can_satisfy_unit_request(game: Game, player: u8, unit_id: UnitId) -> b
                 UnitReq::End => break 'outer,
                 UnitReq::Disabled => false,
                 UnitReq::Blank => false,
-                UnitReq::BwOnly => true, // w/e
+                UnitReq::BwOnly => true,       // w/e
                 UnitReq::BurrowedOnly => true, // ???
                 UnitReq::NotBurrowedOnly => true,
                 // Assuming IsNotBusy/IsNotLifted/IsNotConstructingAddon/etc
@@ -1164,7 +1212,8 @@ unsafe fn can_satisfy_unit_request(game: Game, player: u8, unit_id: UnitId) -> b
         .filter(|x| x.player() == player && x.is_completed())
         .filter(|&x| !is_busy(x))
         .filter(|&x| match_requirements.iter().all(|r| r.matches(x)))
-        .next().is_some()
+        .next()
+        .is_some()
 }
 
 unsafe fn can_satisfy_nonunit_request(
@@ -1288,7 +1337,8 @@ unsafe fn can_satisfy_nonunit_request(
         .filter(|x| x.player() == player && x.is_completed())
         .filter(|&x| !is_busy(x))
         .filter(|&x| match_requirements.iter().all(|r| r.matches(x)))
-        .next().is_some()
+        .next()
+        .is_some()
 }
 
 #[derive(Serialize, Deserialize)]
@@ -1357,7 +1407,9 @@ pub fn serialize_scripts<S: Serializer>(
     use serde::ser::SerializeSeq;
 
     let mut state = globals::save_state();
-    let state = state.as_mut().expect("Serializing AI scripts without state init");
+    let state = state
+        .as_mut()
+        .expect("Serializing AI scripts without state init");
     debug!("Serializing {} scripts", scripts.len());
     let mut s = s.serialize_seq(Some(scripts.len()))?;
     let mut script = state.first_ai_script.0;
@@ -1370,9 +1422,9 @@ pub fn serialize_scripts<S: Serializer>(
     s.end()
 }
 
-pub fn deserialize_scripts<'de, D: Deserializer<'de>>(d: D)
-    -> Result<BlockAllocSet<Script>, D::Error>
-{
+pub fn deserialize_scripts<'de, D: Deserializer<'de>>(
+    d: D,
+) -> Result<BlockAllocSet<Script>, D::Error> {
     struct Visitor;
     impl<'de> serde::de::Visitor<'de> for Visitor {
         type Value = (*mut bw::AiScript, BlockAllocSet<Script>);
@@ -1381,7 +1433,8 @@ pub fn deserialize_scripts<'de, D: Deserializer<'de>>(d: D)
         }
 
         fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-        where A: serde::de::SeqAccess<'de>,
+        where
+            A: serde::de::SeqAccess<'de>,
         {
             let mut first_script: *mut bw::AiScript = null_mut();
             let mut latest = null_mut();
@@ -1403,7 +1456,11 @@ pub fn deserialize_scripts<'de, D: Deserializer<'de>>(d: D)
         }
     }
     let (first_script, container) = d.deserialize_seq(Visitor)?;
-    debug!("Deserialized {} scripts, first {:?}", container.len(), first_script);
+    debug!(
+        "Deserialized {} scripts, first {:?}",
+        container.len(),
+        first_script
+    );
     bw::set_first_ai_script(first_script);
     Ok(container)
 }
@@ -1431,8 +1488,7 @@ pub fn claim_bw_allocated_scripts(globals: &mut Globals) {
         let first_free = bw::first_free_ai_script();
 
         if globals.ai_scripts.len() >= AISCRIPT_LIMIT {
-            let (_, new_first_free) =
-                clean_free_scripts(&globals.ai_scripts, first_free, !0);
+            let (_, new_first_free) = clean_free_scripts(&globals.ai_scripts, first_free, !0);
             if let Some(x) = new_first_free {
                 bw::set_first_free_ai_script(x);
             }
@@ -1578,7 +1634,10 @@ unsafe fn take_bw_allocated_scripts(
             (*first_free).prev = new_free;
         }
     }
-    (first_new.unwrap_or(first), first_new_free.unwrap_or(first_free))
+    (
+        first_new.unwrap_or(first),
+        first_new_free.unwrap_or(first_free),
+    )
 }
 
 pub unsafe extern fn create_script(script: *mut bw::AiScript) {
@@ -1705,7 +1764,11 @@ mod test {
             let (new_first, first_free) =
                 take_bw_allocated_scripts(&mut scripts, &mut external[0], &mut lone_free);
             assert!(!new_first.is_null());
-            assert!(external.iter_mut().any(|x| (&mut *x) as *mut _ == first_free));
+            assert!(
+                external
+                    .iter_mut()
+                    .any(|x| (&mut *x) as *mut _ == first_free)
+            );
             assert_eq!(scripts.len(), 10);
             validate_links(new_first, 10);
             validate_links(first_free, 11);
@@ -1716,7 +1779,11 @@ mod test {
             let (new_first, first_free) =
                 take_bw_allocated_scripts(&mut scripts, &mut external[0], first_free);
             assert!(!new_first.is_null());
-            assert!(external.iter_mut().any(|x| (&mut *x) as *mut _ == first_free));
+            assert!(
+                external
+                    .iter_mut()
+                    .any(|x| (&mut *x) as *mut _ == first_free)
+            );
             assert_eq!(scripts.len(), 30);
             validate_links(new_first, 30);
             validate_links(first_free, 31);
