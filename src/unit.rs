@@ -179,7 +179,17 @@ impl Unit {
     }
 
     pub fn hangar_count(&self) -> u8 {
-        unsafe { (*self.0).unit_specific[8] }
+        // Count fighters outside hangar if carrier
+        unsafe {
+            match self.id() {
+                id::CARRIER | id::GANTRITHOR => {
+                    (*self.0).unit_specific[8] + (*self.0).unit_specific[9]
+                }
+                _ => {
+                    (*self.0).unit_specific[8]
+                }
+            }
+        }
     }
 
     pub fn has_nuke(&self) -> bool {
