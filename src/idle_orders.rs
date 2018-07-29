@@ -1,14 +1,14 @@
 use std::ptr::null_mut;
-use std::sync::atomic::{Ordering, AtomicBool, ATOMIC_BOOL_INIT};
+use std::sync::atomic::{AtomicBool, Ordering, ATOMIC_BOOL_INIT};
 
-use bw_dat::{self, UnitId, OrderId, order};
+use bw_dat::{self, order, OrderId, UnitId};
 
-use aiscript::{read_u8, read_u16, read_u32, read_unit_match, UnitMatch};
+use aiscript::{read_u16, read_u32, read_u8, read_unit_match, UnitMatch};
 use bw;
 use game::Game;
 use globals::Globals;
-use unit::{self, Unit};
 use swap_retain::SwapRetain;
+use unit::{self, Unit};
 
 pub const IDLE_ORDERS_DISABLED: AtomicBool = ATOMIC_BOOL_INIT;
 
@@ -27,7 +27,8 @@ impl IdleOrders {
                 bw::issue_order(x.user.0, order::MOVE, x.home, null_mut(), unit::id::NONE);
             }
         }
-        self.ongoing.swap_retain(|x| unit != x.user && Some(unit) != x.target);
+        self.ongoing
+            .swap_retain(|x| unit != x.user && Some(unit) != x.target);
         self.returning_cloaked.swap_retain(|x| unit != x.unit);
     }
 
@@ -49,7 +50,11 @@ impl IdleOrders {
         ongoing.swap_retain(|o| {
             let retain = match o.target {
                 None => o.user.orders().any(|x| x.id == o.order),
-                Some(target) => o.user.orders().filter_map(|x| x.target).any(|x| x == target),
+                Some(target) => o
+                    .user
+                    .orders()
+                    .filter_map(|x| x.target)
+                    .any(|x| x == target),
             };
             if !retain {
                 bw::issue_order(o.user.0, order::MOVE, o.home, null_mut(), unit::id::NONE);
@@ -64,7 +69,7 @@ impl IdleOrders {
                     use bw_dat::unit::*;
                     match id {
                         GHOST | SAMIR_DURAN | INFESTED_DURAN | SARAH_KERRIGAN |
-                            INFESTED_KERRIGAN | ALEXEI_STUKOV => true,
+                        INFESTED_KERRIGAN | ALEXEI_STUKOV => true,
                         _ => false,
                     }
                 }
@@ -86,7 +91,7 @@ impl IdleOrders {
                                         decl.order,
                                         pos,
                                         target_ptr,
-                                        unit::id::NONE
+                                        unit::id::NONE,
                                     );
                                 }
                             }
@@ -132,10 +137,11 @@ impl IdleOrders {
                     // Round to multiple of decl.rate so that priority is somewhat useful.
                     // Adds [rate, rate * 2) frames of wait.
                     let rate = decl.rate as u32;
-                    state.next_frame = current_frame.saturating_sub(1)
-                        .checked_div(rate).unwrap_or(current_frame)
-                        .saturating_add(2) *
-                        rate;
+                    state.next_frame = current_frame
+                        .saturating_sub(1)
+                        .checked_div(rate)
+                        .unwrap_or(current_frame)
+                        .saturating_add(2) * rate;
                 } else {
                     state.next_frame = current_frame + 24 * 10;
                 }
@@ -148,13 +154,14 @@ unsafe fn step_cloak(order: &mut OngoingOrder, game: Game) {
     if !order.cloaked && !order.user.is_invisible() {
         let tech = bw_dat::tech::PERSONNEL_CLOAKING;
         let order_energy = order.order.tech().map(|x| x.energy_cost()).unwrap_or(0);
-        let min_energy = tech.energy_cost()
+        let min_energy = tech
+            .energy_cost()
             .saturating_add(25)
             .saturating_add(order_energy)
             .saturating_mul(256);
         if order.user.energy() as u32 > min_energy {
-            let has_tech = game.tech_researched(order.user.player(), tech) ||
-                order.user.id().is_hero();
+            let has_tech =
+                game.tech_researched(order.user.player(), tech) || order.user.id().is_hero();
             if has_tech {
                 let distance = bw::distance(order.user.position(), (*order.user.0).move_target);
                 if distance < 32 * 24 {
@@ -356,7 +363,6 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
                                 return false;
                             }
                         };
-
                     }
                     _ => bw::print_text("idle_orders: invalid encoding"),
                 }
@@ -382,7 +388,12 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
             order: None,
             numeric: Vec::new(),
         };
-        let ok = parse_flags(script, &mut target_flags, Some(&mut self_flags), &mut delete_flags);
+        let ok = parse_flags(
+            script,
+            &mut target_flags,
+            Some(&mut self_flags),
+            &mut delete_flags,
+        );
         if !ok {
             return;
         }
@@ -424,25 +435,30 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
         };
         match index {
             Some(s) => match deathrattle {
-                false => { orders.orders.remove(s); }
-                true => { orders.deathrattles.remove(s); }
+                false => {
+                    orders.orders.remove(s);
+                }
+                true => {
+                    orders.deathrattles.remove(s);
+                }
             },
             None => if !silent_fail {
-                bw::print_text(
-                    &format!("idle_orders: Unable to find match to remove for {:#?}", matchee),
-                );
+                bw::print_text(&format!(
+                    "idle_orders: Unable to find match to remove for {:#?}",
+                    matchee
+                ));
             },
         }
     } else {
         let pos = match deathrattle {
-            false => {
-                orders.orders.binary_search_by_key(&priority, |x| x.0.priority)
-                    .unwrap_or_else(|x| x)
-            }
-            true => {
-                orders.deathrattles.binary_search_by_key(&priority, |x| x.priority)
-                    .unwrap_or_else(|x| x)
-            }
+            false => orders
+                .orders
+                .binary_search_by_key(&priority, |x| x.0.priority)
+                .unwrap_or_else(|x| x),
+            true => orders
+                .deathrattles
+                .binary_search_by_key(&priority, |x| x.priority)
+                .unwrap_or_else(|x| x),
         };
         let order = IdleOrder {
             order,
@@ -463,7 +479,6 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
     }
 }
 
-
 impl IdleOrder {
     /// Idle order user
     fn unit_valid(
@@ -473,14 +488,13 @@ impl IdleOrder {
         check_targeting: CheckTargetingFlags,
         game: Game,
     ) -> bool {
-        let energy_cost = self.order.tech()
-            .map(|x| x.energy_cost() << 8)
-            .unwrap_or(0);
+        let energy_cost = self.order.tech().map(|x| x.energy_cost() << 8).unwrap_or(0);
         user.player() == self.player &&
             self.unit_id.matches(user) &&
             user.order() != self.order &&
             user.energy() as u32 >= energy_cost &&
-            self.self_flags.match_status(user, self.player, check_targeting, None, game) &&
+            self.self_flags
+                .match_status(user, self.player, check_targeting, None, game) &&
             !ongoing.iter().any(|x| x.user == *user)
     }
 
@@ -543,7 +557,9 @@ impl IdleOrder {
         }
         if !accept_unseen {
             let unseen = unsafe {
-                unit.sprite().map(|s| (*s).visibility_mask & player_mask == 0).unwrap_or(true)
+                unit.sprite()
+                    .map(|s| (*s).visibility_mask & player_mask == 0)
+                    .unwrap_or(true)
             };
             if unseen {
                 return false;
@@ -558,15 +574,19 @@ impl IdleOrder {
             }
         }
         if in_combat {
-            let ok = unit.target().map(|x| {
-                let targeting_enemy = !ctx.game.allied(player as u8, x.player());
-                targeting_enemy && unit.order().is_attack_order()
-            }).unwrap_or(false);
+            let ok = unit
+                .target()
+                .map(|x| {
+                    let targeting_enemy = !ctx.game.allied(player as u8, x.player());
+                    targeting_enemy && unit.order().is_attack_order()
+                })
+                .unwrap_or(false);
             if !ok {
                 return false;
             }
         }
-        let already_targeted_count = ongoing.iter()
+        let already_targeted_count = ongoing
+            .iter()
             .filter(|x| {
                 x.target == Some(unit) && x.order == self.order && x.user.player() == player as u8
             })
@@ -586,11 +606,7 @@ fn target_pos(target: &Unit, decl: &IdleOrder) -> (Option<Unit>, bw::Point) {
     let no_detection = unsafe {
         target.is_invisible() && (*target.0).detection_status & (1 << decl.player) as u32 == 0
     };
-    let order_target = if no_detection {
-        null_mut()
-    } else {
-        target.0
-    };
+    let order_target = if no_detection { null_mut() } else { target.0 };
     (Unit::from_ptr(order_target), pos)
 }
 
@@ -641,9 +657,7 @@ fn find_user_target_pair(
         unit::active_units()
             .filter_map(|x| x.target().map(|target| (x, target)))
             .filter(|&(user, target)| target.target() == Some(user))
-            .filter(|&(_, target)| {
-                decl.target_valid(target, ongoing, CheckTargetingFlags::No, ctx)
-            })
+            .filter(|&(_, target)| decl.target_valid(target, ongoing, CheckTargetingFlags::No, ctx))
             .filter(|(u, _)| decl.unit_valid(u, ongoing, CheckTargetingFlags::No, ctx.game))
             .map(|(user, tgt)| (user, tgt, bw::distance(user.position(), tgt.position())))
             .min_by_key(|x| x.2)
@@ -657,9 +671,7 @@ fn find_user_target_pair(
     ) -> Option<(Unit, Unit, u32)> {
         unit::active_units()
             .filter_map(|x| x.target().map(|user| (user, x)))
-            .filter(|&(_, target)| {
-                decl.target_valid(target, ongoing, CheckTargetingFlags::No, ctx)
-            })
+            .filter(|&(_, target)| decl.target_valid(target, ongoing, CheckTargetingFlags::No, ctx))
             .filter(|(u, _)| decl.unit_valid(u, ongoing, CheckTargetingFlags::Yes, ctx.game))
             .map(|(user, tgt)| (user, tgt, bw::distance(user.position(), tgt.position())))
             .min_by_key(|x| x.2)
@@ -693,11 +705,15 @@ fn find_user_target_pair(
     // If the current unit targeting flag is set, do a special search, as they won't work
     // with just picking one unit and iterating from there.
     // But if there are other targeting flags, do a normal search that will work with those.
-    let self_current_unit =
-        decl.self_flags.targeting_filter.contains(TargetingFlags::CURRENT_UNIT);
+    let self_current_unit = decl
+        .self_flags
+        .targeting_filter
+        .contains(TargetingFlags::CURRENT_UNIT);
     let self_normal = decl.self_flags.targeting_filter != TargetingFlags::CURRENT_UNIT;
-    let target_current_unit =
-        decl.target_flags.targeting_filter.contains(TargetingFlags::CURRENT_UNIT);
+    let target_current_unit = decl
+        .target_flags
+        .targeting_filter
+        .contains(TargetingFlags::CURRENT_UNIT);
     let target_normal = decl.target_flags.targeting_filter != TargetingFlags::CURRENT_UNIT;
 
     let ctx = decl.target_validation_context(game, None);
@@ -756,6 +772,7 @@ impl IdleOrderFlags {
                     return false;
                 }
             }
+            #[cfg_attr(rustfmt, rustfmt_skip)]
             let status_ok = if self.status_required != 0 || self.status_not != 0 {
                 let flags = (if (*unit.0).ensnare_timer != 0 { 1 } else { 0 } << 0) |
                     (if (*unit.0).plague_timer != 0 { 1 } else { 0 } << 1) |
@@ -788,7 +805,7 @@ impl IdleOrderFlags {
                     Some(target) => {
                         let targeting_current_unit =
                             self.targeting_filter.contains(TargetingFlags::CURRENT_UNIT) &&
-                            current_unit.map(|x| x == target).unwrap_or(false);
+                                current_unit.map(|x| x == target).unwrap_or(false);
                         if targeting_current_unit {
                             true
                         } else {

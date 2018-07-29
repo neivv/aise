@@ -4,13 +4,13 @@ use std::hash::{Hash, Hasher};
 use std::ptr::null_mut;
 
 use byteorder::{ReadBytesExt, LE};
-use serde::{Serializer, Serialize, Deserializer, Deserialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use bw;
 use order::OrderId;
 
-pub use bw_dat::UnitId;
 pub use bw_dat::unit as id;
+pub use bw_dat::UnitId;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct Unit(pub *mut bw::Unit);
@@ -31,7 +31,10 @@ impl Serialize for Unit {
         use serde::ser::Error;
         match save_mapping().borrow().get(&HashableUnit(*self)) {
             Some(id) => id.serialize(serializer),
-            None => Err(S::Error::custom(format!("Couldn't get id for unit {:?}", self))),
+            None => Err(S::Error::custom(format!(
+                "Couldn't get id for unit {:?}",
+                self
+            ))),
         }
     }
 }
@@ -42,7 +45,10 @@ impl<'de> Deserialize<'de> for Unit {
         let id = u32::deserialize(deserializer)?;
         match load_mapping().borrow().get(&id) {
             Some(&unit) => Ok(unit),
-            None => Err(S::Error::custom(format!("Couldn't get unit for id {:?}", id))),
+            None => Err(S::Error::custom(format!(
+                "Couldn't get unit for id {:?}",
+                id
+            ))),
         }
     }
 }
@@ -107,7 +113,9 @@ ome2_thread_local! {
 }
 
 pub fn init_save_mapping() {
-    *save_mapping().borrow_mut() = save_id_mapping().map(|(x, y)| (HashableUnit(x), y)).collect();
+    *save_mapping().borrow_mut() = save_id_mapping()
+        .map(|(x, y)| (HashableUnit(x), y))
+        .collect();
 }
 
 pub fn clear_save_mapping() {
@@ -182,9 +190,7 @@ impl Unit {
     }
 
     pub fn is_invincible(&self) -> bool {
-        unsafe {
-            (*self.0).flags & 0x04000000 != 0
-        }
+        unsafe { (*self.0).flags & 0x04000000 != 0 }
     }
 
     pub fn orders(&self) -> Orders {
@@ -263,8 +269,7 @@ impl Unit {
     pub fn addon(&self) -> Option<Unit> {
         unsafe {
             if self.id().is_building() {
-                let ptr =
-                    (&(*self.0).unit_specific[..]).read_u32::<LE>().unwrap() as *mut bw::Unit;
+                let ptr = (&(*self.0).unit_specific[..]).read_u32::<LE>().unwrap() as *mut bw::Unit;
                 Unit::from_ptr(ptr)
             } else {
                 None
@@ -347,7 +352,8 @@ pub fn find_units<F: FnMut(&Unit) -> bool>(area: &bw::Rect, mut filter: F) -> Ve
 
 // Also returns the distance
 pub fn find_nearest<F>(point: bw::Point, mut filter: F) -> Option<(Unit, u32)>
-where F: FnMut(&Unit) -> bool,
+where
+    F: FnMut(&Unit) -> bool,
 {
     let mut result = None;
     let mut result_dist = !0;
@@ -364,8 +370,5 @@ where F: FnMut(&Unit) -> bool,
 }
 
 fn rect_overlaps(a: &bw::Rect, b: &bw::Rect) -> bool {
-    a.left < b.right &&
-        a.right > b.left &&
-        a.top < b.bottom &&
-        a.bottom > b.top
+    a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top
 }
