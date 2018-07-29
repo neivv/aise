@@ -7,6 +7,8 @@ use byteorder::{ReadBytesExt, LE};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use bw;
+use bw_dat::tech;
+use game::Game;
 use order::OrderId;
 
 pub use bw_dat::unit as id;
@@ -166,6 +168,30 @@ impl Unit {
 
     pub fn hitpoints(&self) -> i32 {
         unsafe { (*self.0).hitpoints }
+    }
+
+    pub fn spider_mines(&self, game: Game) -> u8 {
+        if game.tech_researched(self.player(), tech::SPIDER_MINES) {
+            unsafe { (*self.0).unit_specific[0] }
+        } else {
+            0
+        }
+    }
+
+    pub fn hangar_count(&self) -> u8 {
+        unsafe { (*self.0).unit_specific[8] }
+    }
+
+    pub fn has_nuke(&self) -> bool {
+        unsafe {
+            let nuke = Unit::from_ptr(
+                (&(*self.0).unit_specific2[..]).read_u32::<LE>().unwrap() as *mut bw::Unit
+            );
+            match nuke {
+                Some(n) => n.is_completed(),
+                None => false,
+            }
+        }
     }
 
     pub fn shields(&self) -> i32 {

@@ -244,6 +244,7 @@ enum IdleOrderNumeric {
     Shields,
     Energy,
     Health,
+    Hangar,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -321,11 +322,13 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
                             1 => IdleOrderNumeric::Shields,
                             2 => IdleOrderNumeric::Health,
                             3 => IdleOrderNumeric::Energy,
+                            4 => IdleOrderNumeric::Hangar,
                             _ => {
                                 bw::print_text("idle_orders: invalid encoding");
                                 return false;
                             }
                         };
+
                         flags.numeric.push((ty, comparision, amount));
                     }
                     4 => {
@@ -833,11 +836,22 @@ impl IdleOrderFlags {
                             return false;
                         }
                         (unit.shields(), id.shields())
-                    },
+                    }
                     IdleOrderNumeric::Health => (
                         unit.hitpoints().saturating_add(unit.shields()),
                         id.hitpoints().saturating_add(id.shields()),
                     ),
+                    IdleOrderNumeric::Hangar => {
+                        use bw_dat::unit::*;
+                        match id {
+                            VULTURE | JIM_RAYNOR_VULTURE => (unit.spider_mines(game) as i32, 3),
+                            NUCLEAR_SILO => (unit.has_nuke() as i32, 1),
+                            // Should this check upgrades for max amount?
+                            CARRIER | GANTRITHOR => (unit.hangar_count() as i32, 8),
+                            REAVER | WARBRINGER => (unit.hangar_count() as i32, 10),
+                            _ => (0, 0),
+                        }
+                    }
                     // TODO max energy
                     IdleOrderNumeric::Energy => (unit.energy() as i32, 250 * 256),
                 };
