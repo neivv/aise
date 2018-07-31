@@ -892,6 +892,30 @@ pub unsafe extern fn random_call(script: *mut bw::AiScript) {
     }
 }
 
+pub unsafe extern fn attack_rand(script: *mut bw::AiScript) {
+    let mut r1 = read_u8(script) as u32;
+    let mut r2 = read_u8(script) as u32;
+    let unit = read_u16(script);
+    if r1 > r2 {
+        mem::swap(&mut r1, &mut r2);
+    }
+    let mut globals = Globals::get();
+    let player = (*script).player as u8;
+    let ai = ai::PlayerAi::get(player);
+    let mut random = globals.rng.synced_rand(r1..r2 + 1);
+    let mut i = 0;
+    loop {
+        if i > 63 || random == 0 {
+            break;
+        }
+        if (*ai.0).attack_force[i] == 0 {
+            (*ai.0).attack_force[i] = unit + 1;
+            random -= 1;
+        }
+        i += 1;
+    }
+}
+
 pub unsafe extern fn bring_jump(script: *mut bw::AiScript) {
     enum Modifier {
         AtLeast,
