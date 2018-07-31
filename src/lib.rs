@@ -166,18 +166,19 @@ pub extern fn Initialize() {
 
 unsafe extern fn frame_hook() {
     let mut globals = Globals::get();
+    let globals = &mut *globals;
     let game = game::Game::get();
-    aiscript::claim_bw_allocated_scripts(&mut globals);
-    aiscript::clean_unsatisfiable_requests(&mut globals);
-    aiscript::attack_timeouts_frame_hook(&mut globals, game);
-    globals.idle_orders.step_frame();
-    aiscript::under_attack_frame_hook(&mut globals);
+    aiscript::claim_bw_allocated_scripts(globals);
+    aiscript::clean_unsatisfiable_requests(globals);
+    aiscript::attack_timeouts_frame_hook(globals, game);
+    globals.idle_orders.step_frame(&mut globals.rng);
+    aiscript::under_attack_frame_hook(globals);
     ai::update_guard_needs(game);
     for unit in unit::active_units() {
         if let Some(ai) = unit.building_ai() {
             let town = (*ai).town;
             if town != null_mut() {
-                if let Some(max_workers) = aiscript::max_workers_for(&mut globals, town) {
+                if let Some(max_workers) = aiscript::max_workers_for(globals, town) {
                     (*town).worker_limit = max_workers;
                 }
             }

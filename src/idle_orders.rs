@@ -1,3 +1,4 @@
+use std::mem;
 use std::ptr::null_mut;
 use std::sync::atomic::{AtomicBool, Ordering, ATOMIC_BOOL_INIT};
 
@@ -7,6 +8,7 @@ use aiscript::{read_u16, read_u32, read_u8, read_unit_match, UnitMatch};
 use bw;
 use game::Game;
 use globals::Globals;
+use rng::Rng;
 use swap_retain::SwapRetain;
 use unit::{self, Unit};
 
@@ -32,7 +34,7 @@ impl IdleOrders {
         self.returning_cloaked.swap_retain(|x| unit != x.unit);
     }
 
-    pub unsafe fn step_frame(&mut self) {
+    pub unsafe fn step_frame(&mut self, rng: &mut Rng) {
         for i in 0..8 {
             let ai = bw::player_ai(i);
             if (*ai).spell_cooldown > 200 {
@@ -136,7 +138,11 @@ impl IdleOrders {
                     });
                     // Round to multiple of decl.rate so that priority is somewhat useful.
                     // Adds [rate, rate * 2) frames of wait.
-                    let rate = decl.rate as u32;
+                    let mut rate = match decl.target_flags.random_rate {
+                        Some(ref s) => rng.synced_rand(s.lower..s.upper + 1),
+                        None => decl.rate as u32,
+                    };
+
                     state.next_frame = current_frame
                         .saturating_sub(1)
                         .checked_div(rate)
@@ -192,6 +198,12 @@ struct OngoingOrder {
 unsafe impl Send for OngoingOrder {}
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct RandomRate {
+    lower: u32,
+    upper: u32,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 struct IdleOrder {
     priority: u8,
     order: OrderId,
@@ -215,6 +227,7 @@ struct IdleOrderFlags {
     targeting_filter: TargetingFlags,
     order: Option<OrderId>,
     numeric: Vec<(IdleOrderNumeric, Comparision, i32)>,
+    random_rate: Option<RandomRate>,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
@@ -367,6 +380,19 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
                             }
                         };
                     }
+                    8 => {
+                        let mut lower = read_u16(script) as u32;
+                        let mut upper = read_u16(script) as u32;
+                        if lower > upper {
+                            mem::swap(&mut lower, &mut upper);
+                        }
+                        if lower > 0 {
+                            flags.random_rate = Some(RandomRate {
+                                lower: lower,
+                                upper: upper,
+                            });
+                        }
+                    }
                     _ => bw::print_text("idle_orders: invalid encoding"),
                 }
             }
@@ -380,6 +406,7 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
             targeting_filter: TargetingFlags::empty(),
             order: None,
             numeric: Vec::new(),
+            random_rate: None,
         };
         self_flags = IdleOrderFlags {
             simple: 0,
@@ -390,6 +417,7 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
             targeting_filter: TargetingFlags::empty(),
             order: None,
             numeric: Vec::new(),
+            random_rate: None,
         };
         let ok = parse_flags(
             script,
