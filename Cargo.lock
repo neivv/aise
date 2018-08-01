@@ -1,6 +1,6 @@
 [[package]]
 name = "aise"
-version = "2.9.2"
+version = "2.9.3"
 dependencies = [
  "backtrace 0.3.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "bincode 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -240,7 +240,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "samase_plugin"
 version = "0.5.0"
-source = "git+https://github.com/neivv/samase_plugin#3fa7f43753a3ca104914e77fb129444337eac710"
+source = "git+https://github.com/neivv/samase_plugin#9177f754fddb048c2a955fdbaab2a5d18ec90880"
 dependencies = [
  "bincode 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "byteorder 1.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -257,7 +257,7 @@ dependencies = [
 [[package]]
 name = "samase_shim"
 version = "0.5.0"
-source = "git+https://github.com/neivv/samase_plugin#3fa7f43753a3ca104914e77fb129444337eac710"
+source = "git+https://github.com/neivv/samase_plugin#9177f754fddb048c2a955fdbaab2a5d18ec90880"
 dependencies = [
  "byteorder 1.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",

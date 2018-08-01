@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::fmt;
 use std::mem;
 use std::ptr::null_mut;
@@ -22,25 +21,13 @@ fn wait_for_resources(globals: &mut Globals, player: u8) -> bool {
     globals.wait_for_resources[player as usize]
 }
 
-ome2_thread_local! {
-    SAVE_TOWNS: RefCell<Vec<Town>> = town_id_mapping(RefCell::new(Vec::new()));
-}
+pub fn init_save_mapping() {}
 
-pub fn init_save_mapping() {
-    *town_id_mapping().borrow_mut() = towns();
-}
+pub fn clear_save_mapping() {}
 
-pub fn clear_save_mapping() {
-    town_id_mapping().borrow_mut().clear();
-}
+pub fn init_load_mapping() {}
 
-pub fn init_load_mapping() {
-    *town_id_mapping().borrow_mut() = towns();
-}
-
-pub fn clear_load_mapping() {
-    town_id_mapping().borrow_mut().clear();
-}
+pub fn clear_load_mapping() {}
 
 pub unsafe extern fn attack_to(script: *mut bw::AiScript) {
     let grouping = read_position(script);
@@ -279,6 +266,16 @@ fn towns() -> Vec<Town> {
             }
         }
     }
+    let mut script = bw::first_ai_script();
+    while !script.is_null() {
+        let town = unsafe { Town::from_ptr((*script).town) };
+        if let Some(town) = town {
+            if !result.iter().any(|&x| x == town) {
+                result.push(town);
+            }
+        }
+        script = unsafe { (*script).next };
+    }
     result
 }
 
@@ -309,17 +306,13 @@ unsafe impl Send for Town {}
 impl Serialize for Town {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::Error;
-        match town_id_mapping()
-            .borrow()
-            .iter()
-            .enumerate()
-            .find(|&(_, x)| x == self)
-        {
-            Some((id, _)) => (id as u32).serialize(serializer),
-            None => Err(S::Error::custom(format!(
-                "Couldn't get id for town {:?}",
-                self
-            ))),
+
+        let array = bw::town_array_start();
+        if array.is_null() {
+            Err(S::Error::custom("Saving is not supported"))
+        } else {
+            let index = (self.0 as usize - array as usize) / mem::size_of::<bw::AiTown>();
+            (index as u32).serialize(serializer)
         }
     }
 }
@@ -327,13 +320,13 @@ impl Serialize for Town {
 impl<'de> Deserialize<'de> for Town {
     fn deserialize<S: Deserializer<'de>>(deserializer: S) -> Result<Self, S::Error> {
         use serde::de::Error;
+
         let id = u32::deserialize(deserializer)?;
-        match town_id_mapping().borrow().get(id as usize) {
-            Some(&town) => Ok(town),
-            None => Err(S::Error::custom(format!(
-                "Couldn't get town for id {:?}",
-                id
-            ))),
+        let array = bw::town_array_start();
+        if array.is_null() {
+            Err(S::Error::custom("Saving is not supported"))
+        } else {
+            unsafe { Ok(Town(bw::town_array_start().offset(id as isize))) }
         }
     }
 }

@@ -40,6 +40,12 @@ pub struct AiTown {
     pub town_units: [u32; 0x64],
 }
 
+#[repr(C)]
+pub struct AiTownList {
+    pub array: *mut AiTown,
+    pub first: *mut AiTown,
+}
+
 #[repr(C, packed)]
 pub struct WorkerAi {
     pub next: *mut WorkerAi,

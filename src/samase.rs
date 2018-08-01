@@ -99,6 +99,11 @@ pub fn guard_ais() -> *mut bw::GuardAiList {
     unsafe { GUARD_AIS.0.map(|x| x()).unwrap_or(null_mut()) }
 }
 
+static mut PLAYER_AI_TOWNS: GlobalFunc<fn() -> *mut bw::AiTownList> = GlobalFunc(None);
+pub fn active_towns() -> *mut bw::AiTownList {
+    unsafe { PLAYER_AI_TOWNS.0.map(|x| x()).unwrap_or(null_mut()) }
+}
+
 static mut UNITS_DAT: GlobalFunc<fn() -> *mut bw_dat::DatTable> = GlobalFunc(None);
 pub fn units_dat() -> *mut bw_dat::DatTable {
     unsafe { UNITS_DAT.get()() }
@@ -198,7 +203,7 @@ unsafe fn aiscript_opcode(
 
 #[no_mangle]
 pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
-    let required_version = 9;
+    let required_version = 10;
     if (*api).version < required_version {
         fatal(&format!(
             "Newer samase is required. (Plugin API version {}, this plugin requires version {})",
@@ -309,6 +314,14 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
     );
     if result != 0 {
         result = ((*api).hook_ingame_command)(6, ::globals::wrap_save, None);
+    }
+    if result != 0 {
+        let ptr = ((*api).player_ai_towns)();
+        if ptr.is_none() {
+            result = 0;
+        } else {
+            PLAYER_AI_TOWNS.0 = Some(mem::transmute(ptr));
+        }
     }
     if result == 0 {
         ((*api).warn_unsupported_feature)(b"Saving\0".as_ptr());

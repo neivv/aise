@@ -1,7 +1,7 @@
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
 
-use std::ptr::null;
+use std::ptr::{null, null_mut};
 use std::sync::atomic::{AtomicBool, ATOMIC_BOOL_INIT, Ordering};
 
 use bw_dat::{UnitId, OrderId, TechId, UpgradeId};
@@ -174,6 +174,15 @@ pub fn distance(a: Point, b: Point) -> u32 {
         greater
     } else {
         greater * 59 / 64 + lesser * 99 / 256
+    }
+}
+
+pub fn town_array_start() -> *mut AiTown {
+    let ptr = samase::active_towns();
+    if ptr.is_null() {
+        null_mut()
+    } else {
+        unsafe { (*ptr).array }
     }
 }
 
