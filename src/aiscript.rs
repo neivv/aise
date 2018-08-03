@@ -553,6 +553,179 @@ unsafe fn read_player_match(script: *mut bw::AiScript, game: Game) -> PlayerMatc
     result
 }
 
+pub unsafe extern fn supply(script: *mut bw::AiScript) {
+    enum Modifier {
+        AtLeast,
+        AtMost,
+        Set,
+        Add,
+        Subtract,
+        Exactly,
+        Randomize,
+    }
+
+    #[derive(Eq, PartialEq, Copy, Clone, Debug)]
+    enum Race {
+        Zerg,
+        Terran,
+        Protoss,
+        Any,
+    }
+
+    #[derive(Eq, PartialEq, Copy, Clone, Debug)]
+    enum SupplyType {
+        Used,
+        Provided,
+        Max,
+        InUnits,
+    }
+
+    #[derive(Eq, PartialEq, Copy, Clone, Debug)]
+    enum Mode {
+        Sum,
+        Max,
+    }
+
+    let mut globals = Globals::get();
+    let game = Game::get();
+    let players = read_player_match(script, game);
+    let modifier = read_u8(script);
+    let call_instead_of_jump = modifier & 0x80 != 0;
+    let amount = (read_u16(script) as u32) * 2;
+    let supply_type = read_u8(script);
+    let units = read_unit_match(script);
+    let race = read_u8(script);
+    let dest = read_u16(script);
+    let modifier = match modifier & 0x7f {
+        // Matching trigger conditions
+        0 => Modifier::AtLeast,
+        1 => Modifier::AtMost,
+        7 => Modifier::Set,
+        8 => Modifier::Add,
+        9 => Modifier::Subtract,
+        10 => Modifier::Exactly,
+        11 => Modifier::Randomize,
+        x => {
+            bw::print_text(format!("Unsupported modifier in supply: {:x}", x));
+            return;
+        }
+    };
+    let supply_type = match supply_type {
+        0 => SupplyType::Provided,
+        1 => SupplyType::Used,
+        2 => SupplyType::Max,
+        3 => SupplyType::InUnits,
+        x => {
+            bw::print_text(format!("Unsupported supply type in supply: {:x}", x));
+            return;
+        }
+    };
+
+    let (race, mode) = match race {
+        0 => (Race::Zerg, Mode::Sum),
+        1 => (Race::Terran, Mode::Sum),
+        2 => (Race::Protoss, Mode::Sum),
+        16 => (Race::Any, Mode::Sum),
+        17 => (Race::Any, Mode::Max),
+        x => {
+            bw::print_text(format!("Unsupported race in supply: {:x}", x));
+            return;
+        }
+    };
+
+    match modifier {
+        Modifier::AtLeast | Modifier::AtMost | Modifier::Exactly => {
+            let mut sum = 0;
+            match supply_type {
+                SupplyType::InUnits => {
+                    for unit in unit::active_units().chain(unit::hidden_units()) {
+                        if players.matches(unit.player()) && units.matches(&unit) {
+                            sum += unit.id().supply_cost();
+                        }
+                    }
+                }
+                _ => {
+                    for race_id in 0..3 {
+                        let race_matches = match race {
+                            Race::Zerg => race_id == 0,
+                            Race::Terran => race_id == 1,
+                            Race::Protoss => race_id == 2,
+                            Race::Any => true,
+                        };
+                        if race_matches {
+                            for player in players.players() {
+                                let supplies = &((*game.0).supplies[race_id]);
+                                let amount = match supply_type {
+                                    SupplyType::Provided => supplies.provided[player as usize],
+                                    SupplyType::Used => supplies.used[player as usize],
+                                    SupplyType::Max => supplies.max[player as usize],
+                                    _ => 0,
+                                };
+                                if mode == Mode::Max {
+                                    sum = sum.max(amount);
+                                } else {
+                                    sum += amount;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            let jump = match modifier {
+                Modifier::AtLeast => sum >= amount,
+                Modifier::AtMost => sum <= amount,
+                Modifier::Exactly => sum == amount,
+                _ => false,
+            };
+            if jump {
+                if call_instead_of_jump == true {
+                    let ret = (*script).pos;
+                    (*script).pos = dest as u32;
+                    (*Script::ptr_from_bw(script)).call_stack.push(ret);
+                } else {
+                    (*script).pos = dest as u32;
+                }
+            }
+        }
+        Modifier::Set | Modifier::Add | Modifier::Subtract | Modifier::Randomize => {
+            let race_i = match race {
+                Race::Zerg => 0,
+                Race::Terran => 1,
+                Race::Protoss => 2,
+                Race::Any => {
+                    bw::print_text("Only specific race supply can be modified.");
+                    return;
+                }
+            };
+            if supply_type == SupplyType::Max {
+                for player in players.players() {
+                    let supply_val = (*game.0).supplies[race_i].max.get_mut(player as usize);
+                    if let Some(supply_val) = supply_val {
+                        match modifier {
+                            Modifier::Set => *supply_val = amount,
+                            Modifier::Add => {
+                                *supply_val = supply_val.saturating_add(amount)
+                            }
+                            Modifier::Subtract => {
+                                *supply_val = supply_val.saturating_sub(amount)
+                            }
+                            Modifier::Randomize => {
+                                if amount != 0 {
+                                    *supply_val = globals.rng.synced_rand(0..amount);
+                                }
+                            }
+                            _ => (),
+                        }
+                    }
+                }
+            } else {
+                bw::print_text("Only Max supply can be modified.");
+                return;
+            }
+        }
+    }
+}
+
 pub unsafe extern fn deaths(script: *mut bw::AiScript) {
     enum Modifier {
         AtLeast,
@@ -601,10 +774,8 @@ pub unsafe extern fn deaths(script: *mut bw::AiScript) {
                                 .and_then(|x| x.get_mut(player as usize))
                                 .cloned()
                                 .unwrap_or(0)
-                        })
-                        .sum::<u32>()
-                })
-                .sum::<u32>();
+                        }).sum::<u32>()
+                }).sum::<u32>();
 
             let jump = match modifier {
                 Modifier::AtLeast => sum >= amount,
@@ -705,10 +876,8 @@ pub unsafe extern fn kills_command(script: *mut bw::AiScript) {
                                 .players()
                                 .map(|p2| globals.kills_table.count_kills(p1, p2, unit_id.0))
                                 .sum::<u32>()
-                        })
-                        .sum::<u32>()
-                })
-                .sum::<u32>();
+                        }).sum::<u32>()
+                }).sum::<u32>();
 
             let jump = match modifier {
                 Modifier::AtLeast => sum >= amount,
@@ -1124,8 +1293,7 @@ pub unsafe fn clean_unsatisfiable_requests(globals: &mut Globals) {
                     );
                 }
                 !can
-            })
-            .count();
+            }).count();
         (*ai_data).request_count -= remove_count as u8;
         for i in 0..(*ai_data).request_count as usize {
             requests[i] = requests[i + remove_count];

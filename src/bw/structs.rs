@@ -162,6 +162,13 @@ pub struct AiSpendingRequest {
     pub val: *mut c_void,
 }
 
+#[repr(C)]
+pub struct Supplies {
+    pub provided: [u32; 0xc],
+    pub used: [u32; 0xc],
+    pub max: [u32; 0xc],
+}
+
 #[repr(C, packed)]
 pub struct Game {
     pub minerals: [u32; 0xc],
@@ -177,15 +184,7 @@ pub struct Game {
     pub player_color_palette: [[u8; 0x8]; 0xc],
     pub player_minimap_color: [u8; 0xc],
     pub dc2cf2: [u8; 0x362],
-    pub zerg_supply: [u32; 0xc],
-    pub zerg_supply_used: [u32; 0xc],
-    pub zerg_supply_max: [u32; 0xc],
-    pub terran_supply: [u32; 0xc],
-    pub terran_supply_used: [u32; 0xc],
-    pub terran_supply_max: [u32; 0xc],
-    pub protoss_supply: [u32; 0xc],
-    pub protoss_supply_used: [u32; 0xc],
-    pub protoss_supply_max: [u32; 0xc],
+    pub supplies: [Supplies; 0x3],
     pub dc3204: [u8; 0x30],
     pub all_units_count: [[u32; 0xc]; 0xe4],
     pub completed_units_count: [[u32; 0xc]; 0xe4],

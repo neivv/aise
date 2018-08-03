@@ -356,6 +356,10 @@ pub fn active_units() -> UnitListIter {
     UnitListIter(bw::first_active_unit())
 }
 
+pub fn hidden_units() -> UnitListIter {
+    UnitListIter(bw::first_hidden_unit())
+}
+
 pub struct UnitListIter(*mut bw::Unit);
 
 impl Iterator for UnitListIter {
