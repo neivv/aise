@@ -703,12 +703,8 @@ pub unsafe extern fn supply(script: *mut bw::AiScript) {
                     if let Some(supply_val) = supply_val {
                         match modifier {
                             Modifier::Set => *supply_val = amount,
-                            Modifier::Add => {
-                                *supply_val = supply_val.saturating_add(amount)
-                            }
-                            Modifier::Subtract => {
-                                *supply_val = supply_val.saturating_sub(amount)
-                            }
+                            Modifier::Add => *supply_val = supply_val.saturating_add(amount),
+                            Modifier::Subtract => *supply_val = supply_val.saturating_sub(amount),
                             Modifier::Randomize => {
                                 if amount != 0 {
                                     *supply_val = globals.rng.synced_rand(0..amount);
@@ -722,6 +718,165 @@ pub unsafe extern fn supply(script: *mut bw::AiScript) {
                 bw::print_text("Only Max supply can be modified.");
                 return;
             }
+        }
+    }
+}
+
+pub unsafe extern fn resources_command(script: *mut bw::AiScript) {
+    enum Modifier {
+        AtLeast,
+        AtMost,
+        Set,
+        Add,
+        Subtract,
+        Exactly,
+        Randomize,
+    }
+
+    #[derive(Copy, Clone)]
+    enum Resource {
+        Ore,
+        Gas,
+    }
+
+    let game = Game::get();
+    let mut globals = Globals::get();
+    let players = read_player_match(script, game);
+    let modifier = read_u8(script);
+    let call_instead_of_jump = modifier & 0x80 != 0;
+    let res = read_u8(script);
+    let amount = read_u32(script);
+    let dest = read_u16(script);
+    let modifier = match modifier & 0x7f {
+        // Matching trigger conditions
+        0 => Modifier::AtLeast,
+        1 => Modifier::AtMost,
+        7 => Modifier::Set,
+        8 => Modifier::Add,
+        9 => Modifier::Subtract,
+        10 => Modifier::Exactly,
+        11 => Modifier::Randomize,
+        x => {
+            bw::print_text(format!("Unsupported modifier in resources: {:x}", x));
+            return;
+        }
+    };
+    let resources_to_check: &[_] = match res {
+        // Matching trigger conditions
+        0 => &[Resource::Ore],
+        1 => &[Resource::Gas],
+        2 => &[Resource::Ore, Resource::Gas],
+        x => {
+            bw::print_text(format!("Unsupported resource type in resources: {:x}", x));
+            return;
+        }
+    };
+
+    match modifier {
+        Modifier::AtLeast | Modifier::AtMost | Modifier::Exactly => {
+            let jump = players.players().any(|player| {
+                resources_to_check.iter().any(|&res| {
+                    let resvalue = match res {
+                        Resource::Ore => game.minerals(player),
+                        Resource::Gas => game.gas(player),
+                    };
+                    match modifier {
+                        Modifier::AtLeast => resvalue >= amount,
+                        Modifier::AtMost => resvalue <= amount,
+                        Modifier::Exactly => resvalue == amount,
+                        _ => false,
+                    }
+                })
+            });
+            if jump {
+                if call_instead_of_jump == true {
+                    let ret = (*script).pos;
+                    (*script).pos = dest as u32;
+                    (*Script::ptr_from_bw(script)).call_stack.push(ret);
+                } else {
+                    (*script).pos = dest as u32;
+                }
+            }
+        }
+        Modifier::Set | Modifier::Add | Modifier::Subtract | Modifier::Randomize => {
+            for player in players.players() {
+                for &res in resources_to_check {
+                    let resources = match res {
+                        Resource::Ore => (*game.0).minerals.get_mut(player as usize),
+                        Resource::Gas => (*game.0).gas.get_mut(player as usize),
+                    };
+                    if let Some(resources) = resources {
+                        match modifier {
+                            Modifier::Set => *resources = amount,
+                            Modifier::Add => *resources = resources.saturating_add(amount),
+                            Modifier::Subtract => *resources = resources.saturating_sub(amount),
+                            Modifier::Randomize => {
+                                if amount != 0 {
+                                    *resources = globals.rng.synced_rand(0..amount);
+                                }
+                            }
+                            _ => (),
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub unsafe extern fn time_command(script: *mut bw::AiScript) {
+    enum Modifier {
+        AtLeast,
+        AtMost,
+        Exactly,
+    }
+    enum TimeType {
+        Frames,
+        Minutes,
+    }
+    let game = Game::get();
+    let modifier = read_u8(script);
+    let call_instead_of_jump = modifier & 0x80 != 0;
+    let amount = read_u32(script);
+    let time_mod = read_u8(script);
+    let dest = read_u16(script);
+    let modifier = match modifier & 0x7f {
+        // Matching trigger conditions
+        0 => Modifier::AtLeast,
+        1 => Modifier::AtMost,
+        10 => Modifier::Exactly,
+        x => {
+            bw::print_text(format!("Unsupported modifier in time: {:x}", x));
+            return;
+        }
+    };
+    let time_mod = match time_mod {
+        // Matching trigger conditions
+        0 => TimeType::Frames,
+        1 => TimeType::Minutes,
+        x => {
+            bw::print_text(format!("Unsupported time modifier in time: {:x}", x));
+            return;
+        }
+    };
+    let amount = match time_mod {
+        TimeType::Minutes => amount * 960,
+        TimeType::Frames => amount,
+    };
+    let time = game.frame_count();
+    let jump = match modifier {
+        Modifier::AtLeast => time >= amount,
+        Modifier::AtMost => time <= amount,
+        Modifier::Exactly => time == amount,
+    };
+
+    if jump {
+        if call_instead_of_jump == true {
+            let ret = (*script).pos;
+            (*script).pos = dest as u32;
+            (*Script::ptr_from_bw(script)).call_stack.push(ret);
+        } else {
+            (*script).pos = dest as u32;
         }
     }
 }
