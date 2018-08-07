@@ -4,7 +4,7 @@ use std::sync::{Mutex, MutexGuard};
 
 use bincode;
 
-use aiscript::{self, AttackTimeoutState, MaxWorkers, Town};
+use aiscript::{self, AttackTimeoutState, MaxWorkers, Town, TownId};
 use block_alloc::BlockAllocSet;
 use bw;
 use idle_orders::IdleOrders;
@@ -48,7 +48,10 @@ pub struct KillCount {
 
 impl KillCount {
     pub fn new(pos: KCPos, value: u32) -> KillCount {
-        KillCount { pos, value }
+        KillCount {
+            pos,
+            value,
+        }
     }
 }
 
@@ -115,6 +118,7 @@ pub struct Globals {
     pub idle_orders: IdleOrders,
     pub kills_table: KillsTable,
     pub max_workers: Vec<MaxWorkers>,
+    pub town_ids: Vec<TownId>,
     pub under_attack_mode: [Option<bool>; 8],
     pub wait_for_resources: [bool; 8],
     // For tracking deleted towns.
@@ -135,6 +139,7 @@ impl Globals {
             idle_orders: Default::default(),
             kills_table: Default::default(),
             max_workers: Vec::new(),
+            town_ids: Vec::new(),
             under_attack_mode: [None; 8],
             wait_for_resources: [true; 8],
             towns: Vec::new(),
@@ -210,7 +215,7 @@ pub unsafe extern fn load(ptr: *const u8, len: usize) -> u32 {
         Ok(o) => o,
         Err(e) => {
             error!("Couldn't load game: {}", e);
-            return 0
+            return 0;
         }
     };
     *GLOBALS.lock().unwrap() = data;

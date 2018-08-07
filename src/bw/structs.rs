@@ -16,6 +16,14 @@ pub struct AiScript {
 
 unsafe impl Send for AiScript {}
 
+#[repr(C)]
+#[derive(Eq, PartialEq, Copy, Clone, Debug)]
+pub struct TownReq {
+    pub flags_and_count: u8,
+    pub priority: u8,
+    pub id: u16,
+}
+
 #[repr(C, packed)]
 pub struct AiTown {
     pub next: *mut AiTown,
@@ -37,7 +45,7 @@ pub struct AiTown {
     pub building_scv: *mut Unit,
     pub mineral: *mut Unit,
     pub gas_buildings: [*mut Unit; 0x3],
-    pub town_units: [u32; 0x64],
+    pub town_units: [TownReq; 0x64],
 }
 
 #[repr(C)]

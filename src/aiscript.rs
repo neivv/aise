@@ -245,6 +245,12 @@ pub unsafe extern fn unstart_campaign(script: *mut bw::AiScript) {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TownId {
+    town: Town,
+    id: u8,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MaxWorkers {
     town: Town,
     count: u8,
@@ -284,6 +290,7 @@ pub fn update_towns(globals: &mut Globals) {
     for old in old {
         if !globals.towns.iter().any(|&x| x == old) {
             globals.max_workers.swap_retain(|x| x.town != old);
+            globals.town_ids.swap_retain(|x| x.town != old);
         }
     }
 }
@@ -327,6 +334,82 @@ impl<'de> Deserialize<'de> for Town {
             Err(S::Error::custom("Saving is not supported"))
         } else {
             unsafe { Ok(Town(bw::town_array_start().offset(id as isize))) }
+        }
+    }
+}
+
+pub unsafe extern fn set_town_id(script: *mut bw::AiScript) {
+    let id = read_u8(script);
+    let town = match Town::from_ptr((*script).town) {
+        Some(s) => s,
+        None => {
+            bw::print_text(format!("Used `set_id {}` without town", id));
+            return;
+        }
+    };
+    let mut globals = Globals::get();
+    globals.town_ids.swap_retain(|x| x.town != town);
+    globals.town_ids.push(TownId {
+        town,
+        id,
+    });
+}
+
+pub unsafe extern fn remove_build(script: *mut bw::AiScript) {
+    let amount = read_u8(script);
+    let mut unit_id = read_unit_match(script);
+    let id = read_u8(script);
+    let mut globals = Globals::get();
+    for town_id in &mut globals.town_ids {
+        if id == town_id.id && u32::from((*town_id.town.0).player) == (*script).player {
+            remove_build_from_town(town_id.town, &mut unit_id, amount);
+            break;
+        }
+    }
+}
+
+unsafe fn remove_build_from_town(town: Town, unit_id: &mut UnitMatch, amount: u8) {
+    let town = town.0;
+    let builds = (*town)
+        .town_units
+        .iter()
+        .cloned()
+        .take_while(|x| x.flags_and_count != 0)
+        .collect::<Vec<_>>();
+
+    let mut write_units = 0;
+    for mut elem in builds {
+        let mut write = true;
+        let flags_and_count = elem.flags_and_count;
+        if flags_and_count != 0 {
+            if flags_and_count & 0x4 != 0 {
+                //tech - implement later
+            } else if flags_and_count & 0x2 != 0 {
+                //upgrade - implement later
+            } else {
+                for unit in unit_id.iter_flatten_groups() {
+                    if unit.0 == elem.id {
+                        let mut count = flags_and_count / 8;
+                        count = count.saturating_sub(amount);
+                        if count != 0 {
+                            elem.flags_and_count = (flags_and_count & 0x7) | (count << 3);
+                        } else {
+                            write = false;
+                        }
+                    }
+                }
+            }
+        }
+        if write {
+            (*town).town_units[write_units] = elem;
+            write_units += 1;
+        }
+    }
+    for i in write_units..64 {
+        if (*town).town_units[i].flags_and_count != 0 {
+            (*town).town_units[i].flags_and_count = 0;
+            (*town).town_units[i].id = 0;
+            (*town).town_units[i].priority = 0;
         }
     }
 }
@@ -2312,6 +2395,83 @@ mod test {
             validate_links(new_first, 4);
             clear_deleted_scripts(&mut scripts, new_first);
             assert_eq!(scripts.len(), 4);
+        }
+    }
+
+    #[test]
+    fn town_buildreq_removal() {
+        // Always removes unit id 8
+        unsafe fn check(mut town: bw::AiTown, remove_count: u8, remaining: &[bw::TownReq]) {
+            let mut units = UnitMatch {
+                units: vec![UnitId(8)],
+            };
+            println!("Remove count is: {:#?}", remove_count);
+
+            remove_build_from_town(Town(&mut town), &mut units, remove_count);
+            for i in 0..remaining.len() {
+                println!(
+                    "Flags and count is: {:#?}",
+                    town.town_units[i].flags_and_count
+                );
+                assert_ne!(town.town_units[i].flags_and_count >> 3, 0);
+            }
+            assert_eq!(town.town_units[remaining.len()].flags_and_count >> 3, 0);
+            for rem in remaining {
+                let ok = (0..remaining.len()).any(|i| town.town_units[i] == *rem);
+                if !ok {
+                    panic!(
+                        "(line {}) Couldn't find {:#x?} after removal, remaining were {:#x?}",
+                        line!(),
+                        rem,
+                        &town.town_units[..remaining.len()],
+                    );
+                }
+            }
+        }
+        unsafe {
+            let req = |amt: u8, id: u16, flag| bw::TownReq {
+                flags_and_count: if flag { 0x1 } else { 0x0 } | (amt << 3),
+                priority: 50,
+                id,
+            };
+            println!("Unsafe test");
+            let mut town: bw::AiTown = mem::zeroed();
+            town.town_units[0] = req(5, 8, false);
+            town.town_units[1] = req(8, 8, false);
+            // Removes one, reduces one
+            let remaining = vec![req(2, 8, false)];
+            check(town, 6, &remaining);
+
+            let mut town: bw::AiTown = mem::zeroed();
+            town.town_units[0] = req(5, 8, false);
+            town.town_units[1] = req(9, 8, false);
+            town.town_units[2] = req(10, 7, true);
+            town.town_units[3] = req(5, 9, false);
+            town.town_units[4] = req(8, 8, true);
+            town.town_units[5] = req(5, 1, false);
+            // Removes all of the unit 8
+            let remaining = vec![town.town_units[2], town.town_units[3], town.town_units[5]];
+            check(town, 11, &remaining);
+
+            // Check that two of the unit 8 reqs stay
+            let mut town: bw::AiTown = mem::zeroed();
+            town.town_units[0] = req(5, 8, false);
+            town.town_units[1] = req(9, 8, false);
+            town.town_units[2] = req(5, 8, false);
+            town.town_units[3] = req(10, 7, true);
+            town.town_units[4] = req(5, 9, false);
+            town.town_units[5] = req(8, 8, true);
+            town.town_units[6] = req(1, 8, true);
+            town.town_units[7] = req(5, 1, false);
+            town.town_units[8] = req(1, 8, true);
+            let remaining = vec![
+                town.town_units[3],
+                town.town_units[4],
+                town.town_units[7],
+                req(3, 8, false),
+                req(2, 8, true),
+            ];
+            check(town, 6, &remaining);
         }
     }
 }

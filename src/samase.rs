@@ -237,6 +237,8 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
     aiscript_opcode(api, 0x84, ::aiscript::supply);
     aiscript_opcode(api, 0x85, ::aiscript::time_command);
     aiscript_opcode(api, 0x86, ::aiscript::resources_command);
+    aiscript_opcode(api, 0x87, ::aiscript::set_town_id);
+    aiscript_opcode(api, 0x88, ::aiscript::remove_build);
 
     GAME.init(((*api).game)().map(|x| mem::transmute(x)), "Game object");
     AI_REGIONS.init(((*api).ai_regions)().map(|x| mem::transmute(x)), "AI regions");
