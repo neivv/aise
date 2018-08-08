@@ -160,6 +160,7 @@ pub mod order {
     pub const INTERCEPTOR_ATTACK: OrderId = OrderId(0x40);
     pub const SCARAB_ATTACK: OrderId = OrderId(0x41);
     pub const SHIELD_BATTERY: OrderId = OrderId(0x44);
+    pub const UPGRADE: OrderId = OrderId(0x4c);
     pub const SPAWNING_LARVA: OrderId = OrderId(0x4e);
     pub const HARVEST_GAS: OrderId = OrderId(0x53);
     pub const RETURN_GAS: OrderId = OrderId(0x54);
@@ -265,6 +266,23 @@ impl UnitId {
     pub fn supply_cost(&self) -> u32 {
         self.get(46)
     }
+
+    pub fn dimensions(&self) -> Rect {
+        unsafe {
+            let dat = &*UNITS_DAT.offset(38);
+            assert!(dat.entries > u32::from(self.0));
+            *(dat.data as *const Rect).offset(self.0 as isize)
+        }
+    }
+}
+
+#[derive(Eq, PartialEq, Copy, Clone)]
+#[repr(C)]
+pub struct Rect {
+    pub left: i16,
+    pub top: i16,
+    pub right: i16,
+    pub bottom: i16,
 }
 
 impl WeaponId {
