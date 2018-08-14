@@ -81,8 +81,14 @@ pub struct BuildingAi {
 
 #[repr(C, packed)]
 pub struct GuardAiList {
-    pub free: *mut c_void,
+    pub array: *mut GuardAiArray,
     pub first: *mut GuardAi,
+}
+
+#[repr(C, packed)]
+pub struct GuardAiArray {
+    pub ais: [GuardAi; 1000],
+    pub first_free: *mut GuardAi,
 }
 
 #[repr(C, packed)]
@@ -428,6 +434,7 @@ mod test {
         assert_eq!(mem::size_of::<BuildingAi>(), 0x2c);
         assert_eq!(mem::size_of::<WorkerAi>(), 0x18);
         assert_eq!(mem::size_of::<GuardAi>(), 0x20);
+        assert_eq!(mem::size_of::<GuardAiArray>(), 0x7d04);
         assert_eq!(mem::size_of::<PlayerAiData>(), 0x4e8);
         assert_eq!(mem::size_of::<Game>(), 0x102f0);
         assert_eq!(mem::size_of::<Unit>(), 0x150);

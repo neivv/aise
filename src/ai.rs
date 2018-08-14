@@ -255,12 +255,101 @@ pub fn ai_region(player: u8, position: bw::Point) -> Option<*mut bw::AiRegion> {
     }
 }
 
-pub unsafe fn update_guard_needs(game: Game) {
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GuardState {
+    // Entry for each guard, deaths != 0 if actually used
+    guards: Vec<Guard>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Default)]
+struct Guard {
+    // 0 = Transparent to BW (Not created by us / pending deletion), 255 = Never delete.
+    // Otherwise how many deaths the guard has left.
+    // TODO: I think BW may delete guards when starting the first town for the player?
+    // This doesn't see that and breaks a bit.
+    deaths: u8,
+    priority: u8,
+}
+
+enum GuardDeathResult {
+    ZeroBwVisible,
+    Nothing,
+    Deleted,
+}
+
+impl GuardState {
+    pub fn new() -> GuardState {
+        // At least as of 1.22 there's still just 1000 guards?
+        GuardState {
+            guards: vec![Default::default(); 1000],
+        }
+    }
+
+    fn guard(&mut self, array: *mut bw::GuardAi, ai: *mut bw::GuardAi) -> &mut Guard {
+        let index = (ai as usize - array as usize) / mem::size_of::<bw::GuardAi>();
+        if index >= self.guards.len() {
+            // Sanity check
+            assert!(index < 0x4000);
+            self.guards.resize(index + 1, Default::default());
+        }
+        &mut self.guards[index]
+    }
+
+    pub fn add(
+        &mut self,
+        array: *mut bw::GuardAi,
+        ai: *mut bw::GuardAi,
+        death_limit: u8,
+        priority: u8,
+    ) {
+        let guard = self.guard(array, ai);
+        *guard = Guard {
+            deaths: death_limit,
+            priority,
+        }
+    }
+
+    fn add_death(&mut self, array: *mut bw::GuardAi, ai: *mut bw::GuardAi) -> GuardDeathResult {
+        let guard = self.guard(array, ai);
+        match guard.deaths {
+            0 => GuardDeathResult::Nothing,
+            255 => GuardDeathResult::ZeroBwVisible,
+            x => {
+                guard.deaths = x - 1;
+                if x == 1 {
+                    GuardDeathResult::Deleted
+                } else {
+                    GuardDeathResult::ZeroBwVisible
+                }
+            }
+        }
+    }
+
+    fn priority(&mut self, array: *mut bw::GuardAi, ai: *mut bw::GuardAi) -> u8 {
+        let guard = self.guard(array, ai);
+        if guard.deaths == 0 || guard.priority == 0 {
+            60
+        } else {
+            guard.priority
+        }
+    }
+}
+
+pub unsafe fn update_guard_needs(game: Game, guards: &mut GuardState) {
+    let guard_array = bw::guard_array();
     let seconds = (*game.0).elapsed_seconds;
     for player in 0..8 {
         let ai = PlayerAi::get(player);
         let mut guard = bw::guard_ais(player);
         while guard != null_mut() {
+            if (*guard).times_died > 0 {
+                let result = guards.add_death(guard_array, guard);
+                match result {
+                    GuardDeathResult::ZeroBwVisible => (*guard).times_died = 0,
+                    GuardDeathResult::Deleted => (*guard).times_died = 3,
+                    GuardDeathResult::Nothing => (),
+                };
+            }
             let previous_update = (*guard).previous_update;
             // Not handling dual birth since pulling military is difficult right now
             let unit_id = UnitId((*guard).unit_id);
@@ -273,8 +362,15 @@ pub unsafe fn update_guard_needs(game: Game) {
                     if let Some(region) = ai_region(player, (*guard).other_home) {
                         if region_can_rebuild_guards(region) {
                             if !is_guard_being_trained(player, guard) {
+                                debug!(
+                                    "Adding guard {:x} {:x} {:x?}",
+                                    player,
+                                    unit_id.0,
+                                    (*guard).home
+                                );
                                 let req = SpendingRequest::Guard(unit_id, guard);
-                                ai.add_spending_request(&req, 60, game);
+                                let priority = guards.priority(guard_array, guard);
+                                ai.add_spending_request(&req, priority, game);
                             }
                         }
                     }

@@ -15,6 +15,7 @@ use game::Game;
 use globals::{self, Globals};
 use order::{self, OrderId};
 use rng::Rng;
+use samase;
 use swap_retain::SwapRetain;
 use unit::{self, Unit};
 
@@ -2053,6 +2054,44 @@ unsafe fn take_bw_allocated_scripts(
         first_new.unwrap_or(first),
         first_new_free.unwrap_or(first_free),
     )
+}
+
+pub unsafe extern fn guard_command(script: *mut bw::AiScript) {
+    let unit = read_u16(script);
+    let target = read_position(script);
+    let quantity = read_u8(script);
+    let death_limit = read_u8(script);
+    let priority = read_u8(script);
+    let mut globals = Globals::get();
+    for _n in 0..quantity {
+        let guards = samase::guard_ais().add((*script).player as usize);
+        let old_first_active = (*guards).first;
+        let new_ai = (*(*guards).array).first_free;
+        (*new_ai) = bw::GuardAi {
+            next: (*new_ai).next,
+            prev: (*new_ai).prev,
+            ai_type: 1,
+            times_died: 0,
+            dca: [0, 0],
+            parent: null_mut(),
+            unit_id: unit,
+            home: target.center,
+            other_home: target.center,
+            padding1a: [0, 0],
+            previous_update: 0,
+        };
+        let new_first_free = (*new_ai).next;
+        (*(*guards).array).first_free = new_first_free;
+        if new_first_free.is_null() {
+            (*new_first_free).prev = null_mut();
+        }
+        (*new_ai).next = old_first_active;
+        if !old_first_active.is_null() {
+            (*old_first_active).prev = new_ai;
+        }
+        (*guards).first = new_ai;
+        globals.guards.add((*(*guards).array).ais.as_mut_ptr(), new_ai, death_limit, priority);
+    }
 }
 
 pub unsafe extern fn create_script(script: *mut bw::AiScript) {

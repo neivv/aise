@@ -4,6 +4,7 @@ use std::sync::{Mutex, MutexGuard};
 
 use bincode;
 
+use ai::GuardState;
 use aiscript::{self, AttackTimeoutState, MaxWorkers, Town, TownId};
 use block_alloc::BlockAllocSet;
 use bw;
@@ -119,6 +120,7 @@ pub struct Globals {
     pub kills_table: KillsTable,
     pub max_workers: Vec<MaxWorkers>,
     pub town_ids: Vec<TownId>,
+    pub guards: GuardState,
     pub under_attack_mode: [Option<bool>; 8],
     pub wait_for_resources: [bool; 8],
     // For tracking deleted towns.
@@ -140,6 +142,7 @@ impl Globals {
             kills_table: Default::default(),
             max_workers: Vec::new(),
             town_ids: Vec::new(),
+            guards: GuardState::new(),
             under_attack_mode: [None; 8],
             wait_for_resources: [true; 8],
             towns: Vec::new(),
