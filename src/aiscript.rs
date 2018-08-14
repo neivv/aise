@@ -828,11 +828,6 @@ pub unsafe extern fn resources_command(script: *mut bw::AiScript) {
 }
 
 pub unsafe extern fn time_command(script: *mut bw::AiScript) {
-    enum Modifier {
-        AtLeast,
-        AtMost,
-        Exactly,
-    }
     enum TimeType {
         Frames,
         Minutes,

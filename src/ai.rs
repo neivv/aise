@@ -1,8 +1,9 @@
+use std::mem;
 use std::ptr::null_mut;
 
 use libc::c_void;
 
-use bw_dat::{order, unit, UnitId, UpgradeId, TechId};
+use bw_dat::{order, unit, TechId, UnitId, UpgradeId};
 
 use bw;
 use game::Game;
@@ -43,18 +44,10 @@ impl PlayerAi {
     }
 
     fn flags(&self) -> u16 {
-        unsafe {
-            (*self.0).flags
-        }
+        unsafe { (*self.0).flags }
     }
 
-    fn add_train_request(
-        &self,
-        unit: UnitId,
-        region: *mut bw::AiRegion,
-        priority: u8,
-        game: Game,
-    ) {
+    fn add_train_request(&self, unit: UnitId, region: *mut bw::AiRegion, priority: u8, game: Game) {
         if self.flags() & 0x200 != 0 {
             return;
         }
@@ -138,15 +131,13 @@ impl PlayerAi {
     ) -> Option<(SpendingRequest, u32)> {
         use self::SpendingRequest::*;
         let (prereq, count) = match *req {
-            Military(unit, _) | Guard(unit, _)  => {
-                match unit {
-                    unit::GUARDIAN | unit::DEVOURER => (unit::MUTALISK, 1u32),
-                    unit::LURKER => (unit::HYDRALISK, 1),
-                    unit::ARCHON => (unit::HIGH_TEMPLAR, 2),
-                    unit::DARK_ARCHON => (unit::DARK_TEMPLAR, 2),
-                    _ => return None
-                }
-            }
+            Military(unit, _) | Guard(unit, _) => match unit {
+                unit::GUARDIAN | unit::DEVOURER => (unit::MUTALISK, 1u32),
+                unit::LURKER => (unit::HYDRALISK, 1),
+                unit::ARCHON => (unit::HIGH_TEMPLAR, 2),
+                unit::DARK_ARCHON => (unit::DARK_TEMPLAR, 2),
+                _ => return None,
+            },
         };
         let existing_count = count_units(self.1, prereq, game);
         let needed = count.saturating_sub(existing_count);
@@ -181,12 +172,12 @@ pub fn count_units(player: u8, unit_id: UnitId, game: Game) -> u32 {
             0
         }
     };
-    let morphing: u32 = active_units().filter(|x| x.player() == player).map(|unit| {
-        match unit.id() {
+    let morphing: u32 = active_units()
+        .filter(|x| x.player() == player)
+        .map(|unit| match unit.id() {
             unit::EGG | unit::COCOON | unit::LURKER_EGG => {
-                let morph_unit = unsafe {
-                    UnitId((*unit.0).build_queue[(*unit.0).current_build_slot as usize])
-                };
+                let morph_unit =
+                    unsafe { UnitId((*unit.0).build_queue[(*unit.0).current_build_slot as usize]) };
                 if morph_unit == unit_id {
                     birth_multiplier
                 } else {
@@ -206,8 +197,7 @@ pub fn count_units(player: u8, unit_id: UnitId, game: Game) -> u32 {
                 }
             }
             _ => 0,
-        }
-    }).sum();
+        }).sum();
     morphing + existing
 }
 
@@ -256,9 +246,7 @@ pub fn ai_region(player: u8, position: bw::Point) -> Option<*mut bw::AiRegion> {
     let regions = bw::ai_regions(player.into());
     if regions != null_mut() {
         if let Some(region) = bw::get_region(position) {
-            unsafe {
-                Some(regions.offset(region as isize))
-            }
+            unsafe { Some(regions.offset(region as isize)) }
         } else {
             None
         }
@@ -301,7 +289,9 @@ fn is_guard_being_trained(player: u8, guard: *mut bw::GuardAi) -> bool {
     for unit in active_units().filter(|x| x.player() == player) {
         if let Some(ai) = unit.building_ai() {
             unsafe {
-                let iter = (*ai).train_queue_types.iter_mut()
+                let iter = (*ai)
+                    .train_queue_types
+                    .iter_mut()
                     .zip((*ai).train_queue_values.iter_mut());
                 for (ty, val) in iter {
                     if *ty == 2 && *val != null_mut() {

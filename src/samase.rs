@@ -43,7 +43,9 @@ impl<T: Copy> GlobalFunc<T> {
 fn fatal(text: &str) -> ! {
     let msg = format!("This StarCraft version is not supported :(\n({})", text);
     windows::message_box("Aiscript extension plugin", &msg);
-    unsafe { TerminateProcess(GetCurrentProcess(), 0x4230daef); }
+    unsafe {
+        TerminateProcess(GetCurrentProcess(), 0x4230daef);
+    }
     unreachable!();
 }
 
@@ -81,7 +83,9 @@ pub fn first_ai_script() -> *mut bw::AiScript {
 
 static mut SET_FIRST_AI_SCRIPT: GlobalFunc<fn(*mut bw::AiScript)> = GlobalFunc(None);
 pub fn set_first_ai_script(value: *mut bw::AiScript) {
-    unsafe { SET_FIRST_AI_SCRIPT.0.map(|x| x(value)); }
+    unsafe {
+        SET_FIRST_AI_SCRIPT.0.map(|x| x(value));
+    }
 }
 
 static mut FIRST_FREE_AI_SCRIPT: GlobalFunc<fn() -> *mut bw::AiScript> = GlobalFunc(None);
@@ -91,7 +95,9 @@ pub fn first_free_ai_script() -> *mut bw::AiScript {
 
 static mut SET_FIRST_FREE_AI_SCRIPT: GlobalFunc<fn(*mut bw::AiScript)> = GlobalFunc(None);
 pub fn set_first_free_ai_script(value: *mut bw::AiScript) {
-    unsafe { SET_FIRST_FREE_AI_SCRIPT.0.map(|x| x(value)); }
+    unsafe {
+        SET_FIRST_FREE_AI_SCRIPT.0.map(|x| x(value));
+    }
 }
 
 static mut GUARD_AIS: GlobalFunc<fn() -> *mut bw::GuardAiList> = GlobalFunc(None);
@@ -140,7 +146,7 @@ pub fn change_ai_region_state(region: *mut bw::AiRegion, state: u32) {
 }
 
 static mut ISSUE_ORDER: GlobalFunc<
-    unsafe extern fn(*mut bw::Unit, u32, u32, u32, *mut bw::Unit, u32)
+    unsafe extern fn(*mut bw::Unit, u32, u32, u32, *mut bw::Unit, u32),
 > = GlobalFunc(None);
 
 pub fn issue_order(
@@ -207,7 +213,8 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
     if (*api).version < required_version {
         fatal(&format!(
             "Newer samase is required. (Plugin API version {}, this plugin requires version {})",
-            (*api).version, required_version,
+            (*api).version,
+            required_version,
         ));
     }
 
@@ -241,12 +248,18 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
     aiscript_opcode(api, 0x88, ::aiscript::remove_build);
 
     GAME.init(((*api).game)().map(|x| mem::transmute(x)), "Game object");
-    AI_REGIONS.init(((*api).ai_regions)().map(|x| mem::transmute(x)), "AI regions");
+    AI_REGIONS.init(
+        ((*api).ai_regions)().map(|x| mem::transmute(x)),
+        "AI regions",
+    );
     PLAYER_AI.init(((*api).player_ai)().map(|x| mem::transmute(x)), "Player AI");
-    GET_REGION.init(((*api).get_region)().map(|x| mem::transmute(x)), "get_region");
+    GET_REGION.init(
+        ((*api).get_region)().map(|x| mem::transmute(x)),
+        "get_region",
+    );
     DAT_REQUIREMENTS.init(
         ((*api).dat_requirements)().map(|x| mem::transmute(x)),
-        "dat_requirements"
+        "dat_requirements",
     );
     FIRST_ACTIVE_UNIT.init(
         ((*api).first_active_unit)().map(|x| mem::transmute(x)),
