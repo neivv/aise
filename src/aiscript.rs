@@ -2082,7 +2082,7 @@ pub unsafe extern fn guard_command(script: *mut bw::AiScript) {
         };
         let new_first_free = (*new_ai).next;
         (*(*guards).array).first_free = new_first_free;
-        if new_first_free.is_null() {
+        if !new_first_free.is_null() {
             (*new_first_free).prev = null_mut();
         }
         (*new_ai).next = old_first_active;
