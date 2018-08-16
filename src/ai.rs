@@ -48,9 +48,8 @@ impl PlayerAi {
     }
 
     fn add_train_request(&self, unit: UnitId, region: *mut bw::AiRegion, priority: u8, game: Game) {
-        if self.flags() & 0x200 != 0 {
-            return;
-        }
+        // Note: Idle training would check for flag 0x200 being nonzero before adding,
+        // but it is currently handled by BW.
         unsafe {
             (*self.0).flags |= 0x40;
         }
