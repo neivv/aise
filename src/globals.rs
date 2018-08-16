@@ -4,6 +4,8 @@ use std::sync::{Mutex, MutexGuard};
 
 use bincode;
 
+use bw_dat::UnitId;
+
 use ai::GuardState;
 use aiscript::{self, AttackTimeoutState, MaxWorkers, Town, TownId};
 use block_alloc::BlockAllocSet;
@@ -52,6 +54,46 @@ impl KillCount {
         KillCount {
             pos,
             value,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+pub struct BaseLayout {
+    pub pos: bw::Rect,
+    pub player: u8,
+    pub unit_id: UnitId,
+    pub amount: u8,
+    pub town_id: u8,
+}
+
+impl BaseLayout {
+    pub fn new(pos: bw::Rect, player: u8, unit_id: UnitId, amount: u8, town_id: u8) -> BaseLayout {
+        BaseLayout {
+            pos,
+            player,
+            unit_id,
+            amount,
+            town_id,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct BaseLayouts {
+    pub layouts: Vec<BaseLayout>,
+}
+
+impl BaseLayouts {
+    pub fn try_add(&mut self, value: BaseLayout) {
+        if !self.layouts.iter().any(|i| i == &value) {
+            self.layouts.push(value)
+        }
+    }
+
+    pub fn try_remove(&mut self, value: &BaseLayout) {
+        if let Some(pos) = self.layouts.iter().position(|i| i == value) {
+            self.layouts.swap_remove(pos);
         }
     }
 }
@@ -118,6 +160,7 @@ pub struct Globals {
     pub attack_timeouts: [AttackTimeoutState; 8],
     pub idle_orders: IdleOrders,
     pub kills_table: KillsTable,
+    pub base_layouts: BaseLayouts,
     pub max_workers: Vec<MaxWorkers>,
     pub town_ids: Vec<TownId>,
     pub guards: GuardState,
@@ -140,6 +183,7 @@ impl Globals {
             attack_timeouts: [AttackTimeoutState::new(); 8],
             idle_orders: Default::default(),
             kills_table: Default::default(),
+            base_layouts: Default::default(),
             max_workers: Vec::new(),
             town_ids: Vec::new(),
             guards: GuardState::new(),

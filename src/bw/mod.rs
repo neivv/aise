@@ -198,6 +198,12 @@ pub fn first_active_ai_town() -> *mut AiTown {
 
 whack_hooks!(stdcall, 0x00400000,
     0x00488AF0 => increment_death_scores(@edi *mut Unit, @edx u8);
+    0x004465C0 => choose_placement_position(u32, u32, *mut Point, u32, @ecx *mut Unit);
+);
+
+whack_funcs!(stdcall, init_funcs, 0x00400000,
+    0x00473FB0 =>
+        update_building_placement_state(*mut Unit, u8, u32, u32, u16, u8, u8, u8, u8) -> u32;
 );
 
 whack_vars!(init_vars, 0x00400000,

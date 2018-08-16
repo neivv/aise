@@ -157,9 +157,10 @@ pub extern fn Initialize() {
 
         let mut active_patcher = ::PATCHER.lock().unwrap();
         let mut exe = active_patcher.patch_exe(0x00400000);
-
+        bw::init_funcs(&mut exe);
         bw::init_vars(&mut exe);
         exe.hook_opt(bw::increment_death_scores, aiscript::increment_deaths);
+        exe.hook_opt(bw::choose_placement_position, aiscript::choose_building_placement);
 
         bw::IS_1161.store(true, std::sync::atomic::Ordering::Release);
     }

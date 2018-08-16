@@ -12,7 +12,7 @@ use ai;
 use block_alloc::BlockAllocSet;
 use bw;
 use game::Game;
-use globals::{self, Globals};
+use globals::{self, BaseLayout, Globals};
 use order::{self, OrderId};
 use rng::Rng;
 use samase;
@@ -2056,6 +2056,106 @@ unsafe fn take_bw_allocated_scripts(
     )
 }
 
+pub unsafe fn choose_building_placement(
+    unit_id: u32,
+    position_xy: u32,
+    out_pos: *mut bw::Point,
+    area_tiles: u32,
+    builder: *mut bw::Unit,
+    orig: &Fn(u32, u32, *mut bw::Point, u32, *mut bw::Unit),
+) {
+    orig(unit_id, position_xy, out_pos, area_tiles, builder);
+
+    if out_pos.is_null() {
+        return;
+    }
+    let builder = match Unit::from_ptr(builder) {
+        Some(s) => s,
+        None => return,
+    };
+    let ai = match builder.worker_ai() {
+        Some(s) => s,
+        None => return,
+    };
+    let town = (*ai).town;
+    let unit_id = UnitId(unit_id as u16);
+    let player = builder.player();
+
+    let globals = Globals::get();
+    if let Some(town_id) = globals.town_ids.iter().find(|x| x.town.0 == town) {
+        let layouts = globals
+            .base_layouts
+            .layouts
+            .iter()
+            .filter(|x| x.unit_id == unit_id && x.town_id == town_id.id && x.player == player)
+            .filter(|layout| {
+                let units = unit::find_units(&layout.pos, |u| {
+                    u.player() == layout.player && u.id() == layout.unit_id
+                });
+                units.len() < usize::from(layout.amount)
+            });
+        for layout in layouts {
+            //uses tiles instead of pixels
+            let rect_x = layout.pos.right / 32;
+            let rect_y = layout.pos.bottom / 32;
+            let pos_x = layout.pos.left / 32;
+            let pos_y = layout.pos.top / 32;
+            for i in pos_x..rect_x + 1 {
+                for j in pos_y..rect_y + 1 {
+                    let fail = bw::update_building_placement_state(
+                        builder.0, player, i as u32, j as u32, unit_id.0, 0, 0, 1, 0,
+                    );
+                    if fail == 0 {
+                        debug!(
+                            "Placing {:x} to {:x}, {:x} for player {:x}",
+                            unit_id.0, i, j, player
+                        );
+                        (*out_pos).x = i * 32;
+                        (*out_pos).y = j * 32;
+                        return;
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub unsafe extern fn base_layout(script: *mut bw::AiScript) {
+    // base_layout(unit, modifier, src_area, amount, town_id)
+    #[derive(Eq, PartialEq, Copy, Clone, Debug)]
+    enum LayoutModifier {
+        Set,
+        Remove,
+    }
+
+    let unit = UnitId(read_u16(script));
+    let layout_modifier = read_u8(script);
+    let mut src = read_position(script);
+    let radius = read_u16(script);
+    src.extend_area(radius as i16);
+    let amount = read_u8(script);
+    let town_id = read_u8(script);
+
+    let layout_modifier = match layout_modifier {
+        0 => LayoutModifier::Set,
+        1 => LayoutModifier::Remove,
+        x => {
+            bw::print_text(format!(
+                "Unsupported layout modifier in base_layout: {:x}",
+                x
+            ));
+            return;
+        }
+    };
+
+    let mut globals = Globals::get();
+    let layout = BaseLayout::new(src.area, (*script).player as u8, unit, amount, town_id);
+    match layout_modifier {
+        LayoutModifier::Set => globals.base_layouts.try_add(layout),
+        LayoutModifier::Remove => globals.base_layouts.try_remove(&layout),
+    }
+}
+
 pub unsafe extern fn guard_command(script: *mut bw::AiScript) {
     let unit = read_u16(script);
     let target = read_position(script);
@@ -2090,7 +2190,12 @@ pub unsafe extern fn guard_command(script: *mut bw::AiScript) {
             (*old_first_active).prev = new_ai;
         }
         (*guards).first = new_ai;
-        globals.guards.add((*(*guards).array).ais.as_mut_ptr(), new_ai, death_limit, priority);
+        globals.guards.add(
+            (*(*guards).array).ais.as_mut_ptr(),
+            new_ai,
+            death_limit,
+            priority,
+        );
     }
 }
 
