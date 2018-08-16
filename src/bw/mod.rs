@@ -192,6 +192,10 @@ pub fn town_array_start() -> *mut AiTown {
     }
 }
 
+pub fn first_active_ai_town() -> *mut AiTown {
+    unsafe { (*samase::active_towns()).first }
+}
+
 whack_hooks!(stdcall, 0x00400000,
     0x00488AF0 => increment_death_scores(@edi *mut Unit, @edx u8);
 );

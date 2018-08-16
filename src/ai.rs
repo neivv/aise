@@ -7,6 +7,7 @@ use bw_dat::{order, unit, TechId, UnitId, UpgradeId};
 
 use bw;
 use game::Game;
+use list::ListIter;
 use unit::{active_units, Unit};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -406,5 +407,43 @@ unsafe fn region_can_rebuild_guards(region: *mut bw::AiRegion) -> bool {
     (*region).state != 3 &&
         (*region).air_target == null_mut() &&
         (*region).ground_target == null_mut() &&
+        (*region).flags & 0x20 == 0
+}
+
+pub unsafe fn continue_incomplete_buildings() {
+    for town in ListIter(bw::first_active_ai_town()) {
+        let regions = bw::ai_regions(u32::from((*town).player));
+        let free_scvs = ListIter((*town).workers)
+            .map(|x| Unit((*x).parent))
+            .filter(|x| x.id() == unit::SCV && x.order() == order::COMPUTER_AI);
+        let incomplete_buildings = ListIter((*town).buildings)
+            .map(|x| Unit((*x).parent))
+            .filter(|&x| {
+                !x.is_completed() &&
+                    (*x.0).related.is_null() &&
+                    x.id().group_flags() & 0x2 != 0 &&
+                    is_building_safe(x, regions)
+            });
+        for (scv, building) in free_scvs.zip(incomplete_buildings) {
+            bw::issue_order(
+                scv.0,
+                order::CONSTRUCTING_BUILDING,
+                building.position(),
+                building.0,
+                unit::NONE,
+            );
+            (*building.0).related = scv.0;
+        }
+    }
+}
+
+unsafe fn is_building_safe(building: Unit, regions: *mut bw::AiRegion) -> bool {
+    let region = match bw::get_region(building.position()) {
+        Some(s) => regions.offset(s as isize),
+        None => return true,
+    };
+    (*region).state != 3 &&
+        (*region).ground_target.is_null() &&
+        (*region).air_target.is_null() &&
         (*region).flags & 0x20 == 0
 }

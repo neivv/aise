@@ -76,6 +76,7 @@ pub mod unit {
     use super::UnitId;
     pub const GHOST: UnitId = UnitId(0x1);
     pub const VULTURE: UnitId = UnitId(0x2);
+    pub const SCV: UnitId = UnitId(0x7);
     pub const SARAH_KERRIGAN: UnitId = UnitId(0x10);
     pub const JIM_RAYNOR_VULTURE: UnitId = UnitId(0x13);
     pub const EGG: UnitId = UnitId(0x24);
@@ -141,6 +142,7 @@ pub mod order {
     pub const DRONE_BUILD: OrderId = OrderId(0x19);
     pub const SCV_BUILD: OrderId = OrderId(0x1e);
     pub const PROBE_BUILD: OrderId = OrderId(0x1f);
+    pub const CONSTRUCTING_BUILDING: OrderId = OrderId(0x21);
     pub const PLACE_ADDON: OrderId = OrderId(0x24);
     pub const BUILD_ADDON: OrderId = OrderId(0x25);
     pub const TRAIN: OrderId = OrderId(0x26);

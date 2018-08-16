@@ -34,6 +34,7 @@ mod datreq;
 mod game;
 mod globals;
 mod idle_orders;
+mod list;
 mod rng;
 mod unit;
 mod order;
@@ -174,6 +175,7 @@ unsafe extern fn frame_hook() {
     globals.idle_orders.step_frame(&mut globals.rng);
     aiscript::under_attack_frame_hook(globals);
     ai::update_guard_needs(game, &mut globals.guards);
+    ai::continue_incomplete_buildings();
     for unit in unit::active_units() {
         if let Some(ai) = unit.building_ai() {
             let town = (*ai).town;
