@@ -65,16 +65,25 @@ pub struct BaseLayout {
     pub unit_id: UnitId,
     pub amount: u8,
     pub town_id: u8,
+    pub town: Town,
 }
 
 impl BaseLayout {
-    pub fn new(pos: bw::Rect, player: u8, unit_id: UnitId, amount: u8, town_id: u8) -> BaseLayout {
+    pub fn new(
+        pos: bw::Rect,
+        player: u8,
+        unit_id: UnitId,
+        amount: u8,
+        town_id: u8,
+        town: Town,
+    ) -> BaseLayout {
         BaseLayout {
             pos,
             player,
             unit_id,
             amount,
             town_id,
+            town,
         }
     }
 }

@@ -342,6 +342,10 @@ impl<'de> Deserialize<'de> for Town {
 
 pub unsafe extern fn set_town_id(script: *mut bw::AiScript) {
     let id = read_u8(script);
+    if id == 255 {
+        bw::print_text(format!("Unsupported id {} in set_id", id));
+        return;
+    }
     let town = match Town::from_ptr((*script).town) {
         Some(s) => s,
         None => {
@@ -361,12 +365,17 @@ pub unsafe extern fn remove_build(script: *mut bw::AiScript) {
     let amount = read_u8(script);
     let mut unit_id = read_unit_match(script);
     let id = read_u8(script);
-    let mut globals = Globals::get();
-    for town_id in &mut globals.town_ids {
-        if id == town_id.id && u32::from((*town_id.town.0).player) == (*script).player {
-            remove_build_from_town(town_id.town, &mut unit_id, amount);
-            break;
-        }
+    let globals = Globals::get();
+    let town = match id {
+        255 => Town::from_ptr((*script).town),
+        _ => globals
+            .town_ids
+            .iter()
+            .find(|x| id == x.id && u32::from((*x.town.0).player) == (*script).player)
+            .map(|x| x.town),
+    };
+    if let Some(town) = town {
+        remove_build_from_town(town, &mut unit_id, amount);
     }
 }
 
@@ -2094,8 +2103,11 @@ pub unsafe fn choose_building_placement(
             .base_layouts
             .layouts
             .iter()
-            .filter(|x| x.unit_id == unit_id && x.town_id == town_id.id && x.player == player)
-            .filter(|layout| {
+            .filter(|x| {
+                x.unit_id == unit_id &&
+                    (x.town_id == town_id.id || (x.town_id == 255 && x.town.0 == town)) &&
+                    x.player == player
+            }).filter(|layout| {
                 let units = unit::find_units(&layout.pos, |u| {
                     u.player() == layout.player && u.id() == layout.unit_id
                 });
@@ -2156,10 +2168,20 @@ pub unsafe extern fn base_layout(script: *mut bw::AiScript) {
     };
 
     let mut globals = Globals::get();
-    let layout = BaseLayout::new(src.area, (*script).player as u8, unit, amount, town_id);
-    match layout_modifier {
-        LayoutModifier::Set => globals.base_layouts.try_add(layout),
-        LayoutModifier::Remove => globals.base_layouts.try_remove(&layout),
+    let town = Town::from_ptr((*script).town);
+    if let Some(town) = town {
+        let layout = BaseLayout::new(
+            src.area,
+            (*script).player as u8,
+            unit,
+            amount,
+            town_id,
+            town,
+        );
+        match layout_modifier {
+            LayoutModifier::Set => globals.base_layouts.try_add(layout),
+            LayoutModifier::Remove => globals.base_layouts.try_remove(&layout),
+        }
     }
 }
 
