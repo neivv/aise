@@ -136,7 +136,7 @@ fn init() {
             write!(msg, "Backtrace:\n{}", backtrace()).unwrap();
         }
         error!("{}", msg);
-        windows::message_box("Ais_attackto panic", &msg);
+        windows::message_box("Aise panic", &msg);
         unsafe { TerminateProcess(GetCurrentProcess(), 0x4230daef); }
     }));
 }

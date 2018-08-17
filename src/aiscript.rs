@@ -1008,6 +1008,12 @@ pub unsafe fn increment_deaths(
     orig(target, attacker_p_id);
 }
 
+pub unsafe extern fn print_command(script: *mut bw::AiScript) {
+    let msg = read_string(script);
+    let s = String::from_utf8_lossy(&msg);
+    bw::print_text(s);
+}
+
 pub unsafe extern fn player_jump(script: *mut bw::AiScript) {
     let player = read_string(script);
     let dest = read_u16(script);
