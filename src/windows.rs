@@ -3,8 +3,8 @@
 
 //! Provides safe winapi wrappers with nicer string handling
 
-use std::ffi::{CString, OsString, OsStr};
-use std::os::windows::ffi::{OsStringExt, OsStrExt};
+use std::ffi::{CString, OsStr, OsString};
+use std::os::windows::ffi::{OsStrExt, OsStringExt};
 use std::ptr::null_mut;
 
 use libc::c_void;
@@ -13,7 +13,7 @@ use winapi::shared::minwindef::{FARPROC, HMODULE};
 use winapi::um::libloaderapi::{
     self, FreeLibrary, GetModuleFileNameW, GetModuleHandleExW, LoadLibraryW,
 };
-use winapi::um::winuser::{MessageBoxW};
+use winapi::um::winuser::MessageBoxW;
 
 pub fn GetProcAddress(handle: HMODULE, func: &str) -> FARPROC {
     unsafe {
@@ -44,7 +44,9 @@ pub fn module_from_address(address: *mut c_void) -> Option<(OsString, HMODULE)> 
         if ok == 0 {
             return None;
         }
-        defer!({ FreeLibrary(out); });
+        defer!({
+            FreeLibrary(out);
+        });
         module_name(out).map(|name| (name, out))
     }
 }
@@ -78,6 +80,11 @@ pub fn module_name(handle: HMODULE) -> Option<OsString> {
 
 pub fn message_box(caption: &str, msg: &str) {
     unsafe {
-        MessageBoxW(null_mut(), winapi_str(msg).as_ptr(), winapi_str(caption).as_ptr(), 0);
+        MessageBoxW(
+            null_mut(),
+            winapi_str(msg).as_ptr(),
+            winapi_str(caption).as_ptr(),
+            0,
+        );
     }
 }

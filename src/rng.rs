@@ -1,9 +1,9 @@
 use std::ops::Range;
 
 use byteorder::{WriteBytesExt, LE};
-use rand::SeedableRng;
 use rand::distributions::{Distribution, Uniform};
 use rand::prng::XorShiftRng;
+use rand::SeedableRng;
 
 use bw;
 

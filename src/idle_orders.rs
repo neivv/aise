@@ -147,7 +147,8 @@ impl IdleOrders {
                         .saturating_sub(1)
                         .checked_div(rate)
                         .unwrap_or(current_frame)
-                        .saturating_add(2) * rate;
+                        .saturating_add(2)
+                        .saturating_mul(rate);
                 } else {
                     state.next_frame = current_frame + 24 * 10;
                 }
@@ -610,8 +611,7 @@ impl IdleOrder {
                 .map(|x| {
                     let targeting_enemy = !ctx.game.allied(player as u8, x.player());
                     targeting_enemy && unit.order().is_attack_order()
-                })
-                .unwrap_or(false);
+                }).unwrap_or(false);
             if !ok {
                 return false;
             }
@@ -620,8 +620,7 @@ impl IdleOrder {
             .iter()
             .filter(|x| {
                 x.target == Some(unit) && x.order == self.order && x.user.player() == player as u8
-            })
-            .count();
+            }).count();
         already_targeted_count < self.limit as usize
     }
 }
@@ -718,8 +717,7 @@ fn find_user_target_pair(
             .filter_map(|x| x.target().map(|target| (x, target)))
             .filter(|&(_, target)| {
                 decl.target_valid(target, ongoing, CheckTargetingFlags::Yes, ctx)
-            })
-            .filter(|(u, _)| decl.unit_valid(u, ongoing, CheckTargetingFlags::No, ctx.game))
+            }).filter(|(u, _)| decl.unit_valid(u, ongoing, CheckTargetingFlags::No, ctx.game))
             .map(|(user, tgt)| (user, tgt, bw::distance(user.position(), tgt.position())))
             .min_by_key(|x| x.2)
             .filter(|x| x.2 < decl.radius as u32)

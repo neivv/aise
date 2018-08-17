@@ -2,9 +2,9 @@
 #![allow(non_camel_case_types)]
 
 use std::ptr::{null, null_mut};
-use std::sync::atomic::{AtomicBool, ATOMIC_BOOL_INIT, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering, ATOMIC_BOOL_INIT};
 
-use bw_dat::{UnitId, OrderId, TechId, UpgradeId};
+use bw_dat::{OrderId, TechId, UnitId, UpgradeId};
 
 use samase;
 
@@ -27,7 +27,10 @@ pub fn ai_regions(player: u32) -> *mut AiRegion {
 }
 
 pub fn get_region(pos: Point) -> Option<u16> {
-    let Point { x, y } = pos;
+    let Point {
+        x,
+        y,
+    } = pos;
     unsafe {
         let game = game();
         let bounds = ((*game).map_width_tiles * 32, (*game).map_height_tiles * 32);
@@ -100,9 +103,7 @@ pub fn guard_ais(player: u8) -> *mut GuardAi {
 }
 
 pub fn guard_array() -> *mut GuardAi {
-    unsafe {
-        (*(*samase::guard_ais()).array).ais.as_mut_ptr()
-    }
+    unsafe { (*(*samase::guard_ais()).array).ais.as_mut_ptr() }
 }
 
 pub fn change_ai_region_state(region: *mut AiRegion, state: u32) {
@@ -114,8 +115,7 @@ lazy_static! {
         samase::read_file("scripts\\aiscript.bin").unwrap() as usize;
     static ref SAMASE_BWSCRIPT_BIN: usize =
         samase::read_file("scripts\\bwscript.bin").unwrap() as usize;
-    static ref SAMASE_UNITS_DAT: usize =
-        samase::read_file("arr\\units.dat").unwrap() as usize;
+    static ref SAMASE_UNITS_DAT: usize = samase::read_file("arr\\units.dat").unwrap() as usize;
 }
 
 pub fn collision_rect(unit: UnitId) -> Rect {
@@ -171,11 +171,7 @@ pub fn tech_research_dat_requirements(tech: TechId) -> Option<*const u16> {
 pub fn distance(a: Point, b: Point) -> u32 {
     let x = (a.x as i32).wrapping_sub(b.x as i32).abs() as u32;
     let y = (a.y as i32).wrapping_sub(b.y as i32).abs() as u32;
-    let (greater, lesser) = if x > y {
-        (x, y)
-    } else {
-        (y, x)
-    };
+    let (greater, lesser) = (x.max(y), x.min(y));
     if greater / 4 > lesser {
         greater
     } else {

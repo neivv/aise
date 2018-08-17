@@ -15,7 +15,7 @@ struct Vtable {
     ReadyForPatch: unsafe extern "stdcall" fn(*mut MpqdraftPlugin) -> u32,
     GetModules: unsafe extern "stdcall" fn(*mut MpqdraftPlugin, *mut Module, *mut u32) -> u32,
     InitializePlugin: unsafe extern "stdcall" fn(*mut MpqdraftPlugin, *mut c_void) -> u32,
-    TerminatePlugin: unsafe extern "stdcall" fn(*mut MpqdraftPlugin) -> u32
+    TerminatePlugin: unsafe extern "stdcall" fn(*mut MpqdraftPlugin) -> u32,
 }
 
 #[repr(C, packed)]
@@ -44,15 +44,30 @@ unsafe extern "stdcall" fn identify(_plugin: *mut MpqdraftPlugin, plugin_id: *mu
     1
 }
 
-unsafe extern "stdcall" fn get_plugin_name(_plugin: *mut MpqdraftPlugin, out: *mut u8, out_size: u32) -> u32 {
+unsafe extern "stdcall" fn get_plugin_name(
+    _plugin: *mut MpqdraftPlugin,
+    out: *mut u8,
+    out_size: u32,
+) -> u32 {
     use std::io::Write;
 
     let mut out = slice::from_raw_parts_mut(out, out_size as usize);
-    let result = write!(out, "Aiscript extension plugin {}\0", env!("CARGO_PKG_VERSION"));
-    if result.is_err() { 0 } else { 1 }
+    let result = write!(
+        out,
+        "Aiscript extension plugin {}\0",
+        env!("CARGO_PKG_VERSION")
+    );
+    if result.is_err() {
+        0
+    } else {
+        1
+    }
 }
 
-unsafe extern "stdcall" fn can_patch_executable(_plugin: *mut MpqdraftPlugin, _exe_name: *const u8) -> u32 {
+unsafe extern "stdcall" fn can_patch_executable(
+    _plugin: *mut MpqdraftPlugin,
+    _exe_name: *const u8,
+) -> u32 {
     // TODO: Could check for 1161, but using a checksum may be too strict?
     1
 }
@@ -68,13 +83,16 @@ unsafe extern "stdcall" fn ready_for_patch(_plugin: *mut MpqdraftPlugin) -> u32 
 unsafe extern "stdcall" fn get_modules(
     _plugin: *mut MpqdraftPlugin,
     _modules: *mut Module,
-    count: *mut u32
+    count: *mut u32,
 ) -> u32 {
     *count = 0;
     1
 }
 
-unsafe extern "stdcall" fn initialize_plugin(_plugin: *mut MpqdraftPlugin, _mpqdraft: *mut c_void) -> u32 {
+unsafe extern "stdcall" fn initialize_plugin(
+    _plugin: *mut MpqdraftPlugin,
+    _mpqdraft: *mut c_void,
+) -> u32 {
     ::Initialize();
     1
 }

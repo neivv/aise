@@ -1,6 +1,5 @@
-
 macro_rules! decl_req {
-    ($name:ident, $($variant:ident = $val:expr,)*) => {
+    ($name:ident; $($variant:ident = $val:expr,)*) => {
         pub enum $name {
             $($variant,)*
             End,
@@ -24,7 +23,9 @@ macro_rules! decl_req {
     }
 }
 
-decl_req!(UnitReq,
+decl_req! {
+    UnitReq;
+
     CurrentUnitIs = 0xff02,
     HasUnit = 0xff03, // Even incomplete
     HasAddonAttached = 0xff04,
@@ -43,9 +44,11 @@ decl_req!(UnitReq,
     BwOnly = 0xff24,
     TechOnly = 0xff25,
     BurrowedOnly = 0xff26,
-);
+}
 
-decl_req!(NonUnitReq,
+decl_req! {
+    NonUnitReq;
+
     CurrentUnitIs = 0xff02,
     HasUnit = 0xff03, // Even incomplete
     IsNotLifted = 0xff05,
@@ -74,4 +77,4 @@ decl_req!(NonUnitReq,
     Blank = 0xff23,
     BwOnly = 0xff24,
     BurrowedOnly = 0xff26,
-);
+}

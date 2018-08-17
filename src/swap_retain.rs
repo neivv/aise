@@ -1,5 +1,3 @@
-
-
 pub trait SwapRetain<T> {
     fn swap_retain<F: FnMut(&mut T) -> bool>(&mut self, f: F);
 }

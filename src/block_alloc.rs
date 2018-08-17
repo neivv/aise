@@ -25,7 +25,6 @@ impl<T> Default for BlockAllocSet<T> {
     }
 }
 
-
 #[derive(Debug)]
 struct Block<T> {
     start: *mut T,
@@ -111,17 +110,25 @@ impl<T> BlockAllocSet<T> {
     // Dead code otherwise
     #[cfg(test)]
     pub unsafe fn free(&mut self, value: *mut T) {
-        let block = self.blocks.iter_mut().find(|x| x.contains(value))
+        let block = self
+            .blocks
+            .iter_mut()
+            .find(|x| x.contains(value))
             .expect("Invalid free");
         block.free_inner(value);
-        let alloc_pos = block.allocations.iter().position(|&x| x == value)
+        let alloc_pos = block
+            .allocations
+            .iter()
+            .position(|&x| x == value)
             .expect("Invalid free");
         block.allocations.swap_remove(alloc_pos);
         self.alloc_count -= 1;
     }
 
     pub fn iter<'a>(&'a self) -> impl Iterator<Item = *mut T> + 'a {
-         self.blocks.iter().flat_map(|x| x.allocations.iter().cloned())
+        self.blocks
+            .iter()
+            .flat_map(|x| x.allocations.iter().cloned())
     }
 
     pub fn retain<F: FnMut(*mut T) -> bool>(&mut self, mut f: F) {
@@ -146,8 +153,8 @@ impl<T> BlockAllocSet<T> {
 impl<T> Block<T> {
     fn contains(&self, value: *mut T) -> bool {
         unsafe {
-            self.start as usize <= value as usize &&
-                self.start.offset(entries_in_chunk::<T>() as isize - 1) as usize >= value as usize
+            let end = self.start.offset(entries_in_chunk::<T>() as isize - 1);
+            self.start as usize <= value as usize && end as usize >= value as usize
         }
     }
 
@@ -159,7 +166,7 @@ impl<T> Block<T> {
             while !free.is_null() {
                 assert!(
                     free as usize > value as usize ||
-                    free.offset((*free).count as isize) as usize <= value as usize
+                        free.offset((*free).count as isize) as usize <= value as usize
                 );
                 free = (*free).next;
             }
@@ -211,7 +218,9 @@ mod test {
 
         for i in 0..128 {
             let ptr = ptrs[i * 2];
-            unsafe { cont.free(ptr); }
+            unsafe {
+                cont.free(ptr);
+            }
         }
         assert_eq!(cont.len(), 128);
 

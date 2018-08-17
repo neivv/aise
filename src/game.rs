@@ -15,21 +15,15 @@ impl Game {
     }
 
     pub fn minerals(self, player: u8) -> u32 {
-        unsafe {
-            (*self.0).minerals[player as usize]
-        }
+        unsafe { (*self.0).minerals[player as usize] }
     }
 
     pub fn gas(self, player: u8) -> u32 {
-        unsafe {
-            (*self.0).gas[player as usize]
-        }
+        unsafe { (*self.0).gas[player as usize] }
     }
 
     pub fn frame_count(self) -> u32 {
-        unsafe {
-            (*self.0).frame_count
-        }
+        unsafe { (*self.0).frame_count }
     }
 
     pub fn upgrade_level(self, player: u8, upgrade: UpgradeId) -> u8 {
@@ -57,20 +51,14 @@ impl Game {
     }
 
     pub fn unit_count(self, player: u8, unit: UnitId) -> u32 {
-        unsafe {
-            (*self.0).all_units_count[unit.0 as usize][player as usize]
-        }
+        unsafe { (*self.0).all_units_count[unit.0 as usize][player as usize] }
     }
 
     pub fn completed_count(self, player: u8, unit: UnitId) -> u32 {
-        unsafe {
-            (*self.0).completed_units_count[unit.0 as usize][player as usize]
-        }
+        unsafe { (*self.0).completed_units_count[unit.0 as usize][player as usize] }
     }
 
     pub fn allied(self, player: u8, other: u8) -> bool {
-        unsafe {
-            (*self.0).alliances[player as usize][other as usize] != 0
-        }
+        unsafe { (*self.0).alliances[player as usize][other as usize] != 0 }
     }
 }

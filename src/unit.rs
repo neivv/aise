@@ -185,9 +185,7 @@ impl Unit {
                 id::CARRIER | id::GANTRITHOR => {
                     (*self.0).unit_specific[8] + (*self.0).unit_specific[9]
                 }
-                _ => {
-                    (*self.0).unit_specific[8]
-                }
+                _ => (*self.0).unit_specific[8],
             }
         }
     }

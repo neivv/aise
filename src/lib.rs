@@ -1,27 +1,36 @@
 extern crate bw_dat;
 
-#[cfg(debug_assertions)] extern crate backtrace;
+#[cfg(debug_assertions)]
+extern crate backtrace;
 extern crate bincode;
-#[macro_use] extern crate bitflags;
+#[macro_use]
+extern crate bitflags;
 extern crate byteorder;
 extern crate chrono;
 extern crate fern;
-#[macro_use] extern crate lazy_static;
+#[macro_use]
+extern crate lazy_static;
 extern crate libc;
-#[macro_use] extern crate log;
-#[macro_use] extern crate memoffset;
+#[macro_use]
+extern crate log;
+#[macro_use]
+extern crate memoffset;
 extern crate rand;
-#[macro_use] extern crate scopeguard;
+#[macro_use]
+extern crate scopeguard;
 extern crate serde;
-#[macro_use] extern crate serde_derive;
+#[macro_use]
+extern crate serde_derive;
 extern crate smallvec;
 extern crate thread_local;
 extern crate winapi;
 
-#[macro_use] extern crate whack;
+#[macro_use]
+extern crate whack;
 extern crate samase_shim;
 
-#[macro_use] mod macros;
+#[macro_use]
+mod macros;
 
 pub mod mpqdraft;
 pub mod samase;
@@ -35,14 +44,14 @@ mod game;
 mod globals;
 mod idle_orders;
 mod list;
-mod rng;
-mod unit;
 mod order;
+mod rng;
 mod swap_retain;
+mod unit;
 mod windows;
 
 use std::ptr::null_mut;
-use std::sync::atomic::{AtomicBool, ATOMIC_BOOL_INIT, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering, ATOMIC_BOOL_INIT};
 
 use libc::c_void;
 
@@ -58,15 +67,15 @@ fn init() {
     if cfg!(debug_assertions) {
         let _ = fern::Dispatch::new()
             .format(|out, message, record| {
-                out.finish(format_args!("{}[{}:{}][{}] {}",
-                    chrono::Local::now()
-                        .format("[%Y-%m-%d][%H:%M:%S]"),
+                out.finish(format_args!(
+                    "{}[{}:{}][{}] {}",
+                    chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
                     record.file().unwrap_or(""),
                     record.line().unwrap_or(0),
                     record.level(),
-                    message))
-            })
-            .level(log::LevelFilter::Trace)
+                    message
+                ))
+            }).level(log::LevelFilter::Trace)
             .chain(fern::log_file("aise.log").unwrap())
             .apply();
     }
@@ -121,7 +130,7 @@ fn init() {
         let mut msg = String::new();
         match info.location() {
             Some(s) => writeln!(msg, "Panic at {}:{}", s.file(), s.line()).unwrap(),
-            None => writeln!(msg, "Panic at unknown location").unwrap()
+            None => writeln!(msg, "Panic at unknown location").unwrap(),
         }
         let payload = info.payload();
         let panic_msg = match payload.downcast_ref::<&str>() {
@@ -137,7 +146,9 @@ fn init() {
         }
         error!("{}", msg);
         windows::message_box("Aise panic", &msg);
-        unsafe { TerminateProcess(GetCurrentProcess(), 0x4230daef); }
+        unsafe {
+            TerminateProcess(GetCurrentProcess(), 0x4230daef);
+        }
     }));
 }
 
@@ -160,7 +171,10 @@ pub extern fn Initialize() {
         bw::init_funcs(&mut exe);
         bw::init_vars(&mut exe);
         exe.hook_opt(bw::increment_death_scores, aiscript::increment_deaths);
-        exe.hook_opt(bw::choose_placement_position, aiscript::choose_building_placement);
+        exe.hook_opt(
+            bw::choose_placement_position,
+            aiscript::choose_building_placement,
+        );
 
         bw::IS_1161.store(true, std::sync::atomic::Ordering::Release);
     }
@@ -185,7 +199,9 @@ unsafe extern fn frame_hook() {
                     (*town).worker_limit = max_workers;
                 }
             }
-            let iter = (*ai).train_queue_types.iter_mut()
+            let iter = (*ai)
+                .train_queue_types
+                .iter_mut()
                 .zip((*ai).train_queue_values.iter_mut());
             for (ty, val) in iter {
                 if *ty == 2 && *val != null_mut() {

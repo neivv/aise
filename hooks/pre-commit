@@ -1,0 +1,6 @@
+#!/bin/sh
+#
+# Rustfmt check
+
+set -e
+rustfmt --check src/lib.rs
