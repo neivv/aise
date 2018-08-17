@@ -1115,19 +1115,20 @@ pub unsafe extern fn attack_rand(script: *mut bw::AiScript) {
         mem::swap(&mut r1, &mut r2);
     }
     let mut globals = Globals::get();
-    let player = (*script).player as u8;
+    let random = globals.rng.synced_rand(r1..r2 + 1);
+    add_to_attack_force((*script).player as u8, UnitId(unit), random);
+}
+
+unsafe fn add_to_attack_force(player: u8, unit: UnitId, amount: u32) {
     let ai = ai::PlayerAi::get(player);
-    let mut random = globals.rng.synced_rand(r1..r2 + 1);
-    let mut i = 0;
-    loop {
-        if i > 63 || random == 0 {
-            break;
-        }
-        if (*ai.0).attack_force[i] == 0 {
-            (*ai.0).attack_force[i] = unit + 1;
-            random -= 1;
-        }
-        i += 1;
+    // Reuse slots that may have been deleted during the attack
+    let attack_force = &mut (*ai.0).attack_force[..];
+    let free_slots = attack_force
+        .iter_mut()
+        .filter(|&&mut x| x == 0 || x == unit::id::NONE.0 + 1)
+        .take(amount as usize);
+    for out in free_slots {
+        *out = unit.0 + 1;
     }
 }
 
