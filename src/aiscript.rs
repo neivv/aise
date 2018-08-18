@@ -879,6 +879,35 @@ pub unsafe extern fn time_command(script: *mut bw::AiScript) {
     }
 }
 
+pub unsafe extern fn attacking(script: *mut bw::AiScript) {
+    let old_pos = (*script).pos - 1;
+    let modifier = read_bool_modifier(script);
+    let dest = read_u16(script);
+    let ai = bw::player_ai((*script).player);
+    let r_compare = ((*ai).attack_grouping_region != 0) == modifier.value;
+
+    match modifier.action {
+        ModifierAction::Jump => {
+            if r_compare {
+                (*script).pos = dest as u32;
+            }
+        }
+        ModifierAction::Call => {
+            if r_compare {
+                let ret = (*script).pos;
+                (*script).pos = dest as u32;
+                (*Script::ptr_from_bw(script)).call_stack.push(ret);
+            }
+        }
+        ModifierAction::Wait => {
+            if !r_compare {
+                (*script).pos -= old_pos;
+                (*script).wait = 30;
+            }
+        }
+    }
+}
+
 pub unsafe extern fn deaths(script: *mut bw::AiScript) {
     let game = Game::get();
     // deaths(player, modifier, amount, unit, dest)
@@ -1296,6 +1325,36 @@ enum ModifierType {
 struct TriggerModifier {
     ty: ModifierType,
     call_instead_of_jump: bool,
+}
+
+#[derive(Copy, Clone, Debug)]
+enum ModifierAction {
+    Jump,
+    Call,
+    Wait,
+}
+
+struct BoolModifier {
+    value: bool,
+    action: ModifierAction,
+}
+
+unsafe fn read_bool_modifier(script: *mut bw::AiScript) -> BoolModifier {
+    let val = read_u8(script);
+    let action = match val >> 1 {
+        0x20 => ModifierAction::Wait,
+        0x40 => ModifierAction::Call,
+        0x0 => ModifierAction::Jump,
+        _ => {
+            bw::print_text(format!("Unsupported modifier: {:x}", val));
+            ModifierAction::Jump
+        }
+    };
+
+    BoolModifier {
+        action,
+        value: val & 1 != 0,
+    }
 }
 
 unsafe fn read_modifier(script: *mut bw::AiScript) -> TriggerModifier {
