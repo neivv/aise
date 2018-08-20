@@ -7,7 +7,7 @@ use bincode;
 use bw_dat::UnitId;
 
 use ai::GuardState;
-use aiscript::{self, AttackTimeoutState, MaxWorkers, Town, TownId};
+use aiscript::{self, AiMode, AttackTimeoutState, MaxWorkers, Town, TownId};
 use block_alloc::BlockAllocSet;
 use bw;
 use idle_orders::IdleOrders;
@@ -174,7 +174,7 @@ pub struct Globals {
     pub town_ids: Vec<TownId>,
     pub guards: GuardState,
     pub under_attack_mode: [Option<bool>; 8],
-    pub wait_for_resources: [bool; 8],
+    pub ai_mode: [AiMode; 8],
     // For tracking deleted towns.
     // If the tracking is updated after step_objects, it shouldn't be possible for a town
     // to be deleted and recreated in the same frame. (As recreation happens in scripts,
@@ -197,7 +197,7 @@ impl Globals {
             town_ids: Vec::new(),
             guards: GuardState::new(),
             under_attack_mode: [None; 8],
-            wait_for_resources: [true; 8],
+            ai_mode: [Default::default(); 8],
             towns: Vec::new(),
             rng: Default::default(),
             ai_scripts: BlockAllocSet::new(),

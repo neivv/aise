@@ -103,7 +103,10 @@ pub mod unit {
     pub const INFESTED_DURAN: UnitId = UnitId(0x68);
     pub const COMMAND_CENTER: UnitId = UnitId(0x6a);
     pub const NUCLEAR_SILO: UnitId = UnitId(0x6c);
+    pub const REFINERY: UnitId = UnitId(0x6e);
+    pub const EXTRACTOR: UnitId = UnitId(0x95);
     pub const PYLON: UnitId = UnitId(0x9c);
+    pub const ASSIMILATOR: UnitId = UnitId(0x9d);
     pub const NONE: UnitId = UnitId(0xe4);
     pub const ANY_UNIT: UnitId = UnitId(0xe5);
     pub const GROUP_MEN: UnitId = UnitId(0xe6);

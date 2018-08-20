@@ -185,7 +185,6 @@ unsafe extern fn frame_hook() {
     let globals = &mut *globals;
     let game = game::Game::get();
     aiscript::claim_bw_allocated_scripts(globals);
-    aiscript::clean_unsatisfiable_requests(globals);
     aiscript::attack_timeouts_frame_hook(globals, game);
     globals.idle_orders.step_frame(&mut globals.rng);
     aiscript::under_attack_frame_hook(globals);
@@ -216,6 +215,7 @@ unsafe extern fn frame_hook() {
             }
         }
     }
+    FIRST_STEP_ORDER_OF_FRAME.store(true, Ordering::Relaxed);
 }
 
 unsafe extern fn frame_hook_after() {
@@ -224,7 +224,18 @@ unsafe extern fn frame_hook_after() {
     aiscript::attack_timeouts_frame_hook_after(&mut globals);
 }
 
+// For hooking the point after frame's ai step but before any unit orders.
+// Not in global struct for performance concern of locking its mutex thousand+
+// extra times a frame.
+static FIRST_STEP_ORDER_OF_FRAME: AtomicBool = ATOMIC_BOOL_INIT;
+
 unsafe extern fn step_order_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_void)) {
+    if FIRST_STEP_ORDER_OF_FRAME.load(Ordering::Relaxed) {
+        FIRST_STEP_ORDER_OF_FRAME.store(false, Ordering::Relaxed);
+        let globals = Globals::get();
+        aiscript::clean_unsatisfiable_requests(&globals.ai_mode);
+    }
+
     let unit = unit::Unit(u as *mut bw::Unit);
     match unit.order() {
         order::id::DIE => {

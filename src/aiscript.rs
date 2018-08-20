@@ -19,10 +19,6 @@ use samase;
 use swap_retain::SwapRetain;
 use unit::{self, Unit};
 
-fn wait_for_resources(globals: &mut Globals, player: u8) -> bool {
-    globals.wait_for_resources[player as usize]
-}
-
 pub fn init_save_mapping() {}
 
 pub fn clear_save_mapping() {}
@@ -483,13 +479,31 @@ pub unsafe fn under_attack_frame_hook(globals: &mut Globals) {
     }
 }
 
+#[derive(Serialize, Deserialize, Copy, Clone)]
+pub struct AiMode {
+    pub wait_for_resources: bool,
+    pub build_gas: bool,
+}
+
+impl Default for AiMode {
+    fn default() -> AiMode {
+        AiMode {
+            wait_for_resources: true,
+            build_gas: true,
+        }
+    }
+}
+
 pub unsafe extern fn aicontrol(script: *mut bw::AiScript) {
     let mode = read_u8(script);
     let player = (*script).player as usize;
     let mut globals = Globals::get();
-    globals.wait_for_resources[player] = match mode {
-        0 => true,
-        1 => false,
+    let out = &mut globals.ai_mode[player];
+    match mode {
+        0 => out.wait_for_resources = true,
+        1 => out.wait_for_resources = false,
+        2 => out.build_gas = true,
+        3 => out.build_gas = false,
         _ => panic!("Invalid aicontrol {:x}", mode),
     };
 }
@@ -1464,28 +1478,39 @@ unsafe fn read_string(script: *mut bw::AiScript) -> Vec<u8> {
     result
 }
 
-pub unsafe fn clean_unsatisfiable_requests(globals: &mut Globals) {
+pub unsafe fn clean_unsatisfiable_requests(ai_mode: &[AiMode; 8]) {
     let game = Game::get();
     for player in 0..8 {
-        let wait = wait_for_resources(globals, player);
+        let ai_mode = &ai_mode[player as usize];
         let ai_data = bw::player_ai(player as u32);
         let requests = &mut ((*ai_data).requests)[..(*ai_data).request_count as usize];
-        let remove_count = requests
-            .iter()
-            .take_while(|x| {
-                let can = can_satisfy_request(game, player, x, wait);
-                if !can {
-                    debug!(
-                        "Player {} can't satisfy request {:x}/{:x}",
-                        player, x.ty, x.id
-                    );
-                }
-                !can
-            }).count();
-        (*ai_data).request_count -= remove_count as u8;
-        for i in 0..(*ai_data).request_count as usize {
-            requests[i] = requests[i + remove_count];
+        let mut in_pos = 0;
+        let mut out_pos = 0;
+        // I actually think this is some sort of heap layout instead of a straight array,
+        // so this breaks the priority ordering if things are dropped :/
+        while in_pos < requests.len() {
+            let can = can_satisfy_request(game, player, &requests[in_pos], ai_mode);
+            if can {
+                requests[out_pos] = requests[in_pos];
+                out_pos += 1;
+            } else {
+                let req = requests[in_pos];
+                debug!(
+                    "Player {} can't satisfy request {:x}/{:x}",
+                    player, req.ty, req.id
+                );
+            }
+            in_pos += 1;
         }
+        (*ai_data).request_count = out_pos as u8;
+    }
+}
+
+fn is_gas_building(unit_id: UnitId) -> bool {
+    use bw_dat::unit::*;
+    match unit_id {
+        REFINERY | EXTRACTOR | ASSIMILATOR => true,
+        _ => false,
     }
 }
 
@@ -1493,11 +1518,15 @@ unsafe fn can_satisfy_request(
     game: Game,
     player: u8,
     request: &bw::AiSpendingRequest,
-    wait_resources: bool,
+    ai_mode: &AiMode,
 ) -> bool {
+    let wait_resources = ai_mode.wait_for_resources;
     match request.ty {
         1 | 2 | 3 | 4 => {
             let unit_id = UnitId(request.id);
+            if !ai_mode.build_gas && is_gas_building(unit_id) {
+                return false;
+            }
             if !wait_resources && !has_resources(game, player, &ai::unit_cost(unit_id)) {
                 return false;
             }
