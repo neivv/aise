@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering, ATOMIC_BOOL_INIT};
 
 use bw_dat::{self, order, OrderId, UnitId};
 
-use aiscript::{read_u16, read_u32, read_u8, read_unit_match, UnitMatch};
+use aiscript::{ScriptData, UnitMatch};
 use bw;
 use game::Game;
 use globals::Globals;
@@ -292,25 +292,26 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
     //      0x100 ~ 0x2000 = Extensions
     //      0x4000 = Remove matching, no error on mismatch
     //      0x8000 = Remove matching
-    let order = OrderId(read_u8(script));
-    let rate = read_u16(script);
-    let limit = read_u16(script);
-    let unit_id = read_unit_match(script);
-    let radius = read_u16(script);
-    let target_unit_id = read_unit_match(script);
-    let priority = read_u8(script);
+    let mut read = ScriptData::new(script);
+    let order = OrderId(read.read_u8());
+    let rate = read.read_u16();
+    let limit = read.read_u16();
+    let unit_id = read.read_unit_match();
+    let radius = read.read_u16();
+    let target_unit_id = read.read_unit_match();
+    let priority = read.read_u8();
     let mut delete_flags = 0;
     let mut target_flags;
     let mut self_flags;
     {
         unsafe fn parse_flags(
-            script: *mut bw::AiScript,
+            read: &mut ScriptData,
             flags: &mut IdleOrderFlags,
             mut self_flags: Option<&mut IdleOrderFlags>,
             delete_flags: &mut u16,
         ) -> bool {
             loop {
-                let val = read_u16(script);
+                let val = read.read_u16();
                 match (val & 0x2f00) >> 8 {
                     0 => {
                         flags.simple = (val & 0xff) as u8;
@@ -320,7 +321,7 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
                     1 => flags.status_required = (val & 0xff) as u8,
                     2 => flags.status_not = (val & 0xff) as u8,
                     3 => {
-                        let amount = read_u32(script) as i32;
+                        let amount = read.read::<i32>();
                         let comparision = match val & 0xf {
                             0 => Comparision::LessThan,
                             1 => Comparision::GreaterThan,
@@ -348,7 +349,7 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
                     4 => {
                         if val & 0xff == 0 {
                             if let Some(ref mut self_flags) = self_flags {
-                                let ok = parse_flags(script, *self_flags, None, delete_flags);
+                                let ok = parse_flags(read, *self_flags, None, delete_flags);
                                 if !ok {
                                     return false;
                                 }
@@ -362,7 +363,7 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
                         flags.order = Some(OrderId((val & 0xff) as u8));
                     }
                     6 => {
-                        let units_dat_flags = read_u32(script);
+                        let units_dat_flags = read.read_u32();
                         match val & 0xff {
                             0 => flags.units_dat_required = units_dat_flags,
                             1 => flags.units_dat_not = units_dat_flags,
@@ -382,8 +383,8 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
                         };
                     }
                     8 => {
-                        let mut lower = read_u16(script) as u32;
-                        let mut upper = read_u16(script) as u32;
+                        let mut lower = read.read_u16() as u32;
+                        let mut upper = read.read_u16() as u32;
                         if lower > upper {
                             mem::swap(&mut lower, &mut upper);
                         }
@@ -421,7 +422,7 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
             random_rate: None,
         };
         let ok = parse_flags(
-            script,
+            &mut read,
             &mut target_flags,
             Some(&mut self_flags),
             &mut delete_flags,

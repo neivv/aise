@@ -1,6 +1,7 @@
 use std::fmt;
 use std::mem;
 use std::ptr::null_mut;
+use std::slice;
 
 use byteorder::{ReadBytesExt, WriteBytesExt, LE};
 use serde::{self, Deserialize, Deserializer, Serialize, Serializer};
@@ -29,8 +30,9 @@ pub fn init_load_mapping() {}
 pub fn clear_load_mapping() {}
 
 pub unsafe extern fn attack_to(script: *mut bw::AiScript) {
-    let grouping = read_position(script);
-    let target = read_position(script);
+    let mut read = ScriptData::new(script);
+    let grouping = read.read_position();
+    let target = read.read_position();
     let grouping_region = match bw::get_region(grouping.center) {
         Some(s) => s,
         None => {
@@ -77,7 +79,8 @@ impl AttackTimeoutState {
 }
 
 pub unsafe extern fn attack_timeout(script: *mut bw::AiScript) {
-    let timeout = read_u32(script);
+    let mut read = ScriptData::new(script);
+    let timeout = read.read_u32();
     Globals::get().attack_timeouts[(*script).player as usize].value = Some(timeout);
 }
 
@@ -130,17 +133,18 @@ pub unsafe extern fn issue_order(script: *mut bw::AiScript) {
     //      0x4 = Target allies,
     //      0x8 = Target single unit
     //      0x10 = Target each unit once
-    let order = OrderId(read_u8(script));
-    let limit = read_u16(script);
-    let unit_id = read_unit_match(script);
-    let mut src = read_position(script);
-    let radius = read_u16(script);
+    let mut read = ScriptData::new(script);
+    let order = OrderId(read.read_u8());
+    let limit = read.read_u16();
+    let unit_id = read.read_unit_match();
+    let mut src = read.read_position();
+    let radius = read.read_u16();
     src.extend_area(radius as i16);
-    let mut target = read_position(script);
-    let tgt_radius = read_u16(script);
+    let mut target = read.read_position();
+    let tgt_radius = read.read_u16();
     target.extend_area(tgt_radius as i16);
-    let target_misc = read_unit_match(script);
-    let flags = read_u16(script);
+    let target_misc = read.read_unit_match();
+    let flags = read.read_u16();
     if flags & 0xffe0 != 0 {
         bw::print_text(format!("Aiscript issue_order: Unknown flags 0x{:x}", flags));
         return;
@@ -231,7 +235,8 @@ pub unsafe extern fn issue_order(script: *mut bw::AiScript) {
 }
 
 pub unsafe extern fn if_attacking(script: *mut bw::AiScript) {
-    let dest = read_u16(script);
+    let mut read = ScriptData::new(script);
+    let dest = read.read_u16();
     let ai = bw::player_ai((*script).player);
     if (*ai).attack_grouping_region != 0 {
         (*script).pos = dest as u32;
@@ -338,7 +343,8 @@ impl<'de> Deserialize<'de> for Town {
 }
 
 pub unsafe extern fn set_town_id(script: *mut bw::AiScript) {
-    let id = read_u8(script);
+    let mut read = ScriptData::new(script);
+    let id = read.read_u8();
     if id == 255 {
         bw::print_text(format!("Unsupported id {} in set_id", id));
         return;
@@ -359,9 +365,10 @@ pub unsafe extern fn set_town_id(script: *mut bw::AiScript) {
 }
 
 pub unsafe extern fn remove_build(script: *mut bw::AiScript) {
-    let amount = read_u8(script);
-    let mut unit_id = read_unit_match(script);
-    let id = read_u8(script);
+    let mut read = ScriptData::new(script);
+    let amount = read.read_u8();
+    let mut unit_id = read.read_unit_match();
+    let id = read.read_u8();
     let globals = Globals::get();
     let town = match id {
         255 => Town::from_ptr((*script).town),
@@ -423,7 +430,8 @@ unsafe fn remove_build_from_town(town: Town, unit_id: &mut UnitMatch, amount: u8
 }
 
 pub unsafe extern fn max_workers(script: *mut bw::AiScript) {
-    let count = read_u8(script);
+    let mut read = ScriptData::new(script);
+    let count = read.read_u8();
     let town = match Town::from_ptr((*script).town) {
         Some(s) => s,
         None => {
@@ -451,7 +459,8 @@ pub extern fn max_workers_for(globals: &mut Globals, town: *mut bw::AiTown) -> O
 
 pub unsafe extern fn under_attack(script: *mut bw::AiScript) {
     // 0 = Never, 1 = Default, 2 = Always
-    let mode = read_u8(script);
+    let mut read = ScriptData::new(script);
+    let mode = read.read_u8();
     let player = (*script).player as usize;
     let mut globals = Globals::get();
     globals.under_attack_mode[player] = match mode {
@@ -496,7 +505,8 @@ impl Default for AiMode {
 }
 
 pub unsafe extern fn aicontrol(script: *mut bw::AiScript) {
-    let mode = read_u8(script);
+    let mut read = ScriptData::new(script);
+    let mode = read.read_u8();
     let player = (*script).player as usize;
     let mut globals = Globals::get();
     let out = &mut globals.ai_mode[player];
@@ -510,7 +520,8 @@ pub unsafe extern fn aicontrol(script: *mut bw::AiScript) {
 }
 
 pub unsafe extern fn call(script: *mut bw::AiScript) {
-    let dest = read_u16(script) as u32;
+    let mut read = ScriptData::new(script);
+    let dest = read.read_u16() as u32;
     let ret = (*script).pos;
     (*script).pos = dest;
     (*Script::ptr_from_bw(script)).call_stack.push(ret);
@@ -534,8 +545,9 @@ pub unsafe extern fn ret(script: *mut bw::AiScript) {
 }
 
 pub unsafe extern fn do_morph(script: *mut bw::AiScript) {
-    let amount = read_u8(script);
-    let unit_id = UnitId(read_u16(script));
+    let mut read = ScriptData::new(script);
+    let amount = read.read_u8();
+    let unit_id = UnitId(read.read_u16());
     let player = (*script).player as u8;
     if ai::count_units(player, unit_id, Game::get()) < u32::from(amount) {
         let ai = ai::PlayerAi::get(player);
@@ -544,8 +556,9 @@ pub unsafe extern fn do_morph(script: *mut bw::AiScript) {
 }
 
 pub unsafe extern fn train(script: *mut bw::AiScript) {
-    let amount = read_u8(script);
-    let unit_id = UnitId(read_u16(script));
+    let mut read = ScriptData::new(script);
+    let amount = read.read_u8();
+    let unit_id = UnitId(read.read_u16());
     let player = (*script).player as u8;
     if ai::count_units(player, unit_id, Game::get()) < u32::from(amount) {
         let ai = ai::PlayerAi::get(player);
@@ -621,47 +634,6 @@ impl PlayerMatch {
     }
 }
 
-unsafe fn read_player_match(script: *mut bw::AiScript, game: Game) -> PlayerMatch {
-    let mut cont = true;
-    let mut result = PlayerMatch {
-        players: [false; 12],
-    };
-    let current_player = (*script).player as u8;
-    while cont {
-        let byte = read_u8(script);
-        cont = byte & 0x80 != 0;
-        let player = byte & 0x7f;
-        match player {
-            x @ 0...11 => result.players[x as usize] = true,
-            13 => result.players[current_player as usize] = true,
-            // Foes, allies
-            14 | 15 => {
-                let allies = player == 15;
-                let players = (0..12)
-                    .filter(|&x| x != current_player)
-                    .filter(|&x| game.allied(current_player, x) == allies);
-                for player in players {
-                    result.players[player as usize] = true;
-                }
-            }
-            // All players
-            17 => result.players = [true; 12],
-            // Forces
-            18 | 19 | 20 | 21 => {
-                // Forces are 1-based
-                let force = 1 + player - 18;
-                for player in (0..8).filter(|&x| (*game.0).player_forces[x as usize] == force) {
-                    result.players[player as usize] = true;
-                }
-            }
-            x => {
-                bw::print_text(format!("Unsupported player: {:x}", x));
-            }
-        };
-    }
-    result
-}
-
 pub unsafe extern fn supply(script: *mut bw::AiScript) {
     #[derive(Eq, PartialEq, Copy, Clone, Debug)]
     enum Race {
@@ -687,13 +659,14 @@ pub unsafe extern fn supply(script: *mut bw::AiScript) {
 
     let mut globals = Globals::get();
     let game = Game::get();
-    let players = read_player_match(script, game);
-    let modifier = read_modifier(script);
-    let amount = (read_u16(script) as u32) * 2;
-    let supply_type = read_u8(script);
-    let units = read_unit_match(script);
-    let race = read_u8(script);
-    let dest = read_u16(script);
+    let mut read = ScriptData::new(script);
+    let players = read.read_player_match(game);
+    let modifier = read.read_modifier();
+    let amount = (read.read_u16() as u32) * 2;
+    let supply_type = read.read_u8();
+    let units = read.read_unit_match();
+    let race = read.read_u8();
+    let dest = read.read_u16();
     let supply_type = match supply_type {
         0 => SupplyType::Provided,
         1 => SupplyType::Used,
@@ -799,11 +772,12 @@ pub unsafe extern fn resources_command(script: *mut bw::AiScript) {
 
     let game = Game::get();
     let mut globals = Globals::get();
-    let players = read_player_match(script, game);
-    let modifier = read_modifier(script);
-    let res = read_u8(script);
-    let amount = read_u32(script);
-    let dest = read_u16(script);
+    let mut read = ScriptData::new(script);
+    let players = read.read_player_match(game);
+    let modifier = read.read_modifier();
+    let res = read.read_u8();
+    let amount = read.read_u32();
+    let dest = read.read_u16();
     let resources_to_check: &[_] = match res {
         // Matching trigger conditions
         0 => &[Resource::Ore],
@@ -858,10 +832,11 @@ pub unsafe extern fn time_command(script: *mut bw::AiScript) {
         Minutes,
     }
     let game = Game::get();
-    let modifier = read_modifier(script);
-    let amount = read_u32(script);
-    let time_mod = read_u8(script);
-    let dest = read_u16(script);
+    let mut read = ScriptData::new(script);
+    let modifier = read.read_modifier();
+    let amount = read.read_u32();
+    let time_mod = read.read_u8();
+    let dest = read.read_u16();
     let time_mod = match time_mod {
         // Matching trigger conditions
         0 => TimeType::Frames,
@@ -896,8 +871,9 @@ pub unsafe extern fn time_command(script: *mut bw::AiScript) {
 
 pub unsafe extern fn attacking(script: *mut bw::AiScript) {
     let old_pos = (*script).pos - 1;
-    let modifier = read_bool_modifier(script);
-    let dest = read_u16(script);
+    let mut read = ScriptData::new(script);
+    let modifier = read.read_bool_modifier();
+    let dest = read.read_u16();
     let ai = bw::player_ai((*script).player);
     let r_compare = ((*ai).attack_grouping_region != 0) == modifier.value;
 
@@ -926,11 +902,12 @@ pub unsafe extern fn attacking(script: *mut bw::AiScript) {
 pub unsafe extern fn deaths(script: *mut bw::AiScript) {
     let game = Game::get();
     // deaths(player, modifier, amount, unit, dest)
-    let players = read_player_match(script, game);
-    let modifier = read_modifier(script);
-    let amount = read_u32(script);
-    let mut units = read_unit_match(script);
-    let dest = read_u16(script);
+    let mut read = ScriptData::new(script);
+    let players = read.read_player_match(game);
+    let modifier = read.read_modifier();
+    let amount = read.read_u32();
+    let mut units = read.read_unit_match();
+    let dest = read.read_u16();
 
     let mut globals = Globals::get();
     match modifier.ty {
@@ -977,8 +954,9 @@ pub unsafe extern fn deaths(script: *mut bw::AiScript) {
 }
 
 pub unsafe extern fn wait_rand(script: *mut bw::AiScript) {
-    let mut r1 = read_u32(script);
-    let mut r2 = read_u32(script);
+    let mut read = ScriptData::new(script);
+    let mut r1 = read.read_u32();
+    let mut r2 = read.read_u32();
     let mut globals = Globals::get();
     if r1 > r2 {
         mem::swap(&mut r1, &mut r2);
@@ -989,12 +967,13 @@ pub unsafe extern fn wait_rand(script: *mut bw::AiScript) {
 pub unsafe extern fn kills_command(script: *mut bw::AiScript) {
     let game = Game::get();
     // kills(player1, player2, modifier, amount, unit, dest)
-    let player1 = read_player_match(script, game);
-    let player2 = read_player_match(script, game);
-    let modifier = read_modifier(script);
-    let amount = read_u32(script);
-    let mut units = read_unit_match(script);
-    let dest = read_u16(script);
+    let mut read = ScriptData::new(script);
+    let player1 = read.read_player_match(game);
+    let player2 = read.read_player_match(game);
+    let modifier = read.read_modifier();
+    let amount = read.read_u32();
+    let mut units = read.read_unit_match();
+    let dest = read.read_u16();
     let mut globals = Globals::get();
 
     match modifier.ty {
@@ -1062,14 +1041,16 @@ pub unsafe fn increment_deaths(
 }
 
 pub unsafe extern fn print_command(script: *mut bw::AiScript) {
-    let msg = read_string(script);
+    let mut read = ScriptData::new(script);
+    let msg = read.read_string();
     let s = String::from_utf8_lossy(&msg);
     bw::print_text(s);
 }
 
 pub unsafe extern fn player_jump(script: *mut bw::AiScript) {
-    let player = read_string(script);
-    let dest = read_u16(script);
+    let mut read = ScriptData::new(script);
+    let player = read.read_string();
+    let dest = read.read_u16();
     if bw::is_scr() {
         bw::print_text("player_jump is not supported in SCR");
         return;
@@ -1093,11 +1074,12 @@ pub unsafe extern fn player_jump(script: *mut bw::AiScript) {
 pub unsafe extern fn upgrade_jump(script: *mut bw::AiScript) {
     let game = Game::get();
 
-    let players = read_player_match(script, game);
-    let modifier = read_modifier(script);
-    let upgrade = UpgradeId(read_u16(script));
-    let level = read_u8(script);
-    let dest = read_u16(script);
+    let mut read = ScriptData::new(script);
+    let players = read.read_player_match(game);
+    let modifier = read.read_modifier();
+    let upgrade = UpgradeId(read.read_u16());
+    let level = read.read_u8();
+    let dest = read.read_u16();
     let read = match modifier.ty {
         ModifierType::Read(r) => r,
         ModifierType::Write(w) => {
@@ -1122,12 +1104,13 @@ pub unsafe extern fn upgrade_jump(script: *mut bw::AiScript) {
 
 pub unsafe extern fn tech_jump(script: *mut bw::AiScript) {
     let game = Game::get();
-    let players = read_player_match(script, game);
+    let mut read = ScriptData::new(script);
+    let players = read.read_player_match(game);
 
-    let modifier = read_modifier(script);
-    let tech = TechId(read_u16(script));
-    let level = read_u8(script);
-    let dest = read_u16(script);
+    let modifier = read.read_modifier();
+    let tech = TechId(read.read_u16());
+    let level = read.read_u8();
+    let dest = read.read_u16();
     let read = match modifier.ty {
         ModifierType::Read(r) => r,
         ModifierType::Write(w) => {
@@ -1154,8 +1137,9 @@ pub unsafe extern fn tech_jump(script: *mut bw::AiScript) {
 }
 
 pub unsafe extern fn random_call(script: *mut bw::AiScript) {
-    let chance = read_u8(script);
-    let dest = read_u16(script) as u32;
+    let mut read = ScriptData::new(script);
+    let chance = read.read_u8();
+    let dest = read.read_u16() as u32;
 
     let mut globals = Globals::get();
     let random = globals.rng.synced_rand(0..256);
@@ -1167,9 +1151,10 @@ pub unsafe extern fn random_call(script: *mut bw::AiScript) {
 }
 
 pub unsafe extern fn attack_rand(script: *mut bw::AiScript) {
-    let mut r1 = read_u8(script) as u32;
-    let mut r2 = read_u8(script) as u32;
-    let unit = read_u16(script);
+    let mut read = ScriptData::new(script);
+    let mut r1 = read.read_u8() as u32;
+    let mut r2 = read.read_u8() as u32;
+    let unit = read.read_u16();
     if r1 > r2 {
         mem::swap(&mut r1, &mut r2);
     }
@@ -1193,14 +1178,15 @@ unsafe fn add_to_attack_force(player: u8, unit: UnitId, amount: u32) {
 
 pub unsafe extern fn bring_jump(script: *mut bw::AiScript) {
     let game = Game::get();
-    let players = read_player_match(script, game);
-    let modifier = read_modifier(script);
-    let amount = read_u32(script);
-    let unit_id = read_unit_match(script);
-    let mut src = read_position(script);
-    let radius = read_u16(script);
+    let mut read = ScriptData::new(script);
+    let players = read.read_player_match(game);
+    let modifier = read.read_modifier();
+    let amount = read.read_u32();
+    let unit_id = read.read_unit_match();
+    let mut src = read.read_position();
+    let radius = read.read_u16();
     src.extend_area(radius as i16);
-    let dest = read_u16(script);
+    let dest = read.read_u16();
 
     let read = match modifier.ty {
         ModifierType::Read(r) => r,
@@ -1352,131 +1338,6 @@ enum ModifierAction {
 struct BoolModifier {
     value: bool,
     action: ModifierAction,
-}
-
-unsafe fn read_bool_modifier(script: *mut bw::AiScript) -> BoolModifier {
-    let val = read_u8(script);
-    let action = match val >> 1 {
-        0x20 => ModifierAction::Wait,
-        0x40 => ModifierAction::Call,
-        0x0 => ModifierAction::Jump,
-        _ => {
-            bw::print_text(format!("Unsupported modifier: {:x}", val));
-            ModifierAction::Jump
-        }
-    };
-
-    BoolModifier {
-        action,
-        value: val & 1 != 0,
-    }
-}
-
-unsafe fn read_modifier(script: *mut bw::AiScript) -> TriggerModifier {
-    let val = read_u8(script);
-    TriggerModifier {
-        call_instead_of_jump: val & 0x80 != 0,
-        ty: match val & 0x7f {
-            // Matching triggers in chk
-            0 => ModifierType::Read(ReadModifier::AtLeast),
-            1 => ModifierType::Read(ReadModifier::AtMost),
-            7 => ModifierType::Write(WriteModifier::Set),
-            8 => ModifierType::Write(WriteModifier::Add),
-            9 => ModifierType::Write(WriteModifier::Subtract),
-            10 => ModifierType::Read(ReadModifier::Exactly),
-            11 => ModifierType::Write(WriteModifier::Randomize),
-            x => {
-                bw::print_text(format!("Unsupported modifier: {:x}", x));
-                ModifierType::Read(ReadModifier::AtLeast)
-            }
-        },
-    }
-}
-
-pub unsafe fn read_unit_match(script: *mut bw::AiScript) -> UnitMatch {
-    let val = read_u16(script);
-    if val > 0xff00 {
-        let repeat = val & 0xff;
-        let units = (0..repeat).map(|_| UnitId(read_u16(script))).collect();
-        UnitMatch {
-            units,
-        }
-    } else if val < 0x1000 {
-        UnitMatch {
-            units: vec![UnitId(val)],
-        }
-    } else {
-        bw::print_text(format!("Invalid script encoding: unit match {:x}", val));
-        UnitMatch {
-            units: vec![],
-        }
-    }
-}
-
-unsafe fn read_position(script: *mut bw::AiScript) -> Position {
-    let x = read_u16(script);
-    let y = read_u16(script);
-    if x == !0 {
-        assert!(y < 255);
-        let location = if y >= 255 {
-            bw::print_text(format!("Invalid location id 0x{:x} used", y));
-            bw::location(63)
-        } else {
-            bw::location(y as u8)
-        };
-        Position::from_rect32(&location.area)
-    } else {
-        // !1, !1 is used for inherit position in create_script
-        Position::from_point(x as i16, y as i16)
-    }
-}
-
-pub unsafe fn read_u8(script: *mut bw::AiScript) -> u8 {
-    let script_bytes = match (*script).flags & 0x1 != 0 {
-        false => bw::aiscript_bin(),
-        true => bw::bwscript_bin(),
-    };
-    let val = *(script_bytes.offset((*script).pos as isize) as *const u8);
-    (*script).pos += 1;
-    val
-}
-
-pub unsafe fn read_u16(script: *mut bw::AiScript) -> u16 {
-    let script_bytes = match (*script).flags & 0x1 != 0 {
-        false => bw::aiscript_bin(),
-        true => bw::bwscript_bin(),
-    };
-    let val = *(script_bytes.offset((*script).pos as isize) as *const u16);
-    (*script).pos += 2;
-    val
-}
-
-pub unsafe fn read_u32(script: *mut bw::AiScript) -> u32 {
-    let script_bytes = match (*script).flags & 0x1 != 0 {
-        false => bw::aiscript_bin(),
-        true => bw::bwscript_bin(),
-    };
-    let val = *(script_bytes.offset((*script).pos as isize) as *const u32);
-    (*script).pos += 4;
-    val
-}
-
-unsafe fn read_string(script: *mut bw::AiScript) -> Vec<u8> {
-    let script_bytes = match (*script).flags & 0x1 != 0 {
-        false => bw::aiscript_bin(),
-        true => bw::bwscript_bin(),
-    };
-    let mut result = Vec::new();
-    loop {
-        let val = *(script_bytes.offset((*script).pos as isize) as *const u8);
-        (*script).pos += 1;
-        if val == 0 {
-            break;
-        } else {
-            result.push(val);
-        }
-    }
-    result
 }
 
 pub unsafe fn clean_unsatisfiable_requests(ai_mode: &[AiMode; 8]) {
@@ -1875,6 +1736,172 @@ unsafe fn can_satisfy_nonunit_request(
         .is_some()
 }
 
+// For reading aiscript.bin or bwscript.bin (or some other?) bytes
+pub struct ScriptData(*const u8, *mut bw::AiScript);
+
+impl ScriptData {
+    pub unsafe fn new(script: *mut bw::AiScript) -> ScriptData {
+        let script_bytes = match (*script).flags & 0x1 != 0 {
+            false => bw::aiscript_bin(),
+            true => bw::bwscript_bin(),
+        };
+        ScriptData(
+            script_bytes.offset((*script).pos as isize) as *const u8,
+            script,
+        )
+    }
+
+    unsafe fn read_player_match(&mut self, game: Game) -> PlayerMatch {
+        let mut cont = true;
+        let mut result = PlayerMatch {
+            players: [false; 12],
+        };
+        let current_player = (*self.1).player as u8;
+        while cont {
+            let byte = self.read_u8();
+            cont = byte & 0x80 != 0;
+            let player = byte & 0x7f;
+            match player {
+                x @ 0...11 => result.players[x as usize] = true,
+                13 => result.players[current_player as usize] = true,
+                // Foes, allies
+                14 | 15 => {
+                    let allies = player == 15;
+                    let players = (0..12)
+                        .filter(|&x| x != current_player)
+                        .filter(|&x| game.allied(current_player, x) == allies);
+                    for player in players {
+                        result.players[player as usize] = true;
+                    }
+                }
+                // All players
+                17 => result.players = [true; 12],
+                // Forces
+                18 | 19 | 20 | 21 => {
+                    // Forces are 1-based
+                    let force = 1 + player - 18;
+                    for player in (0..8).filter(|&x| (*game.0).player_forces[x as usize] == force) {
+                        result.players[player as usize] = true;
+                    }
+                }
+                x => {
+                    bw::print_text(format!("Unsupported player: {:x}", x));
+                }
+            };
+        }
+        result
+    }
+
+    fn read_bool_modifier(&mut self) -> BoolModifier {
+        let val = self.read_u8();
+        let action = match val >> 1 {
+            0x20 => ModifierAction::Wait,
+            0x40 => ModifierAction::Call,
+            0x0 => ModifierAction::Jump,
+            _ => {
+                bw::print_text(format!("Unsupported modifier: {:x}", val));
+                ModifierAction::Jump
+            }
+        };
+
+        BoolModifier {
+            action,
+            value: val & 1 != 0,
+        }
+    }
+
+    fn read_modifier(&mut self) -> TriggerModifier {
+        let val = self.read_u8();
+        TriggerModifier {
+            call_instead_of_jump: val & 0x80 != 0,
+            ty: match val & 0x7f {
+                // Matching triggers in chk
+                0 => ModifierType::Read(ReadModifier::AtLeast),
+                1 => ModifierType::Read(ReadModifier::AtMost),
+                7 => ModifierType::Write(WriteModifier::Set),
+                8 => ModifierType::Write(WriteModifier::Add),
+                9 => ModifierType::Write(WriteModifier::Subtract),
+                10 => ModifierType::Read(ReadModifier::Exactly),
+                11 => ModifierType::Write(WriteModifier::Randomize),
+                x => {
+                    bw::print_text(format!("Unsupported modifier: {:x}", x));
+                    ModifierType::Read(ReadModifier::AtLeast)
+                }
+            },
+        }
+    }
+
+    pub fn read_unit_match(&mut self) -> UnitMatch {
+        let val = self.read_u16();
+        if val > 0xff00 {
+            let repeat = val & 0xff;
+            let units = (0..repeat).map(|_| UnitId(self.read_u16())).collect();
+            UnitMatch {
+                units,
+            }
+        } else if val < 0x1000 {
+            UnitMatch {
+                units: vec![UnitId(val)],
+            }
+        } else {
+            bw::print_text(format!("Invalid script encoding: unit match {:x}", val));
+            UnitMatch {
+                units: vec![],
+            }
+        }
+    }
+
+    fn read_position(&mut self) -> Position {
+        let x = self.read_u16();
+        let y = self.read_u16();
+        if x == !0 {
+            assert!(y < 255);
+            let location = if y >= 255 {
+                bw::print_text(format!("Invalid location id 0x{:x} used", y));
+                bw::location(63)
+            } else {
+                bw::location(y as u8)
+            };
+            Position::from_rect32(&location.area)
+        } else {
+            // !1, !1 is used for inherit position in create_script
+            Position::from_point(x as i16, y as i16)
+        }
+    }
+
+    pub fn read_u8(&mut self) -> u8 {
+        self.read()
+    }
+
+    pub fn read_u16(&mut self) -> u16 {
+        self.read()
+    }
+
+    pub fn read_u32(&mut self) -> u32 {
+        self.read()
+    }
+
+    // Maybe not a good idea to inline(never) but saves 1k in binary size
+    #[inline(never)]
+    pub fn read<T: Copy>(&mut self) -> T {
+        unsafe {
+            let size = mem::size_of::<T>();
+            let val = (self.0 as *const T).read_unaligned();
+            self.0 = self.0.add(size);
+            (*self.1).pos = (*self.1).pos.wrapping_add(size as u32);
+            val
+        }
+    }
+
+    pub unsafe fn read_string(&mut self) -> &'static [u8] {
+        let length = (0usize..).position(|x| *self.0.add(x) == 0).unwrap_or(0);
+        let val = slice::from_raw_parts(self.0, length);
+        self.0 = self.0.add(length + 1);
+        (*self.1).pos += length as u32 + 1;
+        val
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct Script {
     #[serde(serialize_with = "serialize_bw_script")]
@@ -2249,13 +2276,14 @@ pub unsafe extern fn base_layout(script: *mut bw::AiScript) {
         Remove,
     }
 
-    let unit = UnitId(read_u16(script));
-    let layout_modifier = read_u8(script);
-    let mut src = read_position(script);
-    let radius = read_u16(script);
+    let mut read = ScriptData::new(script);
+    let unit = UnitId(read.read_u16());
+    let layout_modifier = read.read_u8();
+    let mut src = read.read_position();
+    let radius = read.read_u16();
     src.extend_area(radius as i16);
-    let amount = read_u8(script);
-    let town_id = read_u8(script);
+    let amount = read.read_u8();
+    let town_id = read.read_u8();
 
     let layout_modifier = match layout_modifier {
         0 => LayoutModifier::Set,
@@ -2288,11 +2316,12 @@ pub unsafe extern fn base_layout(script: *mut bw::AiScript) {
 }
 
 pub unsafe extern fn guard_command(script: *mut bw::AiScript) {
-    let unit = read_u16(script);
-    let target = read_position(script);
-    let quantity = read_u8(script);
-    let death_limit = read_u8(script);
-    let priority = read_u8(script);
+    let mut read = ScriptData::new(script);
+    let unit = read.read_u16();
+    let target = read.read_position();
+    let quantity = read.read_u8();
+    let death_limit = read.read_u8();
+    let priority = read.read_u8();
     let mut globals = Globals::get();
     for _n in 0..quantity {
         let guards = samase::guard_ais().add((*script).player as usize);
@@ -2332,19 +2361,20 @@ pub unsafe extern fn guard_command(script: *mut bw::AiScript) {
 
 pub unsafe extern fn create_script(script: *mut bw::AiScript) {
     // create_script(pos, player, area, town, resarea)
-    let pos = read_u16(script);
-    let player = match read_u8(script) {
+    let mut read = ScriptData::new(script);
+    let pos = read.read_u16();
+    let player = match read.read_u8() {
         255 => (*script).player as u8,
         x => x,
     };
-    let mut area = read_position(script);
-    let radius = read_u16(script);
+    let mut area = read.read_position();
+    let radius = read.read_u16();
     area.extend_area(radius as i16);
     if area.center.x == -2 && area.center.y == -2 {
         area = Position::from_rect32(&(*script).area)
     }
-    let town = read_u8(script);
-    let resarea = match read_u8(script) {
+    let town = read.read_u8();
+    let resarea = match read.read_u8() {
         255 => (((*script).flags >> 3) & 0xff) as u8,
         x => x,
     };
@@ -2621,6 +2651,49 @@ mod test {
                 req(2, 8, true),
             ];
             check(town, 6, &remaining);
+        }
+    }
+
+    #[test]
+    fn script_data_reading() {
+        use byteorder::{WriteBytesExt, LE};
+
+        let mut buf = vec![];
+        buf.write_u32::<LE>(43242).unwrap();
+        buf.write_u16::<LE>(12345).unwrap();
+        for &c in b"test test \0".iter() {
+            buf.push(c);
+        }
+        buf.write_u16::<LE>(941).unwrap();
+        unsafe {
+            let mut script: bw::AiScript = mem::zeroed();
+            let mut read = ScriptData(buf.as_ptr(), &mut script);
+            assert_eq!(read.read_u32(), 43242);
+            assert_eq!(read.read_u16(), 12345);
+            assert_eq!(read.read_string(), b"test test ");
+            assert_eq!(read.read_u16(), 941);
+            assert_eq!(script.pos, buf.len() as u32);
+        }
+    }
+
+    #[test]
+    fn script_data_unit_match() {
+        use byteorder::{WriteBytesExt, LE};
+
+        let mut buf = vec![];
+        buf.write_u16::<LE>(0x33).unwrap();
+        buf.write_u16::<LE>(0xff04).unwrap();
+        buf.write_u16::<LE>(0x123).unwrap();
+        buf.write_u16::<LE>(0x110).unwrap();
+        buf.write_u16::<LE>(0x30).unwrap();
+        buf.write_u16::<LE>(0x70).unwrap();
+        unsafe {
+            let mut script: bw::AiScript = mem::zeroed();
+            let mut read = ScriptData(buf.as_ptr(), &mut script);
+            assert_eq!(read.read_unit_match().units, vec![UnitId(0x33)]);
+            let eq = vec![UnitId(0x123), UnitId(0x110), UnitId(0x30), UnitId(0x70)];
+            assert_eq!(read.read_unit_match().units, eq);
+            assert_eq!(script.pos, buf.len() as u32);
         }
     }
 }

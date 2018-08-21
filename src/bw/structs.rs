@@ -227,7 +227,7 @@ pub struct Game {
     pub upgrade_level_bw: [[u8; 0xf]; 0xc],
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct Location {
     pub area: Rect32,
