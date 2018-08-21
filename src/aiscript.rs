@@ -2337,6 +2337,9 @@ unsafe fn check_placement(
 
     let width_tiles = placement.width / 32;
     let height_tiles = placement.height / 32;
+    if x_tile + width_tiles > map_width || y_tile + height_tiles > map_height {
+        return false;
+    }
 
     if unit_id.is_town_hall() {
         let area = bw::Rect {
@@ -2351,8 +2354,8 @@ unsafe fn check_placement(
         }
     }
 
-    for px in 0..width_tiles.min(map_width) {
-        for py in 0..height_tiles.min(map_height) {
+    for px in 0..width_tiles {
+        for py in 0..height_tiles {
             let tile = *(*bw::tile_flags).offset(
                 (px + x_tile as u16 - 1) as isize + (map_width * (py + y_tile as u16 - 1)) as isize,
             );
