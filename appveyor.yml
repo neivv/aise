@@ -32,10 +32,11 @@ before_deploy:
   # Generate artifacts for release
   - cargo build --release
   - appveyor PushArtifact target\release\aise.dll
+  - appveyor PushArtifact target\release\deps\aise.pdb
 
 deploy:
   description: 'Automatic build'
-  artifact: aise.dll
+  artifact: aise.dll, aise.pdb
   auth_token:
     secure: tQTRIU3vpi6nRXI7xM89etFnv74ilGGoIvuCVQO7saDmFMQCjzuYiFloCWNv19rQ
   provider: GitHub
