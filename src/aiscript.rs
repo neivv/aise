@@ -892,7 +892,7 @@ pub unsafe extern fn attacking(script: *mut bw::AiScript) {
         }
         ModifierAction::Wait => {
             if !r_compare {
-                (*script).pos -= old_pos;
+                (*script).pos = old_pos;
                 (*script).wait = 30;
             }
         }
