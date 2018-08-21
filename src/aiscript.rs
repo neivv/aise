@@ -2317,6 +2317,7 @@ unsafe fn check_placement(
     unit_id: UnitId,
 ) -> bool {
     let map_width = (*game.0).map_width_tiles;
+    let map_height = (*game.0).map_height_tiles;
     let zerg = unit_id.group_flags() & 0x1 != 0;
     let require_creep = unit_id.require_creep();
     let forbid_creep = !require_creep && !zerg;
@@ -2324,10 +2325,10 @@ unsafe fn check_placement(
     let placement = unit_id.placement();
 
     let area = bw::Rect {
-        left: (x_tile * 32).saturating_sub(3 * 32),
-        top: (y_tile * 32).saturating_sub(3 * 32),
-        right: (x_tile * 32) + placement.width as i16 + 3 * 32,
-        bottom: (y_tile * 32) + placement.height as i16 + 3 * 32,
+        left: (x_tile * 32),
+        top: (y_tile * 32),
+        right: (x_tile * 32) + placement.width as i16,
+        bottom: (y_tile * 32) + placement.height as i16,
     };
     let units = unit::find_units(&area, |&u| u != builder);
     if !units.is_empty() {
@@ -2338,14 +2339,20 @@ unsafe fn check_placement(
     let height_tiles = placement.height / 32;
 
     if unit_id.is_town_hall() {
+        let area = bw::Rect {
+            left: (x_tile * 32).saturating_sub(3 * 32),
+            top: (y_tile * 32).saturating_sub(3 * 32),
+            right: (x_tile * 32) + placement.width as i16 + 3 * 32,
+            bottom: (y_tile * 32) + placement.height as i16 + 3 * 32,
+        };
         let res_units = unit::find_units(&area, |u| u.id().is_resource_container());
         if !res_units.is_empty() {
             return false;
         }
     }
 
-    for px in 0..width_tiles {
-        for py in 0..height_tiles {
+    for px in 0..width_tiles.min(map_width) {
+        for py in 0..height_tiles.min(map_height) {
             let tile = *(*bw::tile_flags).offset(
                 (px + x_tile as u16 - 1) as isize + (map_width * (py + y_tile as u16 - 1)) as isize,
             );
