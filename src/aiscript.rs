@@ -2337,7 +2337,7 @@ unsafe fn check_placement(
 
     let width_tiles = placement.width / 32;
     let height_tiles = placement.height / 32;
-    if x_tile + width_tiles > map_width || y_tile + height_tiles > map_height {
+    if x_tile as u16 + width_tiles > map_width || y_tile as u16 + height_tiles > map_height {
         return false;
     }
 
