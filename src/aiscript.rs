@@ -2364,7 +2364,7 @@ unsafe fn check_placement(
                 return false;
             }
             if unit_id.require_psi() {
-                let powered = bw::IsPowered(
+                let powered = bw::is_powered(
                     px as u32 + x_tile as u32,
                     py as u32 + y_tile as u32,
                     builder.player(),
