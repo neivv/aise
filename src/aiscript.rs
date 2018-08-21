@@ -13,6 +13,7 @@ use block_alloc::BlockAllocSet;
 use bw;
 use game::Game;
 use globals::{self, BaseLayout, Globals};
+use list::ListIter;
 use order::{self, OrderId};
 use rng::Rng;
 use samase;
@@ -1524,8 +1525,21 @@ unsafe fn can_satisfy_request(
     match request.ty {
         1 | 2 | 3 | 4 => {
             let unit_id = UnitId(request.id);
-            if !ai_mode.build_gas && is_gas_building(unit_id) {
-                return false;
+            if request.ty == 3 && !ai_mode.build_gas && is_gas_building(unit_id) {
+                let town = request.val as *mut bw::AiTown;
+                let existing_gas_buildings = ListIter((*town).buildings)
+                    .filter_map(|x| Unit::from_ptr((*x).parent))
+                    .filter(|x| x.id() == unit_id)
+                    .count();
+                let explicitly_requested_buildings = (*town)
+                    .town_units
+                    .iter()
+                    .filter(|x| x.flags_and_count & 0x6 == 0 && x.id == unit_id.0)
+                    .map(|x| ((x.flags_and_count & 0xf8) >> 3) as usize)
+                    .sum();
+                if existing_gas_buildings >= explicitly_requested_buildings {
+                    return false;
+                }
             }
             if !wait_resources && !has_resources(game, player, &ai::unit_cost(unit_id)) {
                 return false;
