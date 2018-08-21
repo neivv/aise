@@ -1,6 +1,8 @@
 extern crate libc;
-#[macro_use] extern crate serde_derive;
-#[macro_use] extern crate whack;
+#[macro_use]
+extern crate serde_derive;
+#[macro_use]
+extern crate whack;
 
 mod bw;
 
@@ -107,6 +109,10 @@ pub mod unit {
     pub const EXTRACTOR: UnitId = UnitId(0x95);
     pub const PYLON: UnitId = UnitId(0x9c);
     pub const ASSIMILATOR: UnitId = UnitId(0x9d);
+    pub const MINERAL_FIELD_1: UnitId = UnitId(0xb0);
+    pub const MINERAL_FIELD_2: UnitId = UnitId(0xb1);
+    pub const MINERAL_FIELD_3: UnitId = UnitId(0xb2);
+    pub const VESPENE_GEYSER: UnitId = UnitId(0xbc);
     pub const NONE: UnitId = UnitId(0xe4);
     pub const ANY_UNIT: UnitId = UnitId(0xe5);
     pub const GROUP_MEN: UnitId = UnitId(0xe6);
@@ -188,6 +194,13 @@ pub mod order {
     pub const DARK_ARCHON_MELD: OrderId = OrderId(0xb7);
 }
 
+#[derive(Eq, PartialEq, Copy, Clone)]
+#[repr(C)]
+pub struct PlacementBox {
+    pub width: u16,
+    pub height: u16,
+}
+
 impl UnitId {
     pub fn optional(id: u32) -> Option<UnitId> {
         if id > u16::max_value() as u32 || id == unit::NONE.0 as u32 {
@@ -198,9 +211,7 @@ impl UnitId {
     }
 
     pub fn get(&self, id: u32) -> u32 {
-        unsafe {
-            ::get(UNITS_DAT, self.0 as u32, id)
-        }
+        unsafe { ::get(UNITS_DAT, self.0 as u32, id) }
     }
 
     pub fn hitpoints(&self) -> i32 {
@@ -244,6 +255,22 @@ impl UnitId {
         self.flags() & 0x40 != 0
     }
 
+    pub fn require_psi(&self) -> bool {
+        self.flags() & 0x80000 != 0
+    }
+
+    pub fn require_creep(&self) -> bool {
+        self.flags() & 0x20000 != 0
+    }
+
+    pub fn is_town_hall(&self) -> bool {
+        self.flags() & 0x1000 != 0
+    }
+
+    pub fn is_resource_container(&self) -> bool {
+        self.flags() & 0x2000 != 0
+    }
+
     pub fn group_flags(&self) -> u32 {
         self.get(44)
     }
@@ -270,6 +297,14 @@ impl UnitId {
 
     pub fn supply_cost(&self) -> u32 {
         self.get(46)
+    }
+
+    pub fn placement(&self) -> PlacementBox {
+        unsafe {
+            let dat = &*UNITS_DAT.offset(36);
+            assert!(dat.entries > u32::from(self.0));
+            *(dat.data as *const PlacementBox).offset(self.0 as isize)
+        }
     }
 
     pub fn dimensions(&self) -> Rect {
@@ -300,9 +335,7 @@ impl WeaponId {
     }
 
     pub fn get(&self, id: u32) -> u32 {
-        unsafe {
-            ::get(WEAPONS_DAT, self.0 as u32, id)
-        }
+        unsafe { ::get(WEAPONS_DAT, self.0 as u32, id) }
     }
 
     pub fn damage(&self) -> u32 {
@@ -317,14 +350,13 @@ impl WeaponId {
         self.get(15)
     }
 
-    pub fn factor(&self) -> u32{
+    pub fn factor(&self) -> u32 {
         self.get(17)
     }
 
     pub fn label(&self) -> u32 {
         self.get(0)
     }
-
 }
 
 impl UpgradeId {
@@ -337,9 +369,7 @@ impl UpgradeId {
     }
 
     pub fn get(&self, id: u32) -> u32 {
-        unsafe {
-            ::get(UPGRADES_DAT, self.0 as u32, id)
-        }
+        unsafe { ::get(UPGRADES_DAT, self.0 as u32, id) }
     }
 
     pub fn label(&self) -> u32 {
@@ -389,9 +419,7 @@ impl TechId {
     }
 
     fn get(&self, id: u32) -> u32 {
-        unsafe {
-            ::get(TECHDATA_DAT, self.0 as u32, id)
-        }
+        unsafe { ::get(TECHDATA_DAT, self.0 as u32, id) }
     }
 
     pub fn mineral_cost(&self) -> u32 {
@@ -419,8 +447,16 @@ impl OrderId {
     pub fn is_secondary(&self) -> bool {
         use order::*;
         match *self {
-            TRAIN | CLOAKING_NEARBY_UNITS | CLOAK | DECLOAK | BUILD_ADDON | TRAIN_FIGHTER |
-                SHIELD_BATTERY | SPAWNING_LARVA | SPREAD_CREEP | HALLUCINATED => true,
+            TRAIN |
+            CLOAKING_NEARBY_UNITS |
+            CLOAK |
+            DECLOAK |
+            BUILD_ADDON |
+            TRAIN_FIGHTER |
+            SHIELD_BATTERY |
+            SPAWNING_LARVA |
+            SPREAD_CREEP |
+            HALLUCINATED => true,
             _ => false,
         }
     }
@@ -428,19 +464,31 @@ impl OrderId {
     pub fn is_attack_order(&self) -> bool {
         use order::*;
         match *self {
-            ATTACK | ATTACK_OBSCURED | ATTACK_UNIT | ATTACK_FIXED_RANGE | ATTACK_MOVE |
-                TOWER_ATTACK | SUBUNIT_ATTACK | CARRIER_ATTACK | CARRIER_ATTACK_OBSCURED |
-                CARRIER_ATTACK_UNIT | REAVER_ATTACK | REAVER_ATTACK_OBSCURED |
-                REAVER_ATTACK_UNIT | INTERCEPTOR_ATTACK | SCARAB_ATTACK | SAP_UNIT |
-                SAP_LOCATION | AI_ATTACK_MOVE | REVEAL_TRAP => true,
+            ATTACK |
+            ATTACK_OBSCURED |
+            ATTACK_UNIT |
+            ATTACK_FIXED_RANGE |
+            ATTACK_MOVE |
+            TOWER_ATTACK |
+            SUBUNIT_ATTACK |
+            CARRIER_ATTACK |
+            CARRIER_ATTACK_OBSCURED |
+            CARRIER_ATTACK_UNIT |
+            REAVER_ATTACK |
+            REAVER_ATTACK_OBSCURED |
+            REAVER_ATTACK_UNIT |
+            INTERCEPTOR_ATTACK |
+            SCARAB_ATTACK |
+            SAP_UNIT |
+            SAP_LOCATION |
+            AI_ATTACK_MOVE |
+            REVEAL_TRAP => true,
             _ => false,
         }
     }
 
     fn get(&self, id: u32) -> u32 {
-        unsafe {
-            ::get(ORDERS_DAT, self.0 as u32, id)
-        }
+        unsafe { ::get(ORDERS_DAT, self.0 as u32, id) }
     }
 
     pub fn tech(&self) -> Option<TechId> {

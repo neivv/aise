@@ -2201,26 +2201,66 @@ unsafe fn take_bw_allocated_scripts(
     )
 }
 
+pub unsafe fn start_building_hook(builder: *mut bw::Unit, orig: &Fn(*mut bw::Unit) -> u32) -> u32 {
+    let placement =
+        UnitId((*builder).build_queue[(*builder).current_build_slot as usize]).placement();
+    let mut result = orig(builder);
+    if result == 0 {
+        (*builder).order_target_pos.x += placement.width as i16 / 2;
+        (*builder).order_target_pos.y += placement.height as i16 / 2;
+        result = orig(builder);
+        (*builder).order_target_pos.x -= placement.width as i16 / 2;
+        (*builder).order_target_pos.y -= placement.height as i16 / 2;
+    }
+    result
+}
+
+pub unsafe fn update_placement_hook(
+    builder: *mut bw::Unit,
+    player: u8,
+    x_tile: u32,
+    y_tile: u32,
+    unit_id: u16,
+    placement_state_entry: u8,
+    check_vision: u8,
+    also_invisible: u8,
+    without_vision: u8,
+    orig: &Fn(*mut bw::Unit, u8, u32, u32, u16, u8, u8, u8, u8) -> u32,
+) -> u32 {
+    let result = orig(
+        builder,
+        player,
+        x_tile,
+        y_tile,
+        unit_id,
+        placement_state_entry,
+        check_vision,
+        also_invisible,
+        without_vision,
+    );
+    result
+}
+
 pub unsafe fn choose_building_placement(
     unit_id: u32,
     position_xy: u32,
     out_pos: *mut bw::Point,
     area_tiles: u32,
     builder: *mut bw::Unit,
-    orig: &Fn(u32, u32, *mut bw::Point, u32, *mut bw::Unit),
-) {
-    orig(unit_id, position_xy, out_pos, area_tiles, builder);
+    orig: &Fn(u32, u32, *mut bw::Point, u32, *mut bw::Unit) -> u32,
+) -> u32 {
+    let result = orig(unit_id, position_xy, out_pos, area_tiles, builder);
 
     if out_pos.is_null() {
-        return;
+        return result;
     }
     let builder = match Unit::from_ptr(builder) {
         Some(s) => s,
-        None => return,
+        None => return result,
     };
     let ai = match builder.worker_ai() {
         Some(s) => s,
-        None => return,
+        None => return result,
     };
     let town = (*ai).town;
     let unit_id = UnitId(unit_id as u16);
@@ -2228,6 +2268,7 @@ pub unsafe fn choose_building_placement(
 
     let globals = Globals::get();
     if let Some(town_id) = globals.town_ids.iter().find(|x| x.town.0 == town) {
+        let game = Game::get();
         let layouts = globals
             .base_layouts
             .layouts
@@ -2250,22 +2291,92 @@ pub unsafe fn choose_building_placement(
             let pos_y = layout.pos.top / 32;
             for i in pos_x..rect_x + 1 {
                 for j in pos_y..rect_y + 1 {
-                    let fail = bw::update_building_placement_state(
-                        builder.0, player, i as u32, j as u32, unit_id.0, 0, 0, 1, 0,
-                    );
-                    if fail == 0 {
+                    let ok = check_placement(game, builder, i, j, unit_id);
+                    if ok {
                         debug!(
                             "Placing {:x} to {:x}, {:x} for player {:x}",
                             unit_id.0, i, j, player
                         );
+
                         (*out_pos).x = i * 32;
                         (*out_pos).y = j * 32;
-                        return;
+                        return result;
                     }
                 }
             }
         }
     }
+    result
+}
+
+unsafe fn check_placement(
+    game: Game,
+    builder: Unit,
+    x_tile: i16,
+    y_tile: i16,
+    unit_id: UnitId,
+) -> bool {
+    let map_width = (*game.0).map_width_tiles;
+    let zerg = unit_id.group_flags() & 0x1 != 0;
+    let require_creep = unit_id.require_creep();
+    let forbid_creep = !require_creep && !zerg;
+
+    let placement = unit_id.placement();
+
+    let area = bw::Rect {
+        left: (x_tile * 32).saturating_sub(3 * 32),
+        top: (y_tile * 32).saturating_sub(3 * 32),
+        right: (x_tile * 32) + placement.width as i16 + 3 * 32,
+        bottom: (y_tile * 32) + placement.height as i16 + 3 * 32,
+    };
+    let units = unit::find_units(&area, |&u| u != builder);
+    if !units.is_empty() {
+        return false;
+    }
+
+    let width_tiles = placement.width / 32;
+    let height_tiles = placement.height / 32;
+
+    if unit_id.is_town_hall() {
+        let res_units = unit::find_units(&area, |u| u.id().is_resource_container());
+        if !res_units.is_empty() {
+            return false;
+        }
+    }
+
+    for px in 0..width_tiles {
+        for py in 0..height_tiles {
+            let tile = *(*bw::tile_flags).offset(
+                (px + x_tile as u16 - 1) as isize + (map_width * (py + y_tile as u16 - 1)) as isize,
+            );
+            if tile & 0x0080_0000 != 0 {
+                //unbuildable
+                return false;
+            }
+            if tile & 0x1000_0000 != 0 {
+                //creep disappearing
+                if forbid_creep || require_creep {
+                    return false;
+                }
+            }
+            let creep_tile = tile & 0x0040_0000 != 0;
+            if (!creep_tile && require_creep) || (creep_tile && forbid_creep) {
+                return false;
+            }
+            if unit_id.require_psi() {
+                let powered = bw::IsPowered(
+                    px as u32 + x_tile as u32,
+                    py as u32 + y_tile as u32,
+                    builder.player(),
+                    unit_id.0 as u32,
+                );
+                if powered == 0 {
+                    return false;
+                }
+            }
+        }
+    }
+    true
 }
 
 pub unsafe extern fn base_layout(script: *mut bw::AiScript) {

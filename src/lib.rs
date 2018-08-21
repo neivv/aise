@@ -171,9 +171,14 @@ pub extern fn Initialize() {
         bw::init_funcs(&mut exe);
         bw::init_vars(&mut exe);
         exe.hook_opt(bw::increment_death_scores, aiscript::increment_deaths);
+        exe.hook_opt(bw::start_building, aiscript::start_building_hook);
         exe.hook_opt(
             bw::choose_placement_position,
             aiscript::choose_building_placement,
+        );
+        exe.hook_opt(
+            bw::update_building_placement_state_hook,
+            aiscript::update_placement_hook,
         );
 
         bw::IS_1161.store(true, std::sync::atomic::Ordering::Release);
@@ -190,6 +195,7 @@ unsafe extern fn frame_hook() {
     aiscript::under_attack_frame_hook(globals);
     ai::update_guard_needs(game, &mut globals.guards);
     ai::continue_incomplete_buildings();
+
     for unit in unit::active_units() {
         if let Some(ai) = unit.building_ai() {
             let town = (*ai).town;
