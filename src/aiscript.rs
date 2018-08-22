@@ -2291,7 +2291,22 @@ pub unsafe fn choose_building_placement(
             let pos_y = layout.pos.top / 32;
             for i in pos_x..rect_x + 1 {
                 for j in pos_y..rect_y + 1 {
-                    let ok = check_placement(game, builder, i, j, unit_id);
+                    let mut ok = check_placement(game, builder, i, j, unit_id);
+                    if ok {
+                        let mut workers = (*town).workers;
+                        while workers != null_mut() {
+                            let current = (*workers).parent;
+                            if current != builder.0 {
+                                if (*current).order_target_pos.x == i * 32 &&
+                                    (*current).order_target_pos.y == j * 32
+                                {
+                                    ok = false;
+                                    break;
+                                }
+                            }
+                            workers = (*workers).next;
+                        }
+                    }
                     if ok {
                         debug!(
                             "Placing {:x} to {:x}, {:x} for player {:x}",
