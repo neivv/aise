@@ -2342,8 +2342,8 @@ unsafe fn check_placement(
     let area = bw::Rect {
         left: (x_tile * 32),
         top: (y_tile * 32),
-        right: (x_tile * 32) + placement.width as i16,
-        bottom: (y_tile * 32) + placement.height as i16,
+        right: (x_tile * 32) + (placement.width as i16 / 2),
+        bottom: (y_tile * 32) + (placement.height as i16 / 2),
     };
     let units = unit::find_units(&area, |&u| u != builder);
     if !units.is_empty() {
@@ -2388,17 +2388,17 @@ unsafe fn check_placement(
             if (!creep_tile && require_creep) || (creep_tile && forbid_creep) {
                 return false;
             }
-            if unit_id.require_psi() {
-                let powered = bw::is_powered(
-                    px as u32 + x_tile as u32,
-                    py as u32 + y_tile as u32,
-                    builder.player(),
-                    unit_id.0 as u32,
-                );
-                if powered == 0 {
-                    return false;
-                }
-            }
+        }
+    }
+    if unit_id.require_psi() {
+        let powered = bw::is_powered(
+            (x_tile as u32) * 32,
+            (y_tile as u32) * 32,
+            builder.player(),
+            unit_id.0 as u32,
+        );
+        if powered == 0 {
+            return false;
         }
     }
     true
