@@ -221,8 +221,8 @@ struct IdleOrder {
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 struct IdleOrderFlags {
     simple: u8,
-    status_required: u8,
-    status_not: u8,
+    status_required: u16,
+    status_not: u16,
     units_dat_required: u32,
     units_dat_not: u32,
     targeting_filter: TargetingFlags,
@@ -318,8 +318,12 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
                         *delete_flags = val & 0xc000;
                         return true;
                     }
-                    1 => flags.status_required = (val & 0xff) as u8,
-                    2 => flags.status_not = (val & 0xff) as u8,
+                    1 => {
+                        flags.status_required = ((val & 0xff) | ((val & 0x4000) >> 6)) as u16;
+                    }
+                    2 => {
+                        flags.status_not = ((val & 0xff) | ((val & 0x4000) >> 6)) as u16;
+                    }
                     3 => {
                         let amount = read.read::<i32>();
                         let comparision = match val & 0xf {
@@ -811,7 +815,8 @@ impl IdleOrderFlags {
                     (if (*unit.0).parasited_by_players != 0 { 1 } else { 0 } << 4) |
                     (if (*unit.0).is_blind != 0 { 1 } else { 0 } << 5) |
                     (if (*unit.0).matrix_timer != 0 { 1 } else { 0 } << 6) |
-                    (if (*unit.0).maelstrom_timer != 0 { 1 } else { 0 } << 7);
+                    (if (*unit.0).maelstrom_timer != 0 { 1 } else { 0 } << 7) |
+                    (if (*unit.0).stim_timer != 0 { 1 } else { 0 } << 8);
                 self.status_required & flags == self.status_required &&
                     self.status_not & flags == 0
             } else {
