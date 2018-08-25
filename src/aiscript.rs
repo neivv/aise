@@ -2201,20 +2201,6 @@ unsafe fn take_bw_allocated_scripts(
     )
 }
 
-pub unsafe fn start_building_hook(builder: *mut bw::Unit, orig: &Fn(*mut bw::Unit) -> u32) -> u32 {
-    let placement =
-        UnitId((*builder).build_queue[(*builder).current_build_slot as usize]).placement();
-    let mut result = orig(builder);
-    if result == 0 {
-        (*builder).order_target_pos.x += placement.width as i16 / 2;
-        (*builder).order_target_pos.y += placement.height as i16 / 2;
-        result = orig(builder);
-        (*builder).order_target_pos.x -= placement.width as i16 / 2;
-        (*builder).order_target_pos.y -= placement.height as i16 / 2;
-    }
-    result
-}
-
 pub unsafe fn update_placement_hook(
     builder: *mut bw::Unit,
     player: u8,
@@ -2289,6 +2275,8 @@ pub unsafe fn choose_building_placement(
             let rect_y = layout.pos.bottom / 32;
             let pos_x = layout.pos.left / 32;
             let pos_y = layout.pos.top / 32;
+            let offset_x = layout.pos.left - (pos_x * 32);
+            let offset_y = layout.pos.top - (pos_y * 32);
             for i in pos_x..rect_x + 1 {
                 for j in pos_y..rect_y + 1 {
                     let mut ok = check_placement(game, builder, i, j, unit_id);
@@ -2312,9 +2300,8 @@ pub unsafe fn choose_building_placement(
                             "Placing {:x} to {:x}, {:x} for player {:x}",
                             unit_id.0, i, j, player
                         );
-
-                        (*out_pos).x = i * 32;
-                        (*out_pos).y = j * 32;
+                        (*out_pos).x = (i * 32) + offset_x;
+                        (*out_pos).y = (j * 32) + offset_y;
                         return result;
                     }
                 }

@@ -171,7 +171,6 @@ pub extern fn Initialize() {
         bw::init_funcs(&mut exe);
         bw::init_vars(&mut exe);
         exe.hook_opt(bw::increment_death_scores, aiscript::increment_deaths);
-        exe.hook_opt(bw::start_building, aiscript::start_building_hook);
         exe.hook_opt(
             bw::choose_placement_position,
             aiscript::choose_building_placement,
