@@ -26,6 +26,16 @@ impl Game {
         unsafe { (*self.0).frame_count }
     }
 
+    pub fn unit_available(self, player: u8, unit: UnitId) -> u8 {
+        unsafe { (*self.0).unit_availability[player as usize][unit.0 as usize] }
+    }
+
+    pub fn set_unit_availability(self, player: u8, unit: UnitId, available: u8) {
+        unsafe {
+            (*self.0).unit_availability[player as usize][unit.0 as usize] = available;
+        }
+    }
+
     pub fn upgrade_level(self, player: u8, upgrade: UpgradeId) -> u8 {
         unsafe {
             let upgrade = upgrade.0;

@@ -1,6 +1,6 @@
 [package]
 name = "aise"
-version = "2.11.12"
+version = "2.12.0"
 authors = ["Markus Heikkinen <ittevien@gmail.com>"]
 
 [lib]

@@ -1106,6 +1106,57 @@ pub unsafe extern fn upgrade_jump(script: *mut bw::AiScript) {
     };
 }
 
+pub unsafe extern fn unit_avail(script: *mut bw::AiScript) {
+    let game = Game::get();
+    let mut globals = Globals::get();
+    let mut read = ScriptData::new(script);
+    let players = read.read_player_match(game);
+    let modifier = read.read_modifier();
+    let avail_modifier = read.read_u8();
+    let unit = UnitId(read.read_u16());
+    let dest = read.read_u16();
+    if avail_modifier >= 2 {
+        bw::print_text("Invalid modifier in unit_avail");
+        return;
+    }
+    match modifier.ty {
+        ModifierType::Read(r) => match r {
+            ReadModifier::AtLeast | ReadModifier::AtMost => {
+                bw::print_text("AtLeast/AtMost modifier is not supported in unit_avail");
+                return;
+            }
+            ReadModifier::Exactly => {
+                let jump = players.players().any(|player| {
+                    let avail = game.unit_available(player, unit);
+                    r.compare(avail as u32, u32::from(avail_modifier))
+                });
+                if jump {
+                    if modifier.call_instead_of_jump {
+                        let ret = (*script).pos;
+                        (*script).pos = dest as u32;
+                        (*Script::ptr_from_bw(script)).call_stack.push(ret);
+                    } else {
+                        (*script).pos = dest as u32;
+                    }
+                }
+            }
+        },
+        ModifierType::Write(w) => {
+            for player in players.players() {
+                let new_value = match w {
+                    WriteModifier::Add | WriteModifier::Subtract => {
+                        bw::print_text("Add/subtract modifier is not supported in unit_avail");
+                        return;
+                    }
+                    WriteModifier::Set => avail_modifier,
+                    WriteModifier::Randomize => globals.rng.synced_rand(0..2) as u8,
+                };
+                game.set_unit_availability(player, unit, new_value);
+            }
+        }
+    };
+}
+
 pub unsafe extern fn tech_jump(script: *mut bw::AiScript) {
     let game = Game::get();
     let mut read = ScriptData::new(script);
