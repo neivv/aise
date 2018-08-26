@@ -1073,31 +1073,38 @@ pub unsafe extern fn player_jump(script: *mut bw::AiScript) {
 
 pub unsafe extern fn upgrade_jump(script: *mut bw::AiScript) {
     let game = Game::get();
-
     let mut read = ScriptData::new(script);
     let players = read.read_player_match(game);
     let modifier = read.read_modifier();
     let upgrade = UpgradeId(read.read_u16());
     let level = read.read_u8();
     let dest = read.read_u16();
-    let read = match modifier.ty {
-        ModifierType::Read(r) => r,
+    match modifier.ty {
+        ModifierType::Read(r) => {
+            let jump = players.players().any(|player| {
+                let up_lev = game.upgrade_level(player, upgrade);
+                r.compare(u32::from(up_lev), u32::from(level))
+            });
+            if jump {
+                if modifier.call_instead_of_jump {
+                    let ret = (*script).pos;
+                    (*script).pos = dest as u32;
+                    (*Script::ptr_from_bw(script)).call_stack.push(ret);
+                } else {
+                    (*script).pos = dest as u32;
+                }
+            }
+        }
         ModifierType::Write(w) => {
-            bw::print_text(format!("Used writing modifier {:?} in upgrade_jump", w));
-            return;
+            let mut globals = Globals::get();
+            for player in players.players() {
+                let old = game.upgrade_level(player, upgrade);
+                let new = write.apply(old, level, &mut globals.rng);
+                game.set_upgrade_level(player, upgrade, new);
+            }
         }
     };
-    let jump = players.players().any(|player| {
-        let up_lev = game.upgrade_level(player, upgrade);
-        read.compare(u32::from(up_lev), u32::from(level))
-    });
-    if jump {
-        if modifier.call_instead_of_jump {
-            let ret = (*script).pos;
-            (*script).pos = dest as u32;
-            (*Script::ptr_from_bw(script)).call_stack.push(ret);
-        } else {
-            (*script).pos = dest as u32;
+}
         }
     }
 }
