@@ -66,26 +66,7 @@ pub struct BaseLayout {
     pub amount: u8,
     pub town_id: u8,
     pub town: Town,
-}
-
-impl BaseLayout {
-    pub fn new(
-        pos: bw::Rect,
-        player: u8,
-        unit_id: UnitId,
-        amount: u8,
-        town_id: u8,
-        town: Town,
-    ) -> BaseLayout {
-        BaseLayout {
-            pos,
-            player,
-            unit_id,
-            amount,
-            town_id,
-            town,
-        }
-    }
+    pub priority: u8,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -98,11 +79,12 @@ impl BaseLayouts {
         if !self.layouts.iter().any(|i| i == &value) {
             self.layouts.push(value)
         }
+        self.layouts.sort_by_key(|x| !0 - x.priority);
     }
 
     pub fn try_remove(&mut self, value: &BaseLayout) {
         if let Some(pos) = self.layouts.iter().position(|i| i == value) {
-            self.layouts.swap_remove(pos);
+            self.layouts.remove(pos);
         }
     }
 }

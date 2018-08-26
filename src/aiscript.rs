@@ -2391,23 +2391,20 @@ unsafe fn check_placement(
     true
 }
 
-pub unsafe extern fn base_layout(script: *mut bw::AiScript) {
-    // base_layout(unit, modifier, src_area, amount, town_id)
+unsafe extern fn add_layout(
+    script: *mut bw::AiScript,
+    unit_id: UnitId,
+    layout_modifier: u8,
+    src: Position,
+    amount: u8,
+    town_id: u8,
+    priority: u8,
+) {
     #[derive(Eq, PartialEq, Copy, Clone, Debug)]
     enum LayoutModifier {
         Set,
         Remove,
     }
-
-    let mut read = ScriptData::new(script);
-    let unit = UnitId(read.read_u16());
-    let layout_modifier = read.read_u8();
-    let mut src = read.read_position();
-    let radius = read.read_u16();
-    src.extend_area(radius as i16);
-    let amount = read.read_u8();
-    let town_id = read.read_u8();
-
     let layout_modifier = match layout_modifier {
         0 => LayoutModifier::Set,
         1 => LayoutModifier::Remove,
@@ -2423,19 +2420,55 @@ pub unsafe extern fn base_layout(script: *mut bw::AiScript) {
     let mut globals = Globals::get();
     let town = Town::from_ptr((*script).town);
     if let Some(town) = town {
-        let layout = BaseLayout::new(
-            src.area,
-            (*script).player as u8,
-            unit,
+        let layout = BaseLayout {
+            pos: src.area,
+            player: (*script).player as u8,
+            unit_id,
             amount,
             town_id,
             town,
-        );
+            priority,
+        };
+
         match layout_modifier {
             LayoutModifier::Set => globals.base_layouts.try_add(layout),
             LayoutModifier::Remove => globals.base_layouts.try_remove(&layout),
         }
     }
+}
+
+pub unsafe extern fn base_layout(script: *mut bw::AiScript) {
+    // base_layout(unit, modifier, src_area, amount, town_id)
+    let mut read = ScriptData::new(script);
+    let unit = UnitId(read.read_u16());
+    let layout_modifier = read.read_u8();
+    let mut src = read.read_position();
+    let radius = read.read_u16();
+    src.extend_area(radius as i16);
+    let amount = read.read_u8();
+    let town_id = read.read_u8();
+    let priority = read.read_u8();
+    add_layout(
+        script,
+        unit,
+        layout_modifier,
+        src,
+        amount,
+        town_id,
+        priority,
+    );
+}
+pub unsafe extern fn base_layout_old(script: *mut bw::AiScript) {
+    // base_layout(unit, modifier, src_area, amount, town_id)
+    let mut read = ScriptData::new(script);
+    let unit = UnitId(read.read_u16());
+    let layout_modifier = read.read_u8();
+    let mut src = read.read_position();
+    let radius = read.read_u16();
+    src.extend_area(radius as i16);
+    let amount = read.read_u8();
+    let town_id = read.read_u8();
+    add_layout(script, unit, layout_modifier, src, amount, town_id, 50);
 }
 
 pub unsafe extern fn guard_command(script: *mut bw::AiScript) {
