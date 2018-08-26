@@ -1105,9 +1105,6 @@ pub unsafe extern fn upgrade_jump(script: *mut bw::AiScript) {
         }
     };
 }
-        }
-    }
-}
 
 pub unsafe extern fn tech_jump(script: *mut bw::AiScript) {
     let game = Game::get();
