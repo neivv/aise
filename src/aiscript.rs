@@ -1099,8 +1099,8 @@ pub unsafe extern fn upgrade_jump(script: *mut bw::AiScript) {
             let mut globals = Globals::get();
             for player in players.players() {
                 let old = game.upgrade_level(player, upgrade);
-                let new = write.apply(old, level, &mut globals.rng);
-                game.set_upgrade_level(player, upgrade, new);
+                let new = w.apply(u32::from(old), u32::from(level), &mut globals.rng);
+                game.set_upgrade_level(player, upgrade, new as u8);
             }
         }
     };
