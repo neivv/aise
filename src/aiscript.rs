@@ -616,7 +616,8 @@ impl UnitMatch {
     }
 }
 
-struct PlayerMatch {
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PlayerMatch {
     players: [bool; 12],
 }
 
@@ -1269,7 +1270,7 @@ unsafe fn ai_region(player: u32, region: u16) -> *mut bw::AiRegion {
     bw::ai_regions(player).offset(region as isize)
 }
 
-struct Position {
+pub struct Position {
     pub center: bw::Point,
     pub area: bw::Rect,
 }
@@ -1330,8 +1331,8 @@ impl fmt::Display for Position {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
-enum ReadModifier {
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum ReadModifier {
     AtLeast,
     AtMost,
     Exactly,
@@ -1806,7 +1807,7 @@ impl ScriptData {
         )
     }
 
-    unsafe fn read_player_match(&mut self, game: Game) -> PlayerMatch {
+    pub unsafe fn read_player_match(&mut self, game: Game) -> PlayerMatch {
         let mut cont = true;
         let mut result = PlayerMatch {
             players: [false; 12],

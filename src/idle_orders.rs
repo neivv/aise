@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering, ATOMIC_BOOL_INIT};
 
 use bw_dat::{self, order, OrderId, UnitId};
 
-use aiscript::{ScriptData, UnitMatch};
+use aiscript::{PlayerMatch, Position, ReadModifier, ScriptData, UnitMatch};
 use bw;
 use game::Game;
 use globals::Globals;
@@ -205,6 +205,14 @@ struct RandomRate {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct IdleOrderCount {
+    modifier: ReadModifier,
+    value: u16,
+    range: u16,
+    players: PlayerMatch,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 struct IdleOrder {
     priority: u8,
     order: OrderId,
@@ -229,6 +237,7 @@ struct IdleOrderFlags {
     order: Option<OrderId>,
     numeric: Vec<(IdleOrderNumeric, Comparision, i32)>,
     random_rate: Option<RandomRate>,
+    count: Option<IdleOrderCount>,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
@@ -292,6 +301,7 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
     //      0x100 ~ 0x2000 = Extensions
     //      0x4000 = Remove matching, no error on mismatch
     //      0x8000 = Remove matching
+
     let mut read = ScriptData::new(script);
     let order = OrderId(read.read_u8());
     let rate = read.read_u16();
@@ -399,6 +409,31 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
                             });
                         }
                     }
+                    9 => {
+                        let modifier = read.read_u8();
+                        let value = read.read_u16();
+                        let range = read.read_u16();
+                        let game = Game::get();
+                        let players = read.read_player_match(game);
+                        let modifier = match modifier {
+                            0 => ReadModifier::AtLeast,
+                            1 => ReadModifier::AtMost,
+                            10 => ReadModifier::Exactly,
+                            x => {
+                                bw::print_text(format!(
+                                    "Unsupported modifier in count flag: {:x}",
+                                    x
+                                ));
+                                ReadModifier::AtLeast
+                            }
+                        };
+                        flags.count = Some(IdleOrderCount {
+                            modifier,
+                            value,
+                            range,
+                            players,
+                        });
+                    }
                     _ => bw::print_text("idle_orders: invalid encoding"),
                 }
             }
@@ -413,6 +448,7 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
             order: None,
             numeric: Vec::new(),
             random_rate: None,
+            count: None,
         };
         self_flags = IdleOrderFlags {
             simple: 0,
@@ -424,6 +460,7 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
             order: None,
             numeric: Vec::new(),
             random_rate: None,
+            count: None,
         };
         let ok = parse_flags(
             &mut read,
@@ -806,6 +843,17 @@ impl IdleOrderFlags {
                     return false;
                 }
             }
+            if let Some(ref s) = self.count {
+                let mut position = Position::from_point(unit.position().x, unit.position().y);
+                position.extend_area(s.range as i16);
+                let units = unit::find_units(&position.area, |u| s.players.matches(u.player()));
+                let unit_count = units.len() as u32;
+
+                if !s.modifier.compare(unit_count, s.value as u32) {
+                    return false;
+                }
+            }
+
             #[cfg_attr(rustfmt, rustfmt_skip)]
             let status_ok = if self.status_required != 0 || self.status_not != 0 {
                 let flags = (if (*unit.0).ensnare_timer != 0 { 1 } else { 0 } << 0) |
