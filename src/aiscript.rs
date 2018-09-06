@@ -657,7 +657,7 @@ pub unsafe extern fn supply(script: *mut bw::AiScript) {
         Sum,
         Max,
     }
-
+    let old_pos = (*script).pos - 1;
     let mut globals = Globals::get();
     let game = Game::get();
     let mut read = ScriptData::new(script);
@@ -729,13 +729,21 @@ pub unsafe extern fn supply(script: *mut bw::AiScript) {
                     }
                 }
             }
-            if read.compare(sum, amount) {
-                if modifier.call_instead_of_jump {
-                    let ret = (*script).pos;
-                    (*script).pos = dest as u32;
-                    (*Script::ptr_from_bw(script)).call_stack.push(ret);
-                } else {
-                    (*script).pos = dest as u32;
+            let read_req = modifier.get_read_req();
+            if read.compare(sum, amount) == read_req {
+                match modifier.action {
+                    ModifierAction::Jump => {
+                        (*script).pos = dest as u32;
+                    }
+                    ModifierAction::Call => {
+                        let ret = (*script).pos;
+                        (*script).pos = dest as u32;
+                        (*Script::ptr_from_bw(script)).call_stack.push(ret);
+                    }
+                    ModifierAction::Wait => {
+                        (*script).pos = old_pos;
+                        (*script).wait = 30;
+                    }
                 }
             }
         }
@@ -770,7 +778,7 @@ pub unsafe extern fn resources_command(script: *mut bw::AiScript) {
         Ore,
         Gas,
     }
-
+    let old_pos = (*script).pos - 1;
     let game = Game::get();
     let mut globals = Globals::get();
     let mut read = ScriptData::new(script);
@@ -801,13 +809,22 @@ pub unsafe extern fn resources_command(script: *mut bw::AiScript) {
                     read.compare(resvalue, amount)
                 })
             });
-            if jump {
-                if modifier.call_instead_of_jump {
-                    let ret = (*script).pos;
-                    (*script).pos = dest as u32;
-                    (*Script::ptr_from_bw(script)).call_stack.push(ret);
-                } else {
-                    (*script).pos = dest as u32;
+
+            let read_req = modifier.get_read_req();
+            if jump == read_req {
+                match modifier.action {
+                    ModifierAction::Jump => {
+                        (*script).pos = dest as u32;
+                    }
+                    ModifierAction::Call => {
+                        let ret = (*script).pos;
+                        (*script).pos = dest as u32;
+                        (*Script::ptr_from_bw(script)).call_stack.push(ret);
+                    }
+                    ModifierAction::Wait => {
+                        (*script).pos = old_pos;
+                        (*script).wait = 30;
+                    }
                 }
             }
         }
@@ -832,6 +849,7 @@ pub unsafe extern fn time_command(script: *mut bw::AiScript) {
         Frames,
         Minutes,
     }
+    let old_pos = (*script).pos - 1;
     let game = Game::get();
     let mut read = ScriptData::new(script);
     let modifier = read.read_modifier();
@@ -859,13 +877,21 @@ pub unsafe extern fn time_command(script: *mut bw::AiScript) {
             return;
         }
     };
-    if read.compare(time, amount) {
-        if modifier.call_instead_of_jump {
-            let ret = (*script).pos;
-            (*script).pos = dest as u32;
-            (*Script::ptr_from_bw(script)).call_stack.push(ret);
-        } else {
-            (*script).pos = dest as u32;
+    let read_req = modifier.get_read_req();
+    if read.compare(time, amount) == read_req {
+        match modifier.action {
+            ModifierAction::Jump => {
+                (*script).pos = dest as u32;
+            }
+            ModifierAction::Call => {
+                let ret = (*script).pos;
+                (*script).pos = dest as u32;
+                (*Script::ptr_from_bw(script)).call_stack.push(ret);
+            }
+            ModifierAction::Wait => {
+                (*script).pos = old_pos;
+                (*script).wait = 30;
+            }
         }
     }
 }
@@ -901,6 +927,7 @@ pub unsafe extern fn attacking(script: *mut bw::AiScript) {
 }
 
 pub unsafe extern fn deaths(script: *mut bw::AiScript) {
+    let old_pos = (*script).pos - 1;
     let game = Game::get();
     // deaths(player, modifier, amount, unit, dest)
     let mut read = ScriptData::new(script);
@@ -927,14 +954,21 @@ pub unsafe extern fn deaths(script: *mut bw::AiScript) {
                                 .unwrap_or(0)
                         }).sum::<u32>()
                 }).sum::<u32>();
-
-            if read.compare(sum, amount) {
-                if modifier.call_instead_of_jump {
-                    let ret = (*script).pos;
-                    (*script).pos = dest as u32;
-                    (*Script::ptr_from_bw(script)).call_stack.push(ret);
-                } else {
-                    (*script).pos = dest as u32;
+            let read_req = modifier.get_read_req();
+            if read.compare(sum, amount) == read_req {
+                match modifier.action {
+                    ModifierAction::Jump => {
+                        (*script).pos = dest as u32;
+                    }
+                    ModifierAction::Call => {
+                        let ret = (*script).pos;
+                        (*script).pos = dest as u32;
+                        (*Script::ptr_from_bw(script)).call_stack.push(ret);
+                    }
+                    ModifierAction::Wait => {
+                        (*script).pos = old_pos;
+                        (*script).wait = 30;
+                    }
                 }
             }
         }
@@ -966,6 +1000,7 @@ pub unsafe extern fn wait_rand(script: *mut bw::AiScript) {
 }
 
 pub unsafe extern fn kills_command(script: *mut bw::AiScript) {
+    let old_pos = (*script).pos - 1;
     let game = Game::get();
     // kills(player1, player2, modifier, amount, unit, dest)
     let mut read = ScriptData::new(script);
@@ -991,14 +1026,21 @@ pub unsafe extern fn kills_command(script: *mut bw::AiScript) {
                                 .sum::<u32>()
                         }).sum::<u32>()
                 }).sum::<u32>();
-
-            if read.compare(sum, amount) {
-                if modifier.call_instead_of_jump {
-                    let ret = (*script).pos;
-                    (*script).pos = dest as u32;
-                    (*Script::ptr_from_bw(script)).call_stack.push(ret);
-                } else {
-                    (*script).pos = dest as u32;
+            let read_req = modifier.get_read_req();
+            if read.compare(sum, amount) == read_req {
+                match modifier.action {
+                    ModifierAction::Jump => {
+                        (*script).pos = dest as u32;
+                    }
+                    ModifierAction::Call => {
+                        let ret = (*script).pos;
+                        (*script).pos = dest as u32;
+                        (*Script::ptr_from_bw(script)).call_stack.push(ret);
+                    }
+                    ModifierAction::Wait => {
+                        (*script).pos = old_pos;
+                        (*script).wait = 30;
+                    }
                 }
             }
         }
@@ -1073,6 +1115,7 @@ pub unsafe extern fn player_jump(script: *mut bw::AiScript) {
 }
 
 pub unsafe extern fn upgrade_jump(script: *mut bw::AiScript) {
+    let old_pos = (*script).pos - 1;
     let game = Game::get();
     let mut read = ScriptData::new(script);
     let players = read.read_player_match(game);
@@ -1082,17 +1125,25 @@ pub unsafe extern fn upgrade_jump(script: *mut bw::AiScript) {
     let dest = read.read_u16();
     match modifier.ty {
         ModifierType::Read(r) => {
+            let read_req = modifier.get_read_req();
             let jump = players.players().any(|player| {
                 let up_lev = game.upgrade_level(player, upgrade);
                 r.compare(u32::from(up_lev), u32::from(level))
             });
-            if jump {
-                if modifier.call_instead_of_jump {
-                    let ret = (*script).pos;
-                    (*script).pos = dest as u32;
-                    (*Script::ptr_from_bw(script)).call_stack.push(ret);
-                } else {
-                    (*script).pos = dest as u32;
+            if jump == read_req {
+                match modifier.action {
+                    ModifierAction::Jump => {
+                        (*script).pos = dest as u32;
+                    }
+                    ModifierAction::Call => {
+                        let ret = (*script).pos;
+                        (*script).pos = dest as u32;
+                        (*Script::ptr_from_bw(script)).call_stack.push(ret);
+                    }
+                    ModifierAction::Wait => {
+                        (*script).pos = old_pos;
+                        (*script).wait = 30;
+                    }
                 }
             }
         }
@@ -1108,6 +1159,7 @@ pub unsafe extern fn upgrade_jump(script: *mut bw::AiScript) {
 }
 
 pub unsafe extern fn unit_avail(script: *mut bw::AiScript) {
+    let old_pos = (*script).pos - 1;
     let game = Game::get();
     let mut globals = Globals::get();
     let mut read = ScriptData::new(script);
@@ -1127,17 +1179,25 @@ pub unsafe extern fn unit_avail(script: *mut bw::AiScript) {
                 return;
             }
             ReadModifier::Exactly => {
+                let read_req = modifier.get_read_req();
                 let jump = players.players().any(|player| {
                     let avail = game.unit_available(player, unit);
                     r.compare(avail as u32, u32::from(avail_modifier))
                 });
-                if jump {
-                    if modifier.call_instead_of_jump {
-                        let ret = (*script).pos;
-                        (*script).pos = dest as u32;
-                        (*Script::ptr_from_bw(script)).call_stack.push(ret);
-                    } else {
-                        (*script).pos = dest as u32;
+                if jump == read_req {
+                    match modifier.action {
+                        ModifierAction::Jump => {
+                            (*script).pos = dest as u32;
+                        }
+                        ModifierAction::Call => {
+                            let ret = (*script).pos;
+                            (*script).pos = dest as u32;
+                            (*Script::ptr_from_bw(script)).call_stack.push(ret);
+                        }
+                        ModifierAction::Wait => {
+                            (*script).pos = old_pos;
+                            (*script).wait = 30;
+                        }
                     }
                 }
             }
@@ -1159,6 +1219,7 @@ pub unsafe extern fn unit_avail(script: *mut bw::AiScript) {
 }
 
 pub unsafe extern fn tech_jump(script: *mut bw::AiScript) {
+    let old_pos = (*script).pos - 1;
     let game = Game::get();
     let mut read = ScriptData::new(script);
     let players = read.read_player_match(game);
@@ -1174,20 +1235,28 @@ pub unsafe extern fn tech_jump(script: *mut bw::AiScript) {
             return;
         }
     };
+    let read_req = modifier.get_read_req();
     let jump = players.players().any(|player| {
         let tech_level = match game.tech_researched(player, tech) {
             true => 1,
             false => 0,
         };
-        read.compare(tech_level, u32::from(level))
+        read.compare(tech_level, u32::from(level)) == read_req
     });
     if jump {
-        if modifier.call_instead_of_jump {
-            let ret = (*script).pos;
-            (*script).pos = dest as u32;
-            (*Script::ptr_from_bw(script)).call_stack.push(ret);
-        } else {
-            (*script).pos = dest as u32;
+        match modifier.action {
+            ModifierAction::Jump => {
+                (*script).pos = dest as u32;
+            }
+            ModifierAction::Call => {
+                let ret = (*script).pos;
+                (*script).pos = dest as u32;
+                (*Script::ptr_from_bw(script)).call_stack.push(ret);
+            }
+            ModifierAction::Wait => {
+                (*script).pos = old_pos;
+                (*script).wait = 30;
+            }
         }
     }
 }
@@ -1233,6 +1302,7 @@ unsafe fn add_to_attack_force(player: u8, unit: UnitId, amount: u32) {
 }
 
 pub unsafe extern fn bring_jump(script: *mut bw::AiScript) {
+    let old_pos = (*script).pos - 1;
     let game = Game::get();
     let mut read = ScriptData::new(script);
     let players = read.read_player_match(game);
@@ -1255,13 +1325,21 @@ pub unsafe extern fn bring_jump(script: *mut bw::AiScript) {
         players.matches(u.player()) && unit_id.matches(u)
     });
     let count = units.len() as u32;
-    if read.compare(count, amount) {
-        if modifier.call_instead_of_jump {
-            let ret = (*script).pos;
-            (*script).pos = dest as u32;
-            (*Script::ptr_from_bw(script)).call_stack.push(ret);
-        } else {
-            (*script).pos = dest as u32;
+    let read_req = modifier.get_read_req();
+    if read.compare(count, amount) == read_req {
+        match modifier.action {
+            ModifierAction::Jump => {
+                (*script).pos = dest as u32;
+            }
+            ModifierAction::Call => {
+                let ret = (*script).pos;
+                (*script).pos = dest as u32;
+                (*Script::ptr_from_bw(script)).call_stack.push(ret);
+            }
+            ModifierAction::Wait => {
+                (*script).pos = old_pos;
+                (*script).wait = 30;
+            }
         }
     }
 }
@@ -1381,7 +1459,16 @@ enum ModifierType {
 
 struct TriggerModifier {
     ty: ModifierType,
-    call_instead_of_jump: bool,
+    action: ModifierAction,
+}
+
+impl TriggerModifier {
+    pub fn get_read_req(&self) -> bool {
+        match self.action {
+            ModifierAction::Jump | ModifierAction::Call => true,
+            ModifierAction::Wait => false,
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -1868,9 +1955,18 @@ impl ScriptData {
 
     fn read_modifier(&mut self) -> TriggerModifier {
         let val = self.read_u8();
+        let action = match val & 0xc0 {
+            0x40 => ModifierAction::Wait,
+            0x80 => ModifierAction::Call,
+            0x0 => ModifierAction::Jump,
+            _ => {
+                bw::print_text(format!("Unsupported modifier: {:x}", val));
+                ModifierAction::Jump
+            }
+        };
         TriggerModifier {
-            call_instead_of_jump: val & 0x80 != 0,
-            ty: match val & 0x7f {
+            action,
+            ty: match val & 0x1f {
                 // Matching triggers in chk
                 0 => ModifierType::Read(ReadModifier::AtLeast),
                 1 => ModifierType::Read(ReadModifier::AtMost),
