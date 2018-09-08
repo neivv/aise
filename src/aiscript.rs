@@ -3,7 +3,7 @@ use std::mem;
 use std::ptr::null_mut;
 use std::slice;
 
-use byteorder::{ReadBytesExt, WriteBytesExt, LE};
+use byteorder::{WriteBytesExt, LE};
 use serde::{self, Deserialize, Deserializer, Serialize, Serializer};
 use smallvec::SmallVec;
 
@@ -12,6 +12,7 @@ use bw_dat::{self, TechId, UnitId, UpgradeId};
 use ai;
 use block_alloc::BlockAllocSet;
 use bw;
+use datreq::{DatReq, ReadDatReqs};
 use game::Game;
 use globals::{self, BaseLayout, Globals};
 use list::ListIter;
@@ -1548,7 +1549,11 @@ unsafe fn can_satisfy_request(
             if !wait_resources && !has_resources(game, player, &ai::unit_cost(unit_id)) {
                 return false;
             }
-            can_satisfy_unit_request(game, player, unit_id)
+            let reqs = match bw::unit_dat_requirements(unit_id) {
+                Some(s) => s,
+                None => return true,
+            };
+            can_satisfy_dat_request(game, player, reqs, 0)
         }
         5 => {
             let upgrade_id = UpgradeId(request.id);
@@ -1560,7 +1565,7 @@ unsafe fn can_satisfy_request(
                 None => return true,
             };
             let level = game.upgrade_level(player as u8, upgrade_id);
-            can_satisfy_nonunit_request(game, player, reqs, level)
+            can_satisfy_dat_request(game, player, reqs, level)
         }
         6 => {
             let tech_id = TechId(request.id);
@@ -1571,7 +1576,7 @@ unsafe fn can_satisfy_request(
                 Some(s) => s,
                 None => return true,
             };
-            can_satisfy_nonunit_request(game, player, reqs, 0)
+            can_satisfy_dat_request(game, player, reqs, 0)
         }
         _ => true,
     }
@@ -1587,6 +1592,7 @@ enum MatchRequirement {
     Addon(UnitId),
     HasHangarSpace,
     HasNoNuke,
+    HasNoAddon,
     Or(Vec<MatchRequirement>),
 }
 
@@ -1597,13 +1603,8 @@ impl MatchRequirement {
             Unit(id) => unit.matches_id(*id),
             Addon(id) => unit.addon().map(|x| x.matches_id(*id)).unwrap_or(false),
             HasHangarSpace => true, // TODO if ever cared
-            HasNoNuke => {
-                if unit.id() == bw_dat::unit::NUCLEAR_SILO {
-                    unsafe { (&(*unit.0).unit_specific2[..]).read_u32::<LE>().unwrap() == 0 }
-                } else {
-                    true
-                }
-            }
+            HasNoNuke => !unit.has_nuke(),
+            HasNoAddon => unit.addon().is_none(),
             Or(reqs) => reqs.iter().any(|x| x.matches(unit)),
         }
     }
@@ -1625,251 +1626,90 @@ fn is_busy(unit: Unit) -> bool {
     }
 }
 
-unsafe fn can_satisfy_unit_request(game: Game, player: u8, unit_id: UnitId) -> bool {
-    use datreq::UnitReq;
-
-    let mut reqs = match bw::unit_dat_requirements(unit_id) {
-        Some(s) => s,
-        None => return true,
-    };
-    let mut match_requirements: SmallVec<[MatchRequirement; 8]> = SmallVec::new();
-    'outer: loop {
-        let mut pass = false;
-        let match_req_prev_len = match_requirements.len();
-        loop {
-            let val = UnitReq::from_raw(*reqs);
-            reqs = reqs.offset(1);
-            pass |= match val {
-                UnitReq::End => break 'outer,
-                UnitReq::Disabled => false,
-                UnitReq::Blank => false,
-                UnitReq::BwOnly => true,       // w/e
-                UnitReq::BurrowedOnly => true, // ???
-                UnitReq::NotBurrowedOnly => true,
-                // Assuming IsNotBusy/IsNotLifted/IsNotConstructingAddon/etc
-                // for anything in matching for now
-                UnitReq::IsNotBusy => true,
-                UnitReq::IsNotLifted => true,
-                UnitReq::IsNotConstructingAddon => true,
-                UnitReq::IsNotUpgrading => true,
-                UnitReq::IsNotTeching => true,
-                UnitReq::IsNotConstructingBuilding => true,
-                UnitReq::HasHangarSpace => {
-                    match_requirements.push(MatchRequirement::HasHangarSpace);
-                    true
-                }
-                UnitReq::HasNotNukeOnly => {
-                    match_requirements.push(MatchRequirement::HasNoNuke);
-                    true
-                }
-                UnitReq::HasNoAddon => {
-                    match_requirements.push(MatchRequirement::HasNoNuke);
-                    true
-                }
-                UnitReq::CurrentUnitIs => {
-                    let unit = match UnitId::optional(*reqs as u32) {
-                        Some(s) => s,
-                        None => {
-                            warn!("Unknown unit {:x}", *reqs);
-                            return true;
-                        }
-                    };
-                    reqs = reqs.offset(1);
-                    match_requirements.push(MatchRequirement::Unit(unit));
-                    true
-                }
-                UnitReq::HasAddonAttached => {
-                    let addon = match UnitId::optional(*reqs as u32) {
-                        Some(s) => s,
-                        None => {
-                            warn!("Unknown unit {:x}", *reqs);
-                            return true;
-                        }
-                    };
-                    reqs = reqs.offset(1);
-                    match_requirements.push(MatchRequirement::Addon(addon));
-                    true
-                }
-                UnitReq::TechOnly => {
-                    let tech = match TechId::optional(*reqs as u32) {
-                        Some(s) => s,
-                        None => {
-                            warn!("Unknown tech {:x}", *reqs);
-                            return true;
-                        }
-                    };
-                    reqs = reqs.offset(1);
-                    game.tech_researched(player, tech)
-                }
-                UnitReq::HasUnit => {
-                    let unit = match UnitId::optional(*reqs as u32) {
-                        Some(s) => s,
-                        None => {
-                            warn!("Unknown unit {:x}", *reqs);
-                            return true;
-                        }
-                    };
-                    reqs = reqs.offset(1);
-                    game.unit_count(player, unit) != 0
-                }
-                UnitReq::Unit(id) => {
-                    let unit = match UnitId::optional(id as u32) {
-                        Some(s) => s,
-                        None => {
-                            warn!("Unknown unit {:x}", id);
-                            return true;
-                        }
-                    };
-                    game.completed_count(player, unit) != 0
-                }
-                UnitReq::Unknown(id) => {
-                    warn!("Unknown unit req ty {:x} for unit {:?}", id, unit_id);
-                    return true;
-                }
-            };
-            // 0xff01 is or
-            if *reqs != 0xff01 {
-                break;
-            } else {
-                reqs = reqs.offset(1);
-            }
-        }
-        let added_match_reqs = match_requirements.len() - match_req_prev_len;
-        if added_match_reqs > 2 {
-            let mut or_list = Vec::new();
-            for _ in 0..added_match_reqs {
-                or_list.push(match_requirements.pop().unwrap());
-            }
-            match_requirements.push(MatchRequirement::Or(or_list));
-        }
-        if !pass {
-            return false;
-        }
-    }
-    unit::active_units()
-        .filter(|x| x.player() == player && x.is_completed())
-        .filter(|&x| !is_busy(x))
-        .filter(|&x| match_requirements.iter().all(|r| r.matches(x)))
-        .next()
-        .is_some()
-}
-
-unsafe fn can_satisfy_nonunit_request(
+unsafe fn can_satisfy_dat_request(
     game: Game,
     player: u8,
-    mut reqs: *const u16,
+    reqs: *const u16,
     upgrade_level: u8,
 ) -> bool {
-    use datreq::NonUnitReq;
+    fn match_req(dat_req: &DatReq) -> Option<MatchRequirement> {
+        match *dat_req {
+            DatReq::HasHangarSpace => Some(MatchRequirement::HasHangarSpace),
+            DatReq::HasNotNukeOnly => Some(MatchRequirement::HasNoNuke),
+            DatReq::HasNoAddon => Some(MatchRequirement::HasNoAddon),
+            DatReq::CurrentUnitIs(unit) => Some(MatchRequirement::Unit(unit)),
+            DatReq::HasAddonAttached(addon) => Some(MatchRequirement::Addon(addon)),
+            _ => None,
+        }
+    }
 
     let mut match_requirements: SmallVec<[MatchRequirement; 8]> = SmallVec::new();
-    'outer: loop {
-        let mut pass = false;
-        let match_req_prev_len = match_requirements.len();
-        loop {
-            let val = NonUnitReq::from_raw(*reqs);
-            reqs = reqs.offset(1);
-            pass |= match val {
-                NonUnitReq::End => break 'outer,
-                NonUnitReq::Disabled => false,
-                NonUnitReq::Blank => false,
-                NonUnitReq::BwOnly => true, // w/e
-                NonUnitReq::IsTransport => true,
-                NonUnitReq::IsNotBusy => true,
-                NonUnitReq::IsNotConstructingAddon => true,
-                NonUnitReq::IsNotUpgrading => true,
-                NonUnitReq::IsLifted => true,
-                NonUnitReq::IsNotLifted => true,
-                NonUnitReq::IsNotTeching => true,
-                NonUnitReq::HasNoNydusExit => true,
-                NonUnitReq::NotBurrowedOnly => true,
-                NonUnitReq::BurrowedOnly => true,
-                NonUnitReq::NotLandedBuildingOnly => true,
-                NonUnitReq::LandedBuildingOnly => true,
-                NonUnitReq::CanMoveOnly => true,
-                NonUnitReq::CanAttackOnly => true,
-                NonUnitReq::SubunitOnly => true,
-                NonUnitReq::WorkerOnly => true,
-                NonUnitReq::FlyingBuildingOnly => true,
-                NonUnitReq::PowerupOnly => true,
-                NonUnitReq::HasSpiderMinesOnly => true,
-                NonUnitReq::CanHoldPositionOnly => true,
-                NonUnitReq::AllowOnHallucinations => true,
-                NonUnitReq::TechResearched => {
-                    let tech = match TechId::optional(*reqs as u32) {
-                        Some(s) => s,
-                        None => {
-                            warn!("Unknown tech {:x}", *reqs);
-                            return true;
-                        }
-                    };
-                    reqs = reqs.offset(1);
-                    game.tech_researched(player, tech)
-                }
-                NonUnitReq::CurrentUnitIs => {
-                    let unit = UnitId(*reqs);
-                    reqs = reqs.offset(1);
-                    match_requirements.push(MatchRequirement::Unit(unit));
-                    true
-                }
-                NonUnitReq::HasUnit => {
-                    let unit = match UnitId::optional(*reqs as u32) {
-                        Some(s) => s,
-                        None => {
-                            warn!("Unknown unit {:x}", *reqs);
-                            return true;
-                        }
-                    };
-                    reqs = reqs.offset(1);
-                    game.unit_count(player, unit) != 0
-                }
-                NonUnitReq::UpgradeLevelJump => {
-                    if upgrade_level == 1 {
-                        while *reqs != 0xff20 {
-                            reqs = reqs.offset(1);
-                        }
-                        reqs = reqs.offset(1);
-                    } else if upgrade_level > 1 {
-                        while *reqs != 0xff21 {
-                            reqs = reqs.offset(1);
-                        }
-                        reqs = reqs.offset(1);
-                    }
-                    true
-                }
-                NonUnitReq::Unit(id) => {
-                    let unit = match UnitId::optional(id as u32) {
-                        Some(s) => s,
-                        None => {
-                            warn!("Unknown unit {:x}", id);
-                            return true;
-                        }
-                    };
-                    game.completed_count(player, unit) != 0
-                }
-                NonUnitReq::Unknown(id) => {
+    let mut dat_reqs: SmallVec<_> = SmallVec::new();
+    let mut read = ReadDatReqs::new(reqs, upgrade_level);
+    loop {
+        read.next_dat_requirements(&mut dat_reqs);
+        if dat_reqs.is_empty() {
+            break;
+        }
+        let pass = dat_reqs.iter().any(|req| {
+            match *req {
+                DatReq::Disabled => false,
+                DatReq::Blank => false,
+                DatReq::BwOnly => true, // w/e
+                DatReq::IsTransport => true,
+                DatReq::IsNotBusy => true,
+                DatReq::IsNotConstructingAddon => true,
+                DatReq::IsNotConstructingBuilding => true,
+                DatReq::IsNotUpgrading => true,
+                DatReq::IsLifted => true,
+                DatReq::IsNotLifted => true,
+                DatReq::IsNotTeching => true,
+                DatReq::HasNoNydusExit => true,
+                DatReq::NotBurrowedOnly => true,
+                DatReq::BurrowedOnly => true,
+                DatReq::NotLandedBuildingOnly => true,
+                DatReq::LandedBuildingOnly => true,
+                DatReq::CanMoveOnly => true,
+                DatReq::CanAttackOnly => true,
+                DatReq::SubunitOnly => true,
+                DatReq::WorkerOnly => true,
+                DatReq::FlyingBuildingOnly => true,
+                DatReq::PowerupOnly => true,
+                DatReq::HasSpiderMinesOnly => true,
+                DatReq::CanHoldPositionOnly => true,
+                DatReq::AllowOnHallucinations => true,
+                DatReq::TechOnly(tech) => game.tech_researched(player, tech),
+                DatReq::TechResearched(tech) => game.tech_researched(player, tech),
+                DatReq::HasUnit(unit) => game.unit_count(player, unit) != 0,
+                DatReq::Unit(unit) => game.completed_count(player, unit) != 0,
+                DatReq::Unknown(id) => {
                     warn!("Unknown req ty {:x}", id);
-                    return true;
+                    true
+                }
+                // Match reqs return false here, they are cheked only if didn't pass
+                DatReq::CurrentUnitIs(_) => false,
+                DatReq::HasHangarSpace => false,
+                DatReq::HasNotNukeOnly => false,
+                DatReq::HasNoAddon => false,
+                DatReq::HasAddonAttached(_) => false,
+            }
+        });
+        if !pass {
+            // Can (and should) skip adding match reqs if already passed
+            let match_req_count = dat_reqs.iter().filter(|x| match_req(x).is_some()).count();
+            match match_req_count {
+                0 => return false,
+                1 => {
+                    if let Some(req) = dat_reqs.iter().filter_map(|x| match_req(x)).next() {
+                        match_requirements.push(req);
+                    }
+                }
+                _ => {
+                    let reqs = dat_reqs.iter().filter_map(|x| match_req(x)).collect();
+                    match_requirements.push(MatchRequirement::Or(reqs));
                 }
             };
-            // 0xff01 is or
-            if *reqs != 0xff01 {
-                break;
-            } else {
-                reqs = reqs.offset(1);
-            }
-        }
-        let added_match_reqs = match_requirements.len() - match_req_prev_len;
-        if added_match_reqs > 2 {
-            let mut or_list = Vec::new();
-            for _ in 0..added_match_reqs {
-                or_list.push(match_requirements.pop().unwrap());
-            }
-            match_requirements.push(MatchRequirement::Or(or_list));
-        }
-        if !pass {
-            return false;
-        }
+        };
     }
     unit::active_units()
         .filter(|x| x.player() == player && x.is_completed())
