@@ -14,7 +14,7 @@ use block_alloc::BlockAllocSet;
 use bw;
 use datreq::{DatReq, ReadDatReqs};
 use game::Game;
-use globals::{self, BaseLayout, Globals};
+use globals::{self, BaseLayout, BunkerCondition, BunkerState, Globals};
 use list::ListIter;
 use order::{self, OrderId};
 use rng::Rng;
@@ -475,6 +475,63 @@ pub unsafe extern fn under_attack(script: *mut bw::AiScript) {
     };
 }
 
+pub unsafe fn bunker_fill_hook(bunker_states: &mut BunkerCondition, picked_unit: Unit) {
+    use bw_dat::order::*;
+    if bunker_states.in_list(picked_unit) {
+        return;
+    }
+
+    match picked_unit.order() {
+        ENTER_TRANSPORT | AI_ATTACK_MOVE => {
+            return;
+        }
+        _ => {}
+    }
+    for state in &mut bunker_states.bunker_states {
+        if state.unit_id.matches(&picked_unit) {
+            let units = unit::find_units(&state.pos, |u| {
+                u.player() == state.player &&
+                    state.bunker_id.matches(u) &&
+                    u.player() == (*picked_unit.0).player
+            });
+            let mut used_bunkers = 0;
+            for bunker in units {
+                let cargo_capacity = bunker.id().cargo_space_provided();
+                let cargo_amount = bunker.cargo_count();
+                let units_targeted = state.count_associated_units(bunker).unwrap_or(0);
+                let free_slots =
+                    cargo_capacity.saturating_sub(u32::from(cargo_amount + units_targeted));
+
+                let full = u32::from(cargo_amount) == cargo_capacity;
+                if units_targeted > 0 || (full && units_targeted == 0) {
+                    used_bunkers += 1;
+                    if used_bunkers >= state.bunker_quantity {
+                        return;
+                    }
+                }
+                if free_slots > 0 && state.quantity > 0 {
+                    bw::issue_order(
+                        picked_unit.0,
+                        ENTER_TRANSPORT,
+                        picked_unit.position(),
+                        bunker.0,
+                        unit::id::NONE,
+                    );
+                    state.add_targeter(picked_unit, bunker);
+                    debug!(
+                        "Add Targeter: uid {} at {} {} to pos {} {}",
+                        bunker.id().0,
+                        picked_unit.position().x,
+                        picked_unit.position().y,
+                        bunker.position().x,
+                        bunker.position().y
+                    );
+                    return;
+                }
+            }
+        }
+    }
+}
 pub unsafe fn under_attack_frame_hook(globals: &mut Globals) {
     for (player, mode) in globals.under_attack_mode.iter().cloned().enumerate() {
         match mode {
@@ -1157,6 +1214,33 @@ pub unsafe extern fn upgrade_jump(script: *mut bw::AiScript) {
             }
         }
     };
+}
+
+pub unsafe extern fn load_bunkers(script: *mut bw::AiScript) {
+    // load_bunkers(area, load_unit, quantity, bunker_unit, bunker_quantity, priority)
+    let mut globals = Globals::get();
+    let mut read = ScriptData::new(script);
+    let player = (*script).player;
+    let mut src = read.read_position();
+    let radius = read.read_u16();
+    src.extend_area(radius as i16);
+    let unit_id = read.read_unit_match();
+    let quantity = read.read_u8();
+    let bunker_id = read.read_unit_match();
+    let bunker_quantity = read.read_u8();
+    let priority = read.read_u8();
+    let bunker_state = BunkerState {
+        pos: src.area,
+        unit_id: unit_id,
+        bunker_id: bunker_id,
+        quantity: quantity,
+        player: player as u8,
+        priority: priority,
+        bunker_quantity: bunker_quantity,
+        single_bunker_states: Vec::new(),
+    };
+
+    globals.bunker_states.add(bunker_state);
 }
 
 pub unsafe extern fn unit_avail(script: *mut bw::AiScript) {

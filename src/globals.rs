@@ -7,12 +7,13 @@ use bincode;
 use bw_dat::UnitId;
 
 use ai::GuardState;
-use aiscript::{self, AiMode, AttackTimeoutState, MaxWorkers, Town, TownId};
+use aiscript::{self, AiMode, AttackTimeoutState, MaxWorkers, Town, TownId, UnitMatch};
 use block_alloc::BlockAllocSet;
 use bw;
 use idle_orders::IdleOrders;
 use rng::Rng;
-use unit;
+use swap_retain::SwapRetain;
+use unit::{self, Unit};
 
 lazy_static! {
     static ref GLOBALS: Mutex<Globals> = Mutex::new(Globals::new());
@@ -146,6 +147,82 @@ impl KillsTable {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+pub struct BunkerState {
+    pub pos: bw::Rect,
+    pub unit_id: UnitMatch,
+    pub bunker_id: UnitMatch,
+    pub quantity: u8,
+    pub player: u8,
+    pub bunker_quantity: u8,
+    pub priority: u8,
+    pub single_bunker_states: Vec<SingleBunkerState>,
+}
+
+impl BunkerState {
+    pub fn count_associated_units(&mut self, bunker: Unit) -> Option<u8> {
+        self.single_bunker_states
+            .iter()
+            .find(|link| link.bunker == bunker)
+            .map(|link| link.associated_units.len() as u8)
+    }
+
+    pub fn in_list(&self, unit: Unit) -> bool {
+        self.single_bunker_states
+            .iter()
+            .any(|state| state.associated_units.iter().any(|&x| x == unit))
+    }
+
+    pub fn add_targeter(&mut self, targeter: Unit, bunker: Unit) {
+        match self
+            .single_bunker_states
+            .iter_mut()
+            .position(|x| x.bunker == bunker)
+        {
+            Some(s) => self.single_bunker_states[s].associated_units.push(targeter),
+            None => {
+                self.single_bunker_states.push(SingleBunkerState {
+                    associated_units: vec![targeter],
+                    bunker,
+                });
+            }
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+pub struct SingleBunkerState {
+    pub associated_units: Vec<Unit>,
+    pub bunker: Unit,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct BunkerCondition {
+    pub bunker_states: Vec<BunkerState>,
+}
+
+impl BunkerCondition {
+    pub fn add(&mut self, bunker_state: BunkerState) {
+        self.bunker_states.push(bunker_state);
+        self.bunker_states.sort_by_key(|x| !0 - x.priority);
+    }
+
+    pub fn in_list(&self, unit: Unit) -> bool {
+        self.bunker_states.iter().any(|bs| bs.in_list(unit))
+    }
+
+    pub fn unit_removed(&mut self, unit: Unit) {
+        for condition in &mut self.bunker_states {
+            condition
+                .single_bunker_states
+                .swap_retain(|x| x.bunker.0 != unit.0);
+            for link in &mut condition.single_bunker_states {
+                link.associated_units.swap_retain(|x| x.0 != unit.0);
+            }
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct Globals {
     pub attack_timeouts: [AttackTimeoutState; 8],
@@ -154,6 +231,7 @@ pub struct Globals {
     pub base_layouts: BaseLayouts,
     pub max_workers: Vec<MaxWorkers>,
     pub town_ids: Vec<TownId>,
+    pub bunker_states: BunkerCondition,
     pub guards: GuardState,
     pub under_attack_mode: [Option<bool>; 8],
     pub ai_mode: [AiMode; 8],
@@ -177,6 +255,7 @@ impl Globals {
             base_layouts: Default::default(),
             max_workers: Vec::new(),
             town_ids: Vec::new(),
+            bunker_states: Default::default(),
             guards: GuardState::new(),
             under_attack_mode: [None; 8],
             ai_mode: [Default::default(); 8],

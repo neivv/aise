@@ -76,11 +76,15 @@ unsafe fn get(dat: *const bw::DatTable, id: u32, field: u32) -> u32 {
 
 pub mod unit {
     use super::UnitId;
+    pub const MARINE: UnitId = UnitId(0x0);
     pub const GHOST: UnitId = UnitId(0x1);
     pub const VULTURE: UnitId = UnitId(0x2);
     pub const SCV: UnitId = UnitId(0x7);
+    pub const GUI_MONTAG: UnitId = UnitId(0xa);
     pub const SARAH_KERRIGAN: UnitId = UnitId(0x10);
     pub const JIM_RAYNOR_VULTURE: UnitId = UnitId(0x13);
+    pub const JIM_RAYNOR_MARINE: UnitId = UnitId(0x14);
+    pub const FIREBAT: UnitId = UnitId(0x20);
     pub const EGG: UnitId = UnitId(0x24);
     pub const ZERGLING: UnitId = UnitId(0x25);
     pub const HYDRALISK: UnitId = UnitId(0x26);
@@ -177,6 +181,7 @@ pub mod order {
     pub const RETURN_GAS: OrderId = OrderId(0x54);
     pub const HARVEST_MINERALS: OrderId = OrderId(0x57);
     pub const RETURN_MINERALS: OrderId = OrderId(0x5a);
+    pub const ENTER_TRANSPORT: OrderId = OrderId(0x5c);
     pub const SPREAD_CREEP: OrderId = OrderId(0x66);
     pub const ARCHON_WARP: OrderId = OrderId(0x69);
     pub const CLOAK: OrderId = OrderId(0x6d);
@@ -305,6 +310,10 @@ impl UnitId {
             assert!(dat.entries > u32::from(self.0));
             *(dat.data as *const PlacementBox).offset(self.0 as isize)
         }
+    }
+
+    pub fn cargo_space_provided(&self) -> u32 {
+        self.get(48)
     }
 
     pub fn dimensions(&self) -> Rect {

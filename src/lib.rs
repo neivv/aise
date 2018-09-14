@@ -196,6 +196,7 @@ unsafe extern fn frame_hook() {
     ai::continue_incomplete_buildings();
 
     for unit in unit::active_units() {
+        aiscript::bunker_fill_hook(&mut globals.bunker_states, unit);
         if let Some(ai) = unit.building_ai() {
             let town = (*ai).town;
             if town != null_mut() {
@@ -246,6 +247,7 @@ unsafe extern fn step_order_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_v
         order::id::DIE => {
             let mut globals = Globals::get();
             globals.idle_orders.unit_removed(unit);
+            globals.bunker_states.unit_removed(unit);
         }
         order::id::COMPUTER_AI => {
             if let Some(_) = unit.building_ai() {

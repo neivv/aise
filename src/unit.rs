@@ -310,6 +310,10 @@ impl Unit {
             }
         }
     }
+
+    pub fn cargo_count(&self) -> u8 {
+        unsafe { (*self.0).loaded_units.iter().filter(|&&x| x != 0).count() as u8 }
+    }
 }
 
 pub struct Orders<'a> {
