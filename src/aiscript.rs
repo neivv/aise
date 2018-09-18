@@ -1148,6 +1148,18 @@ pub unsafe extern fn print_command(script: *mut bw::AiScript) {
     bw::print_text(s);
 }
 
+pub unsafe extern fn ping(script: *mut bw::AiScript) {
+    let mut read = ScriptData::new(script);
+    let x = read.read_u16();
+    let y = read.read_u16();
+    let color = read.read_u8();
+    if bw::is_scr() {
+        bw::print_text("ping is not supported in SCR");
+        return;
+    }
+    bw::ping_minimap(x as u32, y as u32, color);
+}
+
 pub unsafe extern fn player_jump(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let player = read.read_string();

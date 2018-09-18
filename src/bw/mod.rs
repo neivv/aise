@@ -201,6 +201,7 @@ whack_hooks!(stdcall, 0x00400000,
 whack_funcs!(stdcall, init_funcs, 0x00400000,
     0x00473FB0 => update_building_placement_state(*mut Unit, u8, u32, u32, u16, u8, u8, u8, u8) -> u32;
     0x004936B0 => is_powered(u32, u32, u8, @eax u32) -> u32;
+    0x004A34C0 => ping_minimap(u32, u32, u8);
 );
 
 whack_vars!(init_vars, 0x00400000,
