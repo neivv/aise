@@ -268,6 +268,7 @@ enum IdleOrderNumeric {
     Energy,
     Health,
     Hangar,
+    Cargo,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -352,6 +353,7 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
                             2 => IdleOrderNumeric::Health,
                             3 => IdleOrderNumeric::Energy,
                             4 => IdleOrderNumeric::Hangar,
+                            5 => IdleOrderNumeric::Cargo,
                             _ => {
                                 bw::print_text("idle_orders: invalid encoding");
                                 return false;
@@ -932,6 +934,10 @@ impl IdleOrderFlags {
                             _ => (0, 0),
                         }
                     }
+                    IdleOrderNumeric::Cargo => (
+                        unit.cargo_count() as i32,
+                        unit.id().cargo_space_provided() as i32,
+                    ),
                     // TODO max energy
                     IdleOrderNumeric::Energy => (unit.energy() as i32, 250 * 256),
                 };
