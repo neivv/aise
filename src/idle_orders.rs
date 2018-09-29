@@ -233,6 +233,8 @@ struct IdleOrderFlags {
     status_not: u16,
     units_dat_required: u32,
     units_dat_not: u32,
+    tiles_required: u32,
+    tiles_not: u32,
     targeting_filter: TargetingFlags,
     order: Option<OrderId>,
     numeric: Vec<(IdleOrderNumeric, Comparision, i32)>,
@@ -342,8 +344,11 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
                             1 => Comparision::GreaterThan,
                             2 => Comparision::LessThanPercentage,
                             3 => Comparision::GreaterThanPercentage,
-                            _ => {
-                                bw::print_text("idle_orders: invalid encoding");
+                            x => {
+                                bw::print_text(format!(
+                                    "idle_orders: invalid encoding, invalid comparison: {}",
+                                    x
+                                ));
                                 return false;
                             }
                         };
@@ -354,8 +359,11 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
                             3 => IdleOrderNumeric::Energy,
                             4 => IdleOrderNumeric::Hangar,
                             5 => IdleOrderNumeric::Cargo,
-                            _ => {
-                                bw::print_text("idle_orders: invalid encoding");
+                            x => {
+                                bw::print_text(format!(
+                                    "idle_orders: invalid encoding, invalid numeric: {}",
+                                    x
+                                ));
                                 return false;
                             }
                         };
@@ -371,7 +379,7 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
                                 }
                             }
                         } else {
-                            bw::print_text("idle_orders: invalid encoding");
+                            bw::print_text("idle_orders: invalid self encoding");
                             return false;
                         }
                     }
@@ -436,6 +444,22 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
                             players,
                         });
                     }
+                    10 => {
+                        let tile = read.read_u8();
+                        // 0x1 = Walkable, 0x2 = Buildable, 0x4 = Creep, 0x8 = Ramp
+                        let tile_flags = (if tile & 0x1 != 0 { 0x10000 } else { 0 }) |
+                            (if tile & 0x2 != 0 { 0x0080_0000 } else { 0 }) |
+                            (if tile & 0x4 != 0 { 0x0040_0000 } else { 0 }) |
+                            (if tile & 0x8 != 0 { 0x2000_0000 } else { 0 });
+                        match val & 0xff {
+                            0 => flags.tiles_required = tile_flags,
+                            1 => flags.tiles_not = tile_flags,
+                            _ => {
+                                bw::print_text("idle_orders: invalid encoding (tile)");
+                                return false;
+                            }
+                        }
+                    }
                     _ => bw::print_text("idle_orders: invalid encoding"),
                 }
             }
@@ -446,6 +470,8 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
             status_not: 0,
             units_dat_required: 0,
             units_dat_not: 0,
+            tiles_required: 0,
+            tiles_not: 0,
             targeting_filter: TargetingFlags::empty(),
             order: None,
             numeric: Vec::new(),
@@ -458,6 +484,8 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
             status_not: 0,
             units_dat_required: 0,
             units_dat_not: 0,
+            tiles_required: 0,
+            tiles_not: 0,
             targeting_filter: TargetingFlags::empty(),
             order: None,
             numeric: Vec::new(),
@@ -881,6 +909,21 @@ impl IdleOrderFlags {
                     return false;
                 }
                 if flags & self.units_dat_not != 0 {
+                    return false;
+                }
+            }
+            if self.tiles_required != 0 || self.tiles_not != 0 {
+                let map_width = (*game.0).map_width_tiles;
+                let map_height = (*game.0).map_height_tiles;
+                let tile = *(*bw::tile_flags).offset(
+                    (unit.position().x as u16 / 32) as isize +
+                        (map_width * (unit.position().y as u16 / 32)) as isize,
+                );
+
+                if tile & self.tiles_required != self.tiles_required {
+                    return false;
+                }
+                if tile & self.tiles_not != 0 {
                     return false;
                 }
             }
