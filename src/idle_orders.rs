@@ -914,7 +914,6 @@ impl IdleOrderFlags {
             }
             if self.tiles_required != 0 || self.tiles_not != 0 {
                 let map_width = (*game.0).map_width_tiles;
-                let map_height = (*game.0).map_height_tiles;
                 let tile = *(*bw::tile_flags).offset(
                     (unit.position().x as u16 / 32) as isize +
                         (map_width * (unit.position().y as u16 / 32)) as isize,
