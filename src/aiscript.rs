@@ -14,7 +14,7 @@ use block_alloc::BlockAllocSet;
 use bw;
 use datreq::{DatReq, ReadDatReqs};
 use game::Game;
-use globals::{self, BaseLayout, BunkerCondition, BunkerState, Globals};
+use globals::{self, BaseLayout, BunkerCondition, BunkerState, Globals, RevealState, RevealType};
 use list::ListIter;
 use order::{self, OrderId};
 use rng::Rng;
@@ -532,6 +532,7 @@ pub unsafe fn bunker_fill_hook(bunker_states: &mut BunkerCondition, picked_unit:
         }
     }
 }
+
 pub unsafe fn under_attack_frame_hook(globals: &mut Globals) {
     for (player, mode) in globals.under_attack_mode.iter().cloned().enumerate() {
         match mode {
@@ -674,7 +675,7 @@ impl UnitMatch {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Copy, Serialize, Deserialize)]
 pub struct PlayerMatch {
     players: [bool; 12],
 }
@@ -900,6 +901,73 @@ pub unsafe extern fn resources_command(script: *mut bw::AiScript) {
             }
         }
     }
+}
+
+pub unsafe fn reveal_vision_hook(globals: &mut Globals, game: Game) {
+    for rev in &mut globals.reveal_states {
+        if rev.time != 0 {
+            rev.time -= 1;
+            if rev.time == 0 {
+                reveal(game, rev.pos, rev.players, false);
+            }
+        }
+    }
+    globals.reveal_states.swap_retain(|x| x.time > 0);
+}
+
+unsafe extern fn reveal(game: Game, area: bw::Rect, players: PlayerMatch, reveal: bool) {
+    let tile_x = area.left / 32;
+    let tile_y = area.top / 32;
+    let limit_x = area.right / 32;
+    let limit_y = area.bottom / 32;
+    let map_width = (*game.0).map_width_tiles;
+    for player in players.players().filter(|&x| x < 8) {
+        for i in tile_x..=limit_x {
+            for j in tile_y..=limit_y {
+                let tile_flag =
+                    (*bw::tile_flags).offset(i as isize + (map_width * j as u16) as isize);
+                if reveal {
+                    *tile_flag &= 0x1 << player;
+                } else {
+                    *tile_flag |= 0x100 << player;
+                    *tile_flag |= 0x1 << player;
+                }
+            }
+        }
+    }
+}
+
+pub unsafe extern fn reveal_area(script: *mut bw::AiScript) {
+    if bw::is_scr() {
+        bw::print_text("reveal_area is not supported in SCR");
+        return;
+    }
+    let mut read = ScriptData::new(script);
+    let game = Game::get();
+    let mut globals = Globals::get();
+    let players = read.read_player_match(game);
+    let mut src = read.read_position();
+    let radius = read.read_u16();
+    src.extend_area(radius as i16);
+    let time = read.read_u16();
+    let flag = read.read_u8();
+    let reveal_type = match flag {
+        0 => RevealType::RevealFog,
+        x => {
+            bw::print_text(format!("Unsupported flag modifier: {:x}", x));
+            return;
+        }
+    };
+    if time != 0 {
+        let reveal_state = RevealState {
+            pos: src.area,
+            time,
+            reveal_type,
+            players,
+        };
+        globals.reveal_states.push(reveal_state);
+    }
+    reveal(game, src.area, players, true);
 }
 
 pub unsafe extern fn time_command(script: *mut bw::AiScript) {

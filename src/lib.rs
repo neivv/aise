@@ -192,6 +192,7 @@ unsafe extern fn frame_hook() {
     aiscript::attack_timeouts_frame_hook(globals, game);
     globals.idle_orders.step_frame(&mut globals.rng);
     aiscript::under_attack_frame_hook(globals);
+    aiscript::reveal_vision_hook(globals, game);
     ai::update_guard_needs(game, &mut globals.guards);
     ai::continue_incomplete_buildings();
 

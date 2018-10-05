@@ -7,7 +7,9 @@ use bincode;
 use bw_dat::UnitId;
 
 use ai::GuardState;
-use aiscript::{self, AiMode, AttackTimeoutState, MaxWorkers, Town, TownId, UnitMatch};
+use aiscript::{
+    self, AiMode, AttackTimeoutState, MaxWorkers, PlayerMatch, Town, TownId, UnitMatch,
+};
 use block_alloc::BlockAllocSet;
 use bw;
 use idle_orders::IdleOrders;
@@ -57,6 +59,19 @@ impl KillCount {
             value,
         }
     }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+pub struct RevealState {
+    pub pos: bw::Rect,
+    pub time: u16,
+    pub reveal_type: RevealType,
+    pub players: PlayerMatch,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+pub enum RevealType {
+    RevealFog,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
@@ -233,6 +248,7 @@ pub struct Globals {
     pub town_ids: Vec<TownId>,
     pub bunker_states: BunkerCondition,
     pub guards: GuardState,
+    pub reveal_states: Vec<RevealState>,
     pub under_attack_mode: [Option<bool>; 8],
     pub ai_mode: [AiMode; 8],
     // For tracking deleted towns.
@@ -255,6 +271,7 @@ impl Globals {
             base_layouts: Default::default(),
             max_workers: Vec::new(),
             town_ids: Vec::new(),
+            reveal_states: Vec::new(),
             bunker_states: Default::default(),
             guards: GuardState::new(),
             under_attack_mode: [None; 8],
