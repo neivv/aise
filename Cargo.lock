@@ -1,6 +1,6 @@
 [[package]]
 name = "aise"
-version = "2.13.2"
+version = "2.13.3"
 dependencies = [
  "backtrace 0.3.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "bincode 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",

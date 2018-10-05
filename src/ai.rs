@@ -154,7 +154,20 @@ impl PlayerAi {
 }
 
 pub fn count_units(player: u8, unit_id: UnitId, game: Game) -> u32 {
-    let existing = game.unit_count(player, unit_id);
+    let existing = {
+        let mut existing = game.unit_count(player, unit_id);
+        let other_unit_id = match unit_id {
+            unit::SIEGE_TANK_TANK => Some(unit::SIEGE_TANK_SIEGE),
+            unit::SIEGE_TANK_SIEGE => Some(unit::SIEGE_TANK_TANK),
+            unit::EDMUND_DUKE_TANK => Some(unit::EDMUND_DUKE_SIEGE),
+            unit::EDMUND_DUKE_SIEGE => Some(unit::EDMUND_DUKE_TANK),
+            _ => None,
+        };
+        if let Some(other) = other_unit_id {
+            existing += game.unit_count(player, other);
+        }
+        existing
+    };
     let birth_multiplier = match unit_id.flags() & 0x400 != 0 {
         true => 2,
         false => 1,

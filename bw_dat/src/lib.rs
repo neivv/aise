@@ -79,11 +79,15 @@ pub mod unit {
     pub const MARINE: UnitId = UnitId(0x0);
     pub const GHOST: UnitId = UnitId(0x1);
     pub const VULTURE: UnitId = UnitId(0x2);
+    pub const SIEGE_TANK_TANK: UnitId = UnitId(0x5);
     pub const SCV: UnitId = UnitId(0x7);
     pub const GUI_MONTAG: UnitId = UnitId(0xa);
     pub const SARAH_KERRIGAN: UnitId = UnitId(0x10);
     pub const JIM_RAYNOR_VULTURE: UnitId = UnitId(0x13);
     pub const JIM_RAYNOR_MARINE: UnitId = UnitId(0x14);
+    pub const EDMUND_DUKE_TANK: UnitId = UnitId(0x17);
+    pub const EDMUND_DUKE_SIEGE: UnitId = UnitId(0x19);
+    pub const SIEGE_TANK_SIEGE: UnitId = UnitId(0x1e);
     pub const FIREBAT: UnitId = UnitId(0x20);
     pub const EGG: UnitId = UnitId(0x24);
     pub const ZERGLING: UnitId = UnitId(0x25);
