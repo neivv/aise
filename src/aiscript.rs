@@ -1392,42 +1392,43 @@ pub unsafe extern fn tech_jump(script: *mut bw::AiScript) {
     let game = Game::get();
     let mut read = ScriptData::new(script);
     let players = read.read_player_match(game);
-
     let modifier = read.read_modifier();
     let tech = TechId(read.read_u16());
     let level = read.read_u8();
     let dest = read.read_u16();
-    let read = match modifier.ty {
-        ModifierType::Read(r) => r,
+    match modifier.ty {
+        ModifierType::Read(r) => {
+            let read_req = modifier.get_read_req();
+            let jump = players.players().any(|player| {
+                let up_lev = game.tech_researched(player, tech);
+                r.compare(u32::from(up_lev), u32::from(level))
+            });
+            if jump == read_req {
+                match modifier.action {
+                    ModifierAction::Jump => {
+                        (*script).pos = dest as u32;
+                    }
+                    ModifierAction::Call => {
+                        let ret = (*script).pos;
+                        (*script).pos = dest as u32;
+                        (*Script::ptr_from_bw(script)).call_stack.push(ret);
+                    }
+                    ModifierAction::Wait => {
+                        (*script).pos = old_pos;
+                        (*script).wait = 30;
+                    }
+                }
+            }
+        }
         ModifierType::Write(w) => {
-            bw::print_text(format!("Used writing modifier {:?} in tech_jump", w));
-            return;
+            let mut globals = Globals::get();
+            for player in players.players() {
+                let old = game.tech_researched(player, tech);
+                let new = w.apply(u32::from(old), u32::from(level), &mut globals.rng);
+                game.set_tech_level(player, tech, new as u8);
+            }
         }
     };
-    let read_req = modifier.get_read_req();
-    let jump = players.players().any(|player| {
-        let tech_level = match game.tech_researched(player, tech) {
-            true => 1,
-            false => 0,
-        };
-        read.compare(tech_level, u32::from(level)) == read_req
-    });
-    if jump {
-        match modifier.action {
-            ModifierAction::Jump => {
-                (*script).pos = dest as u32;
-            }
-            ModifierAction::Call => {
-                let ret = (*script).pos;
-                (*script).pos = dest as u32;
-                (*Script::ptr_from_bw(script)).call_stack.push(ret);
-            }
-            ModifierAction::Wait => {
-                (*script).pos = old_pos;
-                (*script).wait = 30;
-            }
-        }
-    }
 }
 
 pub unsafe extern fn random_call(script: *mut bw::AiScript) {

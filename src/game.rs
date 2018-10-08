@@ -72,6 +72,18 @@ impl Game {
         }
     }
 
+    pub fn set_tech_level(self, player: u8, tech: TechId, level: u8) {
+        unsafe {
+            let tech = tech.0;
+            assert!(player < 0xc);
+            if tech >= 0x18 {
+                (*self.0).tech_level_bw[player as usize][tech as usize - 0x18] = level;
+            } else {
+                (*self.0).tech_level_sc[player as usize][tech as usize] = level;
+            }
+        }
+    }
+
     pub fn unit_count(self, player: u8, unit: UnitId) -> u32 {
         unsafe { (*self.0).all_units_count[unit.0 as usize][player as usize] }
     }
