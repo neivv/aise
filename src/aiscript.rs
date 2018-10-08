@@ -1431,6 +1431,50 @@ pub unsafe extern fn tech_jump(script: *mut bw::AiScript) {
     };
 }
 
+pub unsafe extern fn tech_avail(script: *mut bw::AiScript) {
+    let old_pos = (*script).pos - 1;
+    let game = Game::get();
+    let mut read = ScriptData::new(script);
+    let players = read.read_player_match(game);
+    let modifier = read.read_modifier();
+    let tech = TechId(read.read_u16());
+    let level = read.read_u8();
+    let dest = read.read_u16();
+    match modifier.ty {
+        ModifierType::Read(r) => {
+            let read_req = modifier.get_read_req();
+            let jump = players.players().any(|player| {
+                let up_lev = game.tech_available(player, tech);
+                r.compare(u32::from(up_lev), u32::from(level))
+            });
+            if jump == read_req {
+                match modifier.action {
+                    ModifierAction::Jump => {
+                        (*script).pos = dest as u32;
+                    }
+                    ModifierAction::Call => {
+                        let ret = (*script).pos;
+                        (*script).pos = dest as u32;
+                        (*Script::ptr_from_bw(script)).call_stack.push(ret);
+                    }
+                    ModifierAction::Wait => {
+                        (*script).pos = old_pos;
+                        (*script).wait = 30;
+                    }
+                }
+            }
+        }
+        ModifierType::Write(w) => {
+            let mut globals = Globals::get();
+            for player in players.players() {
+                let old = game.tech_available(player, tech);
+                let new = w.apply(u32::from(old), u32::from(level), &mut globals.rng);
+                game.set_tech_availability(player, tech, new as u8);
+            }
+        }
+    };
+}
+
 pub unsafe extern fn random_call(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let chance = read.read_u8();
