@@ -75,7 +75,8 @@ fn init() {
                     record.level(),
                     message
                 ))
-            }).level(log::LevelFilter::Trace)
+            })
+            .level(log::LevelFilter::Trace)
             .chain(fern::log_file("aise.log").unwrap())
             .apply();
     }

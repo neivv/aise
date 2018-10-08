@@ -1078,8 +1078,10 @@ pub unsafe extern fn deaths(script: *mut bw::AiScript) {
                                 .and_then(|x| x.get_mut(player as usize))
                                 .cloned()
                                 .unwrap_or(0)
-                        }).sum::<u32>()
-                }).sum::<u32>();
+                        })
+                        .sum::<u32>()
+                })
+                .sum::<u32>();
             let read_req = modifier.get_read_req();
             if read.compare(sum, amount) == read_req {
                 match modifier.action {
@@ -1150,8 +1152,10 @@ pub unsafe extern fn kills_command(script: *mut bw::AiScript) {
                                 .players()
                                 .map(|p2| globals.kills_table.count_kills(p1, p2, unit_id.0))
                                 .sum::<u32>()
-                        }).sum::<u32>()
-                }).sum::<u32>();
+                        })
+                        .sum::<u32>()
+                })
+                .sum::<u32>();
             let read_req = modifier.get_read_req();
             if read.compare(sum, amount) == read_req {
                 match modifier.action {
@@ -2098,7 +2102,8 @@ fn serialize_bw_script<S: Serializer>(script: &bw::AiScript, s: S) -> Result<S::
         center,
         town: Town::from_ptr(town),
         flags,
-    }.serialize(s)
+    }
+    .serialize(s)
 }
 
 // The deserialization of next/prev is handled in the container deserialization.
@@ -2419,7 +2424,8 @@ pub unsafe fn choose_building_placement(
                 x.unit_id == unit_id &&
                     (x.town_id == town_id.id || (x.town_id == 255 && x.town.0 == town)) &&
                     x.player == player
-            }).filter(|layout| {
+            })
+            .filter(|layout| {
                 let units = unit::find_units(&layout.pos, |u| {
                     u.player() == layout.player && u.id() == layout.unit_id
                 });

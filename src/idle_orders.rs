@@ -546,12 +546,14 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
                     orders.deathrattles.remove(s);
                 }
             },
-            None => if !silent_fail {
-                bw::print_text(&format!(
-                    "idle_orders: Unable to find match to remove for {:#?}",
-                    matchee
-                ));
-            },
+            None => {
+                if !silent_fail {
+                    bw::print_text(&format!(
+                        "idle_orders: Unable to find match to remove for {:#?}",
+                        matchee
+                    ));
+                }
+            }
         }
     } else {
         let pos = match deathrattle {
@@ -683,7 +685,8 @@ impl IdleOrder {
                 .map(|x| {
                     let targeting_enemy = !ctx.game.allied(player as u8, x.player());
                     targeting_enemy && unit.order().is_attack_order()
-                }).unwrap_or(false);
+                })
+                .unwrap_or(false);
             if !ok {
                 return false;
             }
@@ -692,7 +695,8 @@ impl IdleOrder {
             .iter()
             .filter(|x| {
                 x.target == Some(unit) && x.order == self.order && x.user.player() == player as u8
-            }).count();
+            })
+            .count();
         already_targeted_count < self.limit as usize
     }
 }
@@ -789,7 +793,8 @@ fn find_user_target_pair(
             .filter_map(|x| x.target().map(|target| (x, target)))
             .filter(|&(_, target)| {
                 decl.target_valid(target, ongoing, CheckTargetingFlags::Yes, ctx)
-            }).filter(|(u, _)| decl.unit_valid(u, ongoing, CheckTargetingFlags::No, ctx.game))
+            })
+            .filter(|(u, _)| decl.unit_valid(u, ongoing, CheckTargetingFlags::No, ctx.game))
             .map(|(user, tgt)| (user, tgt, bw::distance(user.position(), tgt.position())))
             .min_by_key(|x| x.2)
             .filter(|x| x.2 < decl.radius as u32)

@@ -210,7 +210,8 @@ pub fn count_units(player: u8, unit_id: UnitId, game: Game) -> u32 {
                 }
             }
             _ => 0,
-        }).sum();
+        })
+        .sum();
     morphing + existing
 }
 
