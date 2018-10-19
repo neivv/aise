@@ -970,6 +970,37 @@ pub unsafe extern fn reveal_area(script: *mut bw::AiScript) {
     reveal(game, src.area, players, true);
 }
 
+pub unsafe extern fn remove_creep(script: *mut bw::AiScript) {
+    if bw::is_scr() {
+        bw::print_text("remove_creep is not supported in SCR");
+        return;
+    }
+    let mut read = ScriptData::new(script);
+    let game = Game::get();
+    let mut src = read.read_position();
+    let radius = read.read_u16();
+    src.extend_area(radius as i16);
+    let rect_x = src.area.right / 32;
+    let rect_y = src.area.bottom / 32;
+    let pos_x = src.area.left / 32;
+    let pos_y = src.area.top / 32;
+
+    for x_tile in pos_x..(rect_x + 1) {
+        for y_tile in pos_y..(rect_y + 1) {
+            let left = x_tile as i32 * 32;
+            let top = y_tile as i32 * 32;
+            unsafe extern "stdcall" fn nop(
+                _x_tile: u32,
+                _y_tile: u32,
+                _area: *mut bw::Rect32,
+            ) -> u32 {
+                0
+            }
+            bw::remove_creep_at_unit(left, top, unit::id::EGG.0 as u32, nop);
+        }
+    }
+}
+
 pub unsafe extern fn time_command(script: *mut bw::AiScript) {
     enum TimeType {
         Frames,
