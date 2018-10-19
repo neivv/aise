@@ -206,7 +206,7 @@ whack_funcs!(stdcall, init_funcs, 0x00400000,
         @ecx u32,
         @eax u32,
         @edx u32,
-        unsafe extern "stdcall" fn(u32, u32, *mut Rect32) -> u32,
+        unsafe extern "stdcall" fn(u32, u32, *mut Rect32) -> u32
     );
 );
 

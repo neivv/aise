@@ -976,7 +976,6 @@ pub unsafe extern fn remove_creep(script: *mut bw::AiScript) {
         return;
     }
     let mut read = ScriptData::new(script);
-    let game = Game::get();
     let mut src = read.read_position();
     let radius = read.read_u16();
     src.extend_area(radius as i16);
@@ -987,8 +986,8 @@ pub unsafe extern fn remove_creep(script: *mut bw::AiScript) {
 
     for x_tile in pos_x..(rect_x + 1) {
         for y_tile in pos_y..(rect_y + 1) {
-            let left = x_tile as i32 * 32;
-            let top = y_tile as i32 * 32;
+            let left = x_tile as u32 * 32;
+            let top = y_tile as u32 * 32;
             unsafe extern "stdcall" fn nop(
                 _x_tile: u32,
                 _y_tile: u32,
