@@ -29,7 +29,7 @@ libc = "0.2"
 log = "0.4"
 memoffset = "0.2.1"
 scopeguard = "0.3.2"
-serde = "1.0.27"
+serde = { version = "1.0.27", features = ["rc"] }
 serde_derive = "1.0.27"
 smallvec = "0.6"
 thread_local = "0.3.5"

@@ -1,6 +1,7 @@
 use std::mem;
 use std::ptr::null_mut;
 use std::sync::atomic::{AtomicBool, Ordering, ATOMIC_BOOL_INIT};
+use std::sync::Arc;
 
 use bw_dat::{self, order, OrderId, UnitId};
 
@@ -16,8 +17,8 @@ pub const IDLE_ORDERS_DISABLED: AtomicBool = ATOMIC_BOOL_INIT;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct IdleOrders {
-    orders: Vec<(IdleOrder, IdleOrderState)>,
-    deathrattles: Vec<IdleOrder>,
+    orders: Vec<(Arc<IdleOrder>, IdleOrderState)>,
+    deathrattles: Vec<Arc<IdleOrder>>,
     ongoing: Vec<OngoingOrder>,
     returning_cloaked: Vec<ReturningCloaked>,
 }
@@ -47,10 +48,12 @@ impl IdleOrders {
         let deathrattles = &self.deathrattles;
         let ongoing = &mut self.ongoing;
         let returning_cloaked = &mut self.returning_cloaked;
+        // Handle ongoing orders.
+        // Return home if finished, cloak if a cloaker, panic if health gets low.
         // Yes, it may consider an order ongoing even if the unit is targeting the
         // target for other reasons. Acceptable?
         ongoing.swap_retain(|o| {
-            let retain = match o.target {
+            let mut retain = match o.target {
                 None => o.user.orders().any(|x| x.id == o.order),
                 Some(target) => o
                     .user
@@ -58,15 +61,7 @@ impl IdleOrders {
                     .filter_map(|x| x.target)
                     .any(|x| x == target),
             };
-            if !retain {
-                bw::issue_order(o.user.0, order::MOVE, o.home, null_mut(), unit::id::NONE);
-                if o.cloaked {
-                    returning_cloaked.push(ReturningCloaked {
-                        unit: o.user,
-                        start_point: o.user.position(),
-                    });
-                }
-            } else {
+            if retain {
                 fn can_personnel_cloak(id: UnitId) -> bool {
                     use bw_dat::unit::*;
                     match id {
@@ -75,6 +70,7 @@ impl IdleOrders {
                         _ => false,
                     }
                 }
+
                 if o.user.health() < o.panic_health {
                     for decl in deathrattles {
                         if decl.unit_valid(&o.user, &[], CheckTargetingFlags::Yes, game) {
@@ -86,6 +82,7 @@ impl IdleOrders {
                                     // Prevent panicing in future
                                     o.panic_health = 0;
                                     o.target = target;
+                                    o.decl = decl.clone();
                                     o.order = decl.order;
                                     let target_ptr = target.map(|x| x.0).unwrap_or(null_mut());
                                     bw::issue_order(
@@ -99,12 +96,58 @@ impl IdleOrders {
                             }
                         }
                     }
-                } else if can_personnel_cloak(o.user.id()) {
-                    step_cloak(o, game);
+                } else {
+                    if can_personnel_cloak(o.user.id()) {
+                        step_cloak(o, game);
+                    }
+                    // Check every 32 frames if target is still valid, pick something
+                    // else otherwise.
+                    if game.frame_count() & 0x1f == o.start_frame & 0x1f {
+                        let mut new_target = None;
+                        if let Some(target) = o.target {
+                            // This only checks the "common" flags and invincibility,
+                            // as some of the targeting things may change so much
+                            // that the orders would always be reset.
+                            // Maybe should also not recheck target order? Depends a lot on
+                            // the order though.
+                            let flags_valid = o.decl.target_flags.match_status(
+                                &target,
+                                o.decl.player,
+                                CheckTargetingFlags::No,
+                                Some(o.user),
+                                game,
+                            );
+                            if !flags_valid || target.is_invincible() {
+                                let ctx = o.decl.target_validation_context(game, Some(o.user));
+                                new_target = find_target(&o.user, &o.decl, &[], &ctx);
+                                // Drop the order unless new target is Some and good distance.
+                                retain = false;
+                            }
+                        }
+                        if let Some((new_target, distance)) = new_target {
+                            if distance < o.decl.radius as u32 {
+                                retain = true;
+                                let (target, pos) = target_pos(&new_target, &o.decl);
+                                o.target = target;
+                                let target_ptr = target.map(|x| x.0).unwrap_or(null_mut());
+                                bw::issue_order(o.user.0, o.order, pos, target_ptr, unit::id::NONE);
+                            }
+                        }
+                    }
+                }
+            }
+            if !retain {
+                bw::issue_order(o.user.0, order::MOVE, o.home, null_mut(), unit::id::NONE);
+                if o.cloaked {
+                    returning_cloaked.push(ReturningCloaked {
+                        unit: o.user,
+                        start_point: o.user.position(),
+                    });
                 }
             }
             retain
         });
+        // Decloak units that are far enough from target.
         returning_cloaked.swap_retain(|ret| {
             if !ret.unit.is_invisible() {
                 return false;
@@ -118,10 +161,11 @@ impl IdleOrders {
                 true
             }
         });
+        // Start new idle orders, if any can be started.
         for &mut (ref decl, ref mut state) in self.orders.iter_mut().rev() {
             if state.next_frame <= current_frame {
-                if let Some((user, target)) = find_user_target_pair(decl, &ongoing, game) {
-                    let (order_target, pos) = target_pos(&target, decl);
+                if let Some((user, target)) = find_user_target_pair(&decl, &ongoing, game) {
+                    let (order_target, pos) = target_pos(&target, &decl);
                     let home = match user.order() {
                         order::MOVE => (*user.0).order_target_pos,
                         _ => user.position(),
@@ -130,7 +174,9 @@ impl IdleOrders {
                     bw::issue_order(user.0, decl.order, pos, target_ptr, unit::id::NONE);
                     ongoing.push(OngoingOrder {
                         user,
+                        start_frame: game.frame_count(),
                         target: order_target,
+                        decl: decl.clone(),
                         home,
                         order: decl.order,
                         panic_health: panic_health(&user),
@@ -190,6 +236,8 @@ struct ReturningCloaked {
 struct OngoingOrder {
     user: Unit,
     target: Option<Unit>,
+    decl: Arc<IdleOrder>,
+    start_frame: u32,
     home: bw::Point,
     order: OrderId,
     panic_health: i32, // Try deathrattles if the hp drops below this
@@ -566,7 +614,7 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
                 .binary_search_by_key(&priority, |x| x.priority)
                 .unwrap_or_else(|x| x),
         };
-        let order = IdleOrder {
+        let order = Arc::new(IdleOrder {
             order,
             limit,
             unit_id,
@@ -577,7 +625,7 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
             self_flags,
             rate,
             player: (*script).player as u8,
-        };
+        });
         match deathrattle {
             false => orders.orders.insert(pos, (order, IdleOrderState::new())),
             true => orders.deathrattles.insert(pos, order),
