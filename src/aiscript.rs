@@ -552,6 +552,7 @@ pub unsafe fn under_attack_frame_hook(globals: &mut Globals) {
 pub struct AiMode {
     pub wait_for_resources: bool,
     pub build_gas: bool,
+    pub retaliation: bool,
 }
 
 impl Default for AiMode {
@@ -559,6 +560,7 @@ impl Default for AiMode {
         AiMode {
             wait_for_resources: true,
             build_gas: true,
+            retaliation: true,
         }
     }
 }
@@ -574,6 +576,8 @@ pub unsafe extern fn aicontrol(script: *mut bw::AiScript) {
         1 => out.wait_for_resources = false,
         2 => out.build_gas = true,
         3 => out.build_gas = false,
+        4 => out.retaliation = true,
+        5 => out.retaliation = false,
         _ => panic!("Invalid aicontrol {:x}", mode),
     };
 }
@@ -2435,6 +2439,20 @@ unsafe fn take_bw_allocated_scripts(
         first_new.unwrap_or(first),
         first_new_free.unwrap_or(first_free),
     )
+}
+
+pub unsafe fn ai_spellcast_hook(
+    revenge: bool,
+    unit: *mut bw::Unit,
+    orig: &Fn(bool, *mut bw::Unit) -> u32,
+) -> u32 {
+    let globals = Globals::get();
+    let ai_mode = &globals.ai_mode[(*unit).player as usize];
+    if !ai_mode.retaliation && revenge {
+        0
+    } else {
+        orig(revenge, unit)
+    }
 }
 
 pub unsafe fn update_placement_hook(

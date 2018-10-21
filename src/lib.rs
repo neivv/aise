@@ -180,6 +180,7 @@ pub extern fn Initialize() {
             bw::update_building_placement_state_hook,
             aiscript::update_placement_hook,
         );
+        exe.hook_opt(bw::ai_spellcast, aiscript::ai_spellcast_hook);
 
         bw::IS_1161.store(true, std::sync::atomic::Ordering::Release);
     }
