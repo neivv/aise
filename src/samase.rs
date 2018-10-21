@@ -218,6 +218,7 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
         ));
     }
 
+    aiscript_opcode(api, 0x00, ::aiscript::goto);
     aiscript_opcode(api, 0x40, ::aiscript::call);
     aiscript_opcode(api, 0x41, ::aiscript::ret);
     aiscript_opcode(api, 0x46, ::aiscript::do_morph);

@@ -237,10 +237,10 @@ pub unsafe extern fn issue_order(script: *mut bw::AiScript) {
 
 pub unsafe extern fn if_attacking(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
-    let dest = read.read_u16();
+    let dest = read.read_jump_pos();
     let ai = bw::player_ai((*script).player);
     if (*ai).attack_grouping_region != 0 {
-        (*script).pos = dest as u32;
+        (*script).pos = dest;
     }
 }
 
@@ -580,6 +580,11 @@ pub unsafe extern fn aicontrol(script: *mut bw::AiScript) {
         5 => out.retaliation = false,
         _ => panic!("Invalid aicontrol {:x}", mode),
     };
+}
+
+pub unsafe extern fn goto(script: *mut bw::AiScript) {
+    let mut read = ScriptData::new(script);
+    (*script).pos = read.read_jump_pos();
 }
 
 pub unsafe extern fn call(script: *mut bw::AiScript) {
@@ -1015,7 +1020,7 @@ pub unsafe extern fn time_command(script: *mut bw::AiScript) {
     let modifier = read.read_modifier();
     let amount = read.read_u32();
     let time_mod = read.read_u8();
-    let dest = read.read_u16();
+    let dest = read.read_jump_pos();
     let time_mod = match time_mod {
         // Matching trigger conditions
         0 => TimeType::Frames,
@@ -1041,11 +1046,11 @@ pub unsafe extern fn time_command(script: *mut bw::AiScript) {
     if read.compare(time, amount) == read_req {
         match modifier.action {
             ModifierAction::Jump => {
-                (*script).pos = dest as u32;
+                (*script).pos = dest;
             }
             ModifierAction::Call => {
                 let ret = (*script).pos;
-                (*script).pos = dest as u32;
+                (*script).pos = dest;
                 (*Script::ptr_from_bw(script)).call_stack.push(ret);
             }
             ModifierAction::Wait => {
@@ -1060,20 +1065,20 @@ pub unsafe extern fn attacking(script: *mut bw::AiScript) {
     let old_pos = (*script).pos - 1;
     let mut read = ScriptData::new(script);
     let modifier = read.read_bool_modifier();
-    let dest = read.read_u16();
+    let dest = read.read_jump_pos();
     let ai = bw::player_ai((*script).player);
     let r_compare = ((*ai).attack_grouping_region != 0) == modifier.value;
 
     match modifier.action {
         ModifierAction::Jump => {
             if r_compare {
-                (*script).pos = dest as u32;
+                (*script).pos = dest;
             }
         }
         ModifierAction::Call => {
             if r_compare {
                 let ret = (*script).pos;
-                (*script).pos = dest as u32;
+                (*script).pos = dest;
                 (*Script::ptr_from_bw(script)).call_stack.push(ret);
             }
         }
@@ -1095,7 +1100,7 @@ pub unsafe extern fn deaths(script: *mut bw::AiScript) {
     let modifier = read.read_modifier();
     let amount = read.read_u32();
     let mut units = read.read_unit_match();
-    let dest = read.read_u16();
+    let dest = read.read_jump_pos();
 
     let mut globals = Globals::get();
     match modifier.ty {
@@ -1120,11 +1125,11 @@ pub unsafe extern fn deaths(script: *mut bw::AiScript) {
             if read.compare(sum, amount) == read_req {
                 match modifier.action {
                     ModifierAction::Jump => {
-                        (*script).pos = dest as u32;
+                        (*script).pos = dest;
                     }
                     ModifierAction::Call => {
                         let ret = (*script).pos;
-                        (*script).pos = dest as u32;
+                        (*script).pos = dest;
                         (*Script::ptr_from_bw(script)).call_stack.push(ret);
                     }
                     ModifierAction::Wait => {
@@ -1171,7 +1176,7 @@ pub unsafe extern fn kills_command(script: *mut bw::AiScript) {
     let modifier = read.read_modifier();
     let amount = read.read_u32();
     let mut units = read.read_unit_match();
-    let dest = read.read_u16();
+    let dest = read.read_jump_pos();
     let mut globals = Globals::get();
 
     match modifier.ty {
@@ -1194,11 +1199,11 @@ pub unsafe extern fn kills_command(script: *mut bw::AiScript) {
             if read.compare(sum, amount) == read_req {
                 match modifier.action {
                     ModifierAction::Jump => {
-                        (*script).pos = dest as u32;
+                        (*script).pos = dest;
                     }
                     ModifierAction::Call => {
                         let ret = (*script).pos;
-                        (*script).pos = dest as u32;
+                        (*script).pos = dest;
                         (*Script::ptr_from_bw(script)).call_stack.push(ret);
                     }
                     ModifierAction::Wait => {
@@ -1269,7 +1274,7 @@ pub unsafe extern fn ping(script: *mut bw::AiScript) {
 pub unsafe extern fn player_jump(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let player = read.read_string();
-    let dest = read.read_u16();
+    let dest = read.read_jump_pos();
     if bw::is_scr() {
         bw::print_text("player_jump is not supported in SCR");
         return;
@@ -1286,7 +1291,7 @@ pub unsafe extern fn player_jump(script: *mut bw::AiScript) {
         &bw::player_name[..len]
     };
     if player_name.eq_ignore_ascii_case(&player) {
-        (*script).pos = dest as u32;
+        (*script).pos = dest;
     }
 }
 
@@ -1298,7 +1303,7 @@ pub unsafe extern fn upgrade_jump(script: *mut bw::AiScript) {
     let modifier = read.read_modifier();
     let upgrade = UpgradeId(read.read_u16());
     let level = read.read_u8();
-    let dest = read.read_u16();
+    let dest = read.read_jump_pos();
     match modifier.ty {
         ModifierType::Read(r) => {
             let read_req = modifier.get_read_req();
@@ -1309,11 +1314,11 @@ pub unsafe extern fn upgrade_jump(script: *mut bw::AiScript) {
             if jump == read_req {
                 match modifier.action {
                     ModifierAction::Jump => {
-                        (*script).pos = dest as u32;
+                        (*script).pos = dest;
                     }
                     ModifierAction::Call => {
                         let ret = (*script).pos;
-                        (*script).pos = dest as u32;
+                        (*script).pos = dest;
                         (*Script::ptr_from_bw(script)).call_stack.push(ret);
                     }
                     ModifierAction::Wait => {
@@ -1370,7 +1375,7 @@ pub unsafe extern fn unit_avail(script: *mut bw::AiScript) {
     let modifier = read.read_modifier();
     let avail_modifier = read.read_u8();
     let unit = UnitId(read.read_u16());
-    let dest = read.read_u16();
+    let dest = read.read_jump_pos();
     if avail_modifier >= 2 {
         bw::print_text("Invalid modifier in unit_avail");
         return;
@@ -1390,11 +1395,11 @@ pub unsafe extern fn unit_avail(script: *mut bw::AiScript) {
                 if jump == read_req {
                     match modifier.action {
                         ModifierAction::Jump => {
-                            (*script).pos = dest as u32;
+                            (*script).pos = dest;
                         }
                         ModifierAction::Call => {
                             let ret = (*script).pos;
-                            (*script).pos = dest as u32;
+                            (*script).pos = dest;
                             (*Script::ptr_from_bw(script)).call_stack.push(ret);
                         }
                         ModifierAction::Wait => {
@@ -1429,7 +1434,7 @@ pub unsafe extern fn tech_jump(script: *mut bw::AiScript) {
     let modifier = read.read_modifier();
     let tech = TechId(read.read_u16());
     let level = read.read_u8();
-    let dest = read.read_u16();
+    let dest = read.read_jump_pos();
     match modifier.ty {
         ModifierType::Read(r) => {
             let read_req = modifier.get_read_req();
@@ -1440,11 +1445,11 @@ pub unsafe extern fn tech_jump(script: *mut bw::AiScript) {
             if jump == read_req {
                 match modifier.action {
                     ModifierAction::Jump => {
-                        (*script).pos = dest as u32;
+                        (*script).pos = dest;
                     }
                     ModifierAction::Call => {
                         let ret = (*script).pos;
-                        (*script).pos = dest as u32;
+                        (*script).pos = dest;
                         (*Script::ptr_from_bw(script)).call_stack.push(ret);
                     }
                     ModifierAction::Wait => {
@@ -1473,7 +1478,7 @@ pub unsafe extern fn tech_avail(script: *mut bw::AiScript) {
     let modifier = read.read_modifier();
     let tech = TechId(read.read_u16());
     let level = read.read_u8();
-    let dest = read.read_u16();
+    let dest = read.read_jump_pos();
     match modifier.ty {
         ModifierType::Read(r) => {
             let read_req = modifier.get_read_req();
@@ -1484,11 +1489,11 @@ pub unsafe extern fn tech_avail(script: *mut bw::AiScript) {
             if jump == read_req {
                 match modifier.action {
                     ModifierAction::Jump => {
-                        (*script).pos = dest as u32;
+                        (*script).pos = dest;
                     }
                     ModifierAction::Call => {
                         let ret = (*script).pos;
-                        (*script).pos = dest as u32;
+                        (*script).pos = dest;
                         (*Script::ptr_from_bw(script)).call_stack.push(ret);
                     }
                     ModifierAction::Wait => {
@@ -1512,13 +1517,13 @@ pub unsafe extern fn tech_avail(script: *mut bw::AiScript) {
 pub unsafe extern fn random_call(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let chance = read.read_u8();
-    let dest = read.read_u16() as u32;
+    let dest = read.read_jump_pos();
 
     let mut globals = Globals::get();
     let random = globals.rng.synced_rand(0..256);
     if u32::from(chance) > random {
         let ret = (*script).pos;
-        (*script).pos = dest as u32;
+        (*script).pos = dest;
         (*Script::ptr_from_bw(script)).call_stack.push(ret);
     }
 }
@@ -1560,7 +1565,7 @@ pub unsafe extern fn bring_jump(script: *mut bw::AiScript) {
     let mut src = read.read_position();
     let radius = read.read_u16();
     src.extend_area(radius as i16);
-    let dest = read.read_u16();
+    let dest = read.read_jump_pos();
 
     let read = match modifier.ty {
         ModifierType::Read(r) => r,
@@ -1577,11 +1582,11 @@ pub unsafe extern fn bring_jump(script: *mut bw::AiScript) {
     if read.compare(count, amount) == read_req {
         match modifier.action {
             ModifierAction::Jump => {
-                (*script).pos = dest as u32;
+                (*script).pos = dest;
             }
             ModifierAction::Call => {
                 let ret = (*script).pos;
-                (*script).pos = dest as u32;
+                (*script).pos = dest;
                 (*Script::ptr_from_bw(script)).call_stack.push(ret);
             }
             ModifierAction::Wait => {
@@ -1967,7 +1972,11 @@ unsafe fn can_satisfy_dat_request(
 }
 
 // For reading aiscript.bin or bwscript.bin (or some other?) bytes
-pub struct ScriptData(*const u8, *mut bw::AiScript);
+pub struct ScriptData {
+    start: *const u8,
+    pos: *const u8,
+    script: *mut bw::AiScript,
+}
 
 impl ScriptData {
     pub unsafe fn new(script: *mut bw::AiScript) -> ScriptData {
@@ -1975,10 +1984,11 @@ impl ScriptData {
             false => bw::aiscript_bin(),
             true => bw::bwscript_bin(),
         };
-        ScriptData(
-            script_bytes.offset((*script).pos as isize) as *const u8,
+        ScriptData {
+            start: script_bytes,
+            pos: script_bytes.offset((*script).pos as isize) as *const u8,
             script,
-        )
+        }
     }
 
     pub unsafe fn read_player_match(&mut self, game: Game) -> PlayerMatch {
@@ -1986,7 +1996,7 @@ impl ScriptData {
         let mut result = PlayerMatch {
             players: [false; 12],
         };
-        let current_player = (*self.1).player as u8;
+        let current_player = (*self.script).player as u8;
         while cont {
             let byte = self.read_u8();
             cont = byte & 0x80 != 0;
@@ -2108,6 +2118,15 @@ impl ScriptData {
         }
     }
 
+    pub fn read_jump_pos(&mut self) -> u32 {
+        let long_jumps = unsafe { (self.start as *const u32).read_unaligned() >= 0x10000 };
+        if long_jumps {
+            self.read_u32()
+        } else {
+            self.read_u16().into()
+        }
+    }
+
     pub fn read_u8(&mut self) -> u8 {
         self.read()
     }
@@ -2125,18 +2144,18 @@ impl ScriptData {
     pub fn read<T: Copy>(&mut self) -> T {
         unsafe {
             let size = mem::size_of::<T>();
-            let val = (self.0 as *const T).read_unaligned();
-            self.0 = self.0.add(size);
-            (*self.1).pos = (*self.1).pos.wrapping_add(size as u32);
+            let val = (self.pos as *const T).read_unaligned();
+            self.pos = self.pos.add(size);
+            (*self.script).pos = (*self.script).pos.wrapping_add(size as u32);
             val
         }
     }
 
     pub unsafe fn read_string(&mut self) -> &'static [u8] {
-        let length = (0usize..).position(|x| *self.0.add(x) == 0).unwrap_or(0);
-        let val = slice::from_raw_parts(self.0, length);
-        self.0 = self.0.add(length + 1);
-        (*self.1).pos += length as u32 + 1;
+        let length = (0usize..).position(|x| *self.pos.add(x) == 0).unwrap_or(0);
+        let val = slice::from_raw_parts(self.pos, length);
+        self.pos = self.pos.add(length + 1);
+        (*self.script).pos += length as u32 + 1;
         val
     }
 }
@@ -2773,7 +2792,7 @@ pub unsafe extern fn guard_command(script: *mut bw::AiScript) {
 pub unsafe extern fn create_script(script: *mut bw::AiScript) {
     // create_script(pos, player, area, town, resarea)
     let mut read = ScriptData::new(script);
-    let pos = read.read_u16();
+    let pos = read.read_jump_pos();
     let player = match read.read_u8() {
         255 => (*script).player as u8,
         x => x,
@@ -2805,7 +2824,7 @@ pub unsafe extern fn create_script(script: *mut bw::AiScript) {
         bw: bw::AiScript {
             next: first_ai_script,
             prev: null_mut(),
-            pos: pos as u32,
+            pos,
             wait: 0,
             player: player as u32,
             area: bw::Rect32 {
@@ -3070,6 +3089,7 @@ mod test {
         use byteorder::{WriteBytesExt, LE};
 
         let mut buf = vec![];
+        buf.write_u32::<LE>(0x123).unwrap();
         buf.write_u32::<LE>(43242).unwrap();
         buf.write_u16::<LE>(12345).unwrap();
         for &c in b"test test \0".iter() {
@@ -3078,7 +3098,12 @@ mod test {
         buf.write_u16::<LE>(941).unwrap();
         unsafe {
             let mut script: bw::AiScript = mem::zeroed();
-            let mut read = ScriptData(buf.as_ptr(), &mut script);
+            script.pos = 4;
+            let mut read = ScriptData {
+                start: buf.as_ptr(),
+                pos: buf.as_ptr().add(4),
+                script: &mut script,
+            };
             assert_eq!(read.read_u32(), 43242);
             assert_eq!(read.read_u16(), 12345);
             assert_eq!(read.read_string(), b"test test ");
@@ -3092,6 +3117,7 @@ mod test {
         use byteorder::{WriteBytesExt, LE};
 
         let mut buf = vec![];
+        buf.write_u32::<LE>(0x123).unwrap();
         buf.write_u16::<LE>(0x33).unwrap();
         buf.write_u16::<LE>(0xff04).unwrap();
         buf.write_u16::<LE>(0x123).unwrap();
@@ -3100,10 +3126,61 @@ mod test {
         buf.write_u16::<LE>(0x70).unwrap();
         unsafe {
             let mut script: bw::AiScript = mem::zeroed();
-            let mut read = ScriptData(buf.as_ptr(), &mut script);
+            script.pos = 4;
+            let mut read = ScriptData {
+                start: buf.as_ptr(),
+                pos: buf.as_ptr().add(4),
+                script: &mut script,
+            };
             assert_eq!(read.read_unit_match().units, vec![UnitId(0x33)]);
             let eq = vec![UnitId(0x123), UnitId(0x110), UnitId(0x30), UnitId(0x70)];
             assert_eq!(read.read_unit_match().units, eq);
+            assert_eq!(script.pos, buf.len() as u32);
+        }
+    }
+
+    #[test]
+    fn script_data_long_jumps() {
+        use byteorder::{WriteBytesExt, LE};
+
+        let mut buf = vec![];
+        buf.write_u32::<LE>(0x123456).unwrap();
+        buf.write_u32::<LE>(0x12345678).unwrap();
+        buf.write_u32::<LE>(0x33113322).unwrap();
+        unsafe {
+            let mut script: bw::AiScript = mem::zeroed();
+            script.pos = 4;
+            let mut read = ScriptData {
+                start: buf.as_ptr(),
+                pos: buf.as_ptr().add(4),
+                script: &mut script,
+            };
+            assert_eq!(read.read_jump_pos(), 0x12345678);
+            assert_eq!(read.read_jump_pos(), 0x33113322);
+            assert_eq!(script.pos, buf.len() as u32);
+        }
+    }
+
+    #[test]
+    fn script_data_short_jumps() {
+        use byteorder::{WriteBytesExt, LE};
+
+        let mut buf = vec![];
+        buf.write_u32::<LE>(0x1234).unwrap();
+        buf.write_u32::<LE>(0x12345678).unwrap();
+        buf.write_u32::<LE>(0x33113322).unwrap();
+        unsafe {
+            let mut script: bw::AiScript = mem::zeroed();
+            script.pos = 4;
+            let mut read = ScriptData {
+                start: buf.as_ptr(),
+                pos: buf.as_ptr().add(4),
+                script: &mut script,
+            };
+            assert_eq!(read.read_jump_pos(), 0x5678);
+            assert_eq!(read.read_jump_pos(), 0x1234);
+            assert_eq!(read.read_jump_pos(), 0x3322);
+            assert_eq!(read.read_jump_pos(), 0x3311);
             assert_eq!(script.pos, buf.len() as u32);
         }
     }
