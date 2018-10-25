@@ -115,15 +115,6 @@ lazy_static! {
         samase::read_file("scripts\\aiscript.bin").unwrap() as usize;
     static ref SAMASE_BWSCRIPT_BIN: usize =
         samase::read_file("scripts\\bwscript.bin").unwrap() as usize;
-    static ref SAMASE_UNITS_DAT: usize = samase::read_file("arr\\units.dat").unwrap() as usize;
-}
-
-pub fn collision_rect(unit: UnitId) -> Rect {
-    unsafe {
-        assert!(unit.0 < 0xe4);
-        let dat = *SAMASE_UNITS_DAT as *const u8;
-        *(dat.offset(0x3124 + unit.0 as isize * 8) as *const Rect)
-    }
 }
 
 pub fn aiscript_bin() -> *mut u8 {

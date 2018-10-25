@@ -275,7 +275,7 @@ impl Unit {
     }
 
     pub fn collision_rect(&self) -> bw::Rect {
-        let collision_rect = bw::collision_rect(self.id());
+        let collision_rect = self.id().dimensions();
         let position = self.position();
         bw::Rect {
             left: position.x - collision_rect.left,
