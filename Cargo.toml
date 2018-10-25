@@ -1,6 +1,6 @@
 [package]
 name = "aise"
-version = "2.14.0"
+version = "2.15.0"
 authors = ["Markus Heikkinen <ittevien@gmail.com>"]
 
 [lib]
@@ -23,6 +23,7 @@ bincode = "1.0"
 bitflags = "1.0"
 byteorder = "1.1"
 chrono = "0.4"
+directories = "1.0.2"
 fern = "0.5"
 lazy_static = "1.0"
 libc = "0.2"

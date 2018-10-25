@@ -1,9 +1,13 @@
 use std::fmt;
+use std::fs::{self, File};
 use std::mem;
+use std::path::{Component, Path, PathBuf};
 use std::ptr::null_mut;
 use std::slice;
 
+use bincode;
 use byteorder::{WriteBytesExt, LE};
+use directories::UserDirs;
 use serde::{self, Deserialize, Deserializer, Serialize, Serializer};
 use smallvec::SmallVec;
 
@@ -14,7 +18,9 @@ use block_alloc::BlockAllocSet;
 use bw;
 use datreq::{DatReq, ReadDatReqs};
 use game::Game;
-use globals::{self, BaseLayout, BunkerCondition, BunkerState, Globals, RevealState, RevealType};
+use globals::{
+    self, BankKey, BaseLayout, BunkerCondition, BunkerState, Globals, RevealState, RevealType,
+};
 use list::ListIter;
 use order::{self, OrderId};
 use rng::Rng;
@@ -977,6 +983,123 @@ pub unsafe extern fn reveal_area(script: *mut bw::AiScript) {
         globals.reveal_states.push(reveal_state);
     }
     reveal(game, src.area, players, true);
+}
+
+fn get_bank_path(name: &str) -> Option<PathBuf> {
+    let name = Path::new(name);
+    let bad_path = name.components().any(|x| match x {
+        Component::Prefix(..) | Component::RootDir | Component::ParentDir => true,
+        Component::CurDir | Component::Normal(..) => false,
+    });
+    if bad_path {
+        return None;
+    }
+    let root = if bw::is_scr() {
+        UserDirs::new()
+            .and_then(|user_dirs| user_dirs.document_dir().map(|s| s.join("Starcraft")))
+            .unwrap_or_else(|| ".".into())
+    } else {
+        ".".into()
+    };
+    Some(root.join("save").join(name))
+}
+
+pub unsafe extern fn save_bank(script: *mut bw::AiScript) {
+    let mut read = ScriptData::new(script);
+    let name = read.read_string();
+    let globals = Globals::get();
+    let name = String::from_utf8_lossy(name).to_string();
+    let path = match get_bank_path(&name) {
+        Some(s) => s,
+        None => return,
+    };
+    let folder = Path::parent(&path);
+    if let Some(s) = folder {
+        let _ = fs::create_dir(s);
+    }
+    let mut file = match File::create(&path) {
+        Ok(o) => o,
+        Err(e) => {
+            bw::print_text(format!("Bank load error: {}", e));
+            return;
+        }
+    };
+    if let Err(e) = bincode::serialize_into(&mut file, &globals.bank) {
+        bw::print_text(format!("Bank save error: {}", e));
+    }
+}
+
+pub unsafe extern fn load_bank(script: *mut bw::AiScript) {
+    let mut read = ScriptData::new(script);
+    let name = read.read_string();
+    let mut globals = Globals::get();
+    globals.bank.reset();
+    let name = String::from_utf8_lossy(name);
+    let path = match get_bank_path(&name) {
+        Some(s) => s,
+        None => return,
+    };
+    if path.exists() {
+        let mut file = match File::open(path) {
+            Ok(o) => o,
+            Err(e) => {
+                bw::print_text(format!("Bank load error: {}", e));
+                return;
+            }
+        };
+        globals.bank = match bincode::deserialize_from(&mut file) {
+            Ok(o) => o,
+            Err(e) => {
+                bw::print_text(format!("Bank load error: {}", e));
+                return;
+            }
+        };
+    }
+}
+
+pub unsafe extern fn bank_data(script: *mut bw::AiScript) {
+    let old_pos = (*script).pos - 1;
+    let mut read = ScriptData::new(script);
+    let modifier = read.read_modifier();
+    let category = read.read_string();
+    let label = read.read_string();
+    let amount = read.read_u32();
+    let dest = read.read_jump_pos();
+    let mut globals = Globals::get();
+    let globals = &mut *globals;
+    let key = BankKey {
+        label: String::from_utf8_lossy(label).to_string(),
+        category: String::from_utf8_lossy(category).to_string(),
+    };
+
+    match modifier.ty {
+        ModifierType::Read(read) => {
+            let value = globals.bank.get(&key);
+            let read_req = modifier.get_read_req();
+            if read.compare(value, amount) == read_req {
+                match modifier.action {
+                    ModifierAction::Jump => {
+                        (*script).pos = dest as u32;
+                    }
+                    ModifierAction::Call => {
+                        let ret = (*script).pos;
+                        (*script).pos = dest as u32;
+                        (*Script::ptr_from_bw(script)).call_stack.push(ret);
+                    }
+                    ModifierAction::Wait => {
+                        (*script).pos = old_pos;
+                        (*script).wait = 30;
+                    }
+                }
+            }
+        }
+        ModifierType::Write(write) => {
+            let rng = &mut globals.rng;
+            globals
+                .bank
+                .update(key, |val| write.apply(val, amount, rng));
+        }
+    }
 }
 
 pub unsafe extern fn remove_creep(script: *mut bw::AiScript) {

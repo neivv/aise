@@ -7,6 +7,7 @@ extern crate bincode;
 extern crate bitflags;
 extern crate byteorder;
 extern crate chrono;
+extern crate directories;
 extern crate fern;
 #[macro_use]
 extern crate lazy_static;

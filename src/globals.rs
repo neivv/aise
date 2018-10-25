@@ -211,6 +211,64 @@ pub struct SingleBunkerState {
     pub bunker: Unit,
 }
 
+#[derive(Debug, Default, Serialize, Deserialize, Clone, PartialEq)]
+pub struct BankKey {
+    pub label: String,
+    pub category: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct BankValue {
+    pub key: BankKey,
+    pub value: u32,
+}
+
+impl BankValue {
+    pub fn new(key: BankKey, value: u32) -> BankValue {
+        BankValue {
+            key,
+            value,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Bank {
+    pub bank_data: Vec<BankValue>,
+}
+
+impl Bank {
+    pub fn reset(&mut self) {
+        self.bank_data.clear();
+    }
+
+    pub fn get(&self, key: &BankKey) -> u32 {
+        match self.bank_data.iter().position(|i| i.key == *key) {
+            Some(pos) => self.bank_data[pos].value as u32,
+            None => 0,
+        }
+    }
+
+    pub fn update<F: FnOnce(u32) -> u32>(&mut self, key: BankKey, update_fn: F) {
+        match self.bank_data.iter_mut().position(|i| i.key == key) {
+            Some(pos) => {
+                let new = update_fn(self.bank_data[pos].value);
+                if new == 0 {
+                    self.bank_data.swap_remove(pos);
+                } else {
+                    self.bank_data[pos].value = new;
+                }
+            }
+            None => {
+                let new = update_fn(0);
+                if new != 0 {
+                    self.bank_data.push(BankValue::new(key, new));
+                }
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct BunkerCondition {
     pub bunker_states: Vec<BunkerState>,
@@ -248,6 +306,7 @@ pub struct Globals {
     pub town_ids: Vec<TownId>,
     pub bunker_states: BunkerCondition,
     pub guards: GuardState,
+    pub bank: Bank,
     pub reveal_states: Vec<RevealState>,
     pub under_attack_mode: [Option<bool>; 8],
     pub ai_mode: [AiMode; 8],
@@ -274,6 +333,7 @@ impl Globals {
             reveal_states: Vec::new(),
             bunker_states: Default::default(),
             guards: GuardState::new(),
+            bank: Default::default(),
             under_attack_mode: [None; 8],
             ai_mode: [Default::default(); 8],
             towns: Vec::new(),
