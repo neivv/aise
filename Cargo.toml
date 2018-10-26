@@ -41,7 +41,7 @@ features = ["serde1"]
 
 [dependencies.winapi]
 version = "0.3.3"
-features = ["heapapi", "libloaderapi", "processthreadsapi", "winuser"]
+features = ["heapapi", "libloaderapi", "processthreadsapi", "winuser", "wingdi"]
 
 [dependencies.bw_dat]
 path = "bw_dat"
@@ -51,3 +51,15 @@ git = "https://github.com/neivv/whack/"
 
 [dependencies.samase_shim]
 git = "https://github.com/neivv/samase_plugin"
+
+[dependencies.glium]
+version = "0.22"
+optional = true
+default-features = false
+
+[dependencies.gl]
+version = "0.10"
+optional = true
+
+[features]
+opengl = ["glium", "gl"]

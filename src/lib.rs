@@ -30,11 +30,19 @@ extern crate winapi;
 extern crate whack;
 extern crate samase_shim;
 
+#[cfg(feature = "opengl")]
+extern crate gl as opengl;
+#[cfg(feature = "opengl")]
+extern crate glium;
+
 #[macro_use]
 mod macros;
 
 pub mod mpqdraft;
 pub mod samase;
+
+#[cfg(feature = "opengl")]
+mod gl;
 
 mod ai;
 mod aiscript;
@@ -170,6 +178,10 @@ pub extern fn Initialize() {
         samase_shim::on_win_main(f);
 
         let mut active_patcher = ::PATCHER.lock().unwrap();
+
+        #[cfg(feature = "opengl")]
+        gl::init_hooks(&mut active_patcher);
+
         let mut exe = active_patcher.patch_exe(0x00400000);
         bw::init_funcs(&mut exe);
         bw::init_vars(&mut exe);
