@@ -18,6 +18,7 @@ pub use bw_dat::UnitId;
 pub struct Unit(pub *mut bw::Unit);
 
 unsafe impl Send for Unit {}
+unsafe impl Sync for Unit {}
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct HashableUnit(pub Unit);
@@ -218,6 +219,10 @@ impl Unit {
         unsafe { (*self.0).energy }
     }
 
+    pub fn is_air(&self) -> bool {
+        unsafe { (*self.0).flags & 0x4 != 0 }
+    }
+
     /// Is the unit cloaked or burrowed (So it requires detection)
     pub fn is_invisible(&self) -> bool {
         unsafe { (*self.0).flags & 0x300 != 0 }
@@ -278,9 +283,9 @@ impl Unit {
         let collision_rect = self.id().dimensions();
         let position = self.position();
         bw::Rect {
-            left: position.x - collision_rect.left,
+            left: (position.x - collision_rect.left).max(0),
             right: position.x + collision_rect.right + 1,
-            top: position.y - collision_rect.top,
+            top: (position.y - collision_rect.top).max(0),
             bottom: position.y + collision_rect.bottom + 1,
         }
     }
@@ -377,40 +382,4 @@ impl Iterator for UnitListIter {
             }
         }
     }
-}
-
-pub fn find_units<F: FnMut(&Unit) -> bool>(area: &bw::Rect, mut filter: F) -> Vec<Unit> {
-    let mut result = Vec::new();
-    for unit in active_units() {
-        let crect = unit.collision_rect();
-        if rect_overlaps(&crect, area) {
-            if filter(&unit) {
-                result.push(unit);
-            }
-        }
-    }
-    result
-}
-
-// Also returns the distance
-pub fn find_nearest<F>(point: bw::Point, mut filter: F) -> Option<(Unit, u32)>
-where
-    F: FnMut(&Unit) -> bool,
-{
-    let mut result = None;
-    let mut result_dist = !0;
-    for unit in active_units() {
-        let distance = bw::distance(unit.position(), point);
-        if distance < result_dist {
-            if filter(&unit) {
-                result = Some(unit);
-                result_dist = distance;
-            }
-        }
-    }
-    result.map(|x| (x, result_dist))
-}
-
-fn rect_overlaps(a: &bw::Rect, b: &bw::Rect) -> bool {
-    a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top
 }

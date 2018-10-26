@@ -163,7 +163,7 @@ impl KillsTable {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
-pub struct BunkerState {
+pub struct BunkerDecl {
     pub pos: bw::Rect,
     pub unit_id: UnitMatch,
     pub bunker_id: UnitMatch,
@@ -171,23 +171,14 @@ pub struct BunkerState {
     pub player: u8,
     pub bunker_quantity: u8,
     pub priority: u8,
-    pub single_bunker_states: Vec<SingleBunkerState>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct BunkerState {
+    single_bunker_states: Vec<SingleBunkerState>,
 }
 
 impl BunkerState {
-    pub fn count_associated_units(&mut self, bunker: Unit) -> Option<u8> {
-        self.single_bunker_states
-            .iter()
-            .find(|link| link.bunker == bunker)
-            .map(|link| link.associated_units.len() as u8)
-    }
-
-    pub fn in_list(&self, unit: Unit) -> bool {
-        self.single_bunker_states
-            .iter()
-            .any(|state| state.associated_units.iter().any(|&x| x == unit))
-    }
-
     pub fn add_targeter(&mut self, targeter: Unit, bunker: Unit) {
         match self
             .single_bunker_states
@@ -202,6 +193,27 @@ impl BunkerState {
                 });
             }
         }
+    }
+
+    fn unit_removed(&mut self, unit: Unit) {
+        self.single_bunker_states
+            .swap_retain(|x| x.bunker.0 != unit.0);
+        for link in &mut self.single_bunker_states {
+            link.associated_units.swap_retain(|x| x.0 != unit.0);
+        }
+    }
+
+    pub fn count_associated_units(&self, bunker: Unit) -> Option<u8> {
+        self.single_bunker_states
+            .iter()
+            .find(|link| link.bunker == bunker)
+            .map(|link| link.associated_units.len() as u8)
+    }
+
+    pub fn in_list(&self, unit: Unit) -> bool {
+        self.single_bunker_states
+            .iter()
+            .any(|state| state.associated_units.iter().any(|&x| x == unit))
     }
 }
 
@@ -271,27 +283,24 @@ impl Bank {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct BunkerCondition {
-    pub bunker_states: Vec<BunkerState>,
+    pub bunker_states: Vec<(BunkerDecl, BunkerState)>,
 }
 
 impl BunkerCondition {
-    pub fn add(&mut self, bunker_state: BunkerState) {
-        self.bunker_states.push(bunker_state);
-        self.bunker_states.sort_by_key(|x| !0 - x.priority);
+    pub fn add(&mut self, decl: BunkerDecl) {
+        self.bunker_states.push((decl, BunkerState::default()));
+        self.bunker_states.sort_by_key(|x| !x.0.priority);
     }
 
     pub fn in_list(&self, unit: Unit) -> bool {
-        self.bunker_states.iter().any(|bs| bs.in_list(unit))
+        self.bunker_states
+            .iter()
+            .any(|(_, state)| state.in_list(unit))
     }
 
     pub fn unit_removed(&mut self, unit: Unit) {
-        for condition in &mut self.bunker_states {
-            condition
-                .single_bunker_states
-                .swap_retain(|x| x.bunker.0 != unit.0);
-            for link in &mut condition.single_bunker_states {
-                link.associated_units.swap_retain(|x| x.0 != unit.0);
-            }
+        for (_, state) in &mut self.bunker_states {
+            state.unit_removed(unit);
         }
     }
 }
@@ -354,6 +363,7 @@ pub fn save_state() -> MutexGuard<'static, Option<SaveState>> {
 }
 
 pub unsafe extern fn init_game() {
+    aiscript::invalidate_cached_unit_search();
     *GLOBALS.lock().unwrap() = Globals::new();
 }
 
@@ -399,6 +409,7 @@ pub unsafe extern fn save(set_data: unsafe extern fn(*const u8, usize)) {
 }
 
 pub unsafe extern fn load(ptr: *const u8, len: usize) -> u32 {
+    aiscript::invalidate_cached_unit_search();
     unit::init_load_mapping();
     defer!(unit::clear_load_mapping());
     aiscript::init_load_mapping();

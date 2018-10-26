@@ -49,6 +49,7 @@ mod order;
 mod rng;
 mod swap_retain;
 mod unit;
+mod unit_search;
 mod windows;
 
 use std::ptr::null_mut;
@@ -188,19 +189,20 @@ pub extern fn Initialize() {
 }
 
 unsafe extern fn frame_hook() {
+    let search = unit_search::UnitSearch::from_bw();
     let mut globals = Globals::get();
     let globals = &mut *globals;
     let game = game::Game::get();
     aiscript::claim_bw_allocated_scripts(globals);
     aiscript::attack_timeouts_frame_hook(globals, game);
-    globals.idle_orders.step_frame(&mut globals.rng);
+    globals.idle_orders.step_frame(&mut globals.rng, &search);
     aiscript::under_attack_frame_hook(globals);
     aiscript::reveal_vision_hook(globals, game);
     ai::update_guard_needs(game, &mut globals.guards);
     ai::continue_incomplete_buildings();
 
     for unit in unit::active_units() {
-        aiscript::bunker_fill_hook(&mut globals.bunker_states, unit);
+        aiscript::bunker_fill_hook(&mut globals.bunker_states, unit, &search);
         if let Some(ai) = unit.building_ai() {
             let town = (*ai).town;
             if town != null_mut() {

@@ -4,6 +4,8 @@ use std::mem;
 use std::path::{Component, Path, PathBuf};
 use std::ptr::null_mut;
 use std::slice;
+use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
+use std::sync::{Arc, Mutex};
 
 use bincode;
 use byteorder::{WriteBytesExt, LE};
@@ -19,7 +21,7 @@ use bw;
 use datreq::{DatReq, ReadDatReqs};
 use game::Game;
 use globals::{
-    self, BankKey, BaseLayout, BunkerCondition, BunkerState, Globals, RevealState, RevealType,
+    self, BankKey, BaseLayout, BunkerCondition, BunkerDecl, Globals, RevealState, RevealType,
 };
 use list::ListIter;
 use order::{self, OrderId};
@@ -27,6 +29,7 @@ use rng::Rng;
 use samase;
 use swap_retain::SwapRetain;
 use unit::{self, Unit};
+use unit_search::UnitSearch;
 
 pub fn init_save_mapping() {}
 
@@ -35,6 +38,34 @@ pub fn clear_save_mapping() {}
 pub fn init_load_mapping() {}
 
 pub fn clear_load_mapping() {}
+
+// Cache unit search accesses from script commands of same frame, as the script commands
+// won't change unit positioning (Except create_unit, but oh well).
+// CACHED_UNIT_SEARCH_FRAME has to be set to !0 on loading and game init to surely
+// invalidate the cache.
+// Arc for simplicity, but obviously getting the search from thread other than main is
+// pretty much always racy.
+lazy_static! {
+    static ref CACHED_UNIT_SEARCH: Mutex<Option<Arc<UnitSearch>>> = Mutex::new(None);
+}
+static CACHED_UNIT_SEARCH_FRAME: AtomicUsize = ATOMIC_USIZE_INIT;
+
+pub fn invalidate_cached_unit_search() {
+    CACHED_UNIT_SEARCH_FRAME.store(!0, Ordering::Relaxed);
+}
+
+unsafe fn aiscript_unit_search(game: Game) -> Arc<UnitSearch> {
+    let frame = game.frame_count() as usize;
+    if CACHED_UNIT_SEARCH_FRAME.load(Ordering::Relaxed) != frame {
+        let search = Arc::new(UnitSearch::from_bw());
+        *CACHED_UNIT_SEARCH.lock().unwrap() = Some(search.clone());
+        CACHED_UNIT_SEARCH_FRAME.store(frame, Ordering::Relaxed);
+        search
+    } else {
+        let guard = CACHED_UNIT_SEARCH.lock().unwrap();
+        guard.as_ref().unwrap().clone()
+    }
+}
 
 pub unsafe extern fn attack_to(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
@@ -156,18 +187,12 @@ pub unsafe extern fn issue_order(script: *mut bw::AiScript) {
         bw::print_text(format!("Aiscript issue_order: Unknown flags 0x{:x}", flags));
         return;
     }
-    let mut count = 0;
-    let units = unit::find_units(&src.area, |u| {
-        if count == limit {
-            return false;
-        }
-        let ok = u.player() as u32 == (*script).player && unit_id.matches(u);
-        if ok {
-            count += 1;
-        }
-        ok
-    });
     let game = Game::get();
+    let search = aiscript_unit_search(game);
+    let units = search
+        .search_iter(&src.area)
+        .filter(|u| u.player() as u32 == (*script).player && unit_id.matches(u))
+        .take(limit as usize);
     let targets = if flags & 0x7 != 0 {
         let mut acceptable_players = [false; 12];
         for i in 0..12 {
@@ -181,17 +206,16 @@ pub unsafe extern fn issue_order(script: *mut bw::AiScript) {
                 }
             }
         }
-        let mut count = 0;
-        Some(unit::find_units(&target.area, |u| {
-            if flags & 0x8 != 0 && count != 0 {
-                return false;
-            }
-            let ok = acceptable_players[u.player() as usize] && target_misc.matches(u);
-            if ok {
-                count += 1;
-            }
-            ok
-        }))
+        let limit = match flags & 0x8 != 0 {
+            true => 1,
+            false => !0,
+        };
+        let targets = search
+            .search_iter(&target.area)
+            .filter(|u| acceptable_players[u.player() as usize] && target_misc.matches(u))
+            .take(limit)
+            .collect::<Vec<_>>();
+        Some(targets)
     } else {
         None
     };
@@ -481,7 +505,11 @@ pub unsafe extern fn under_attack(script: *mut bw::AiScript) {
     };
 }
 
-pub unsafe fn bunker_fill_hook(bunker_states: &mut BunkerCondition, picked_unit: Unit) {
+pub unsafe fn bunker_fill_hook(
+    bunker_states: &mut BunkerCondition,
+    picked_unit: Unit,
+    search: &UnitSearch,
+) {
     use bw_dat::order::*;
     if bunker_states.in_list(picked_unit) {
         return;
@@ -493,11 +521,11 @@ pub unsafe fn bunker_fill_hook(bunker_states: &mut BunkerCondition, picked_unit:
         }
         _ => {}
     }
-    for state in &mut bunker_states.bunker_states {
-        if state.unit_id.matches(&picked_unit) {
-            let units = unit::find_units(&state.pos, |u| {
-                u.player() == state.player &&
-                    state.bunker_id.matches(u) &&
+    for (decl, state) in &mut bunker_states.bunker_states {
+        if decl.unit_id.matches(&picked_unit) {
+            let units = search.search_iter(&decl.pos).filter(|u| {
+                u.player() == decl.player &&
+                    decl.bunker_id.matches(u) &&
                     u.player() == (*picked_unit.0).player
             });
             let mut used_bunkers = 0;
@@ -511,11 +539,11 @@ pub unsafe fn bunker_fill_hook(bunker_states: &mut BunkerCondition, picked_unit:
                 let full = u32::from(cargo_amount) == cargo_capacity;
                 if units_targeted > 0 || (full && units_targeted == 0) {
                     used_bunkers += 1;
-                    if used_bunkers >= state.bunker_quantity {
+                    if used_bunkers >= decl.bunker_quantity {
                         return;
                     }
                 }
-                if free_slots > 0 && state.quantity > 0 {
+                if free_slots > 0 && decl.quantity > 0 {
                     bw::issue_order(
                         picked_unit.0,
                         ENTER_TRANSPORT,
@@ -1475,7 +1503,7 @@ pub unsafe extern fn load_bunkers(script: *mut bw::AiScript) {
     let bunker_id = read.read_unit_match();
     let bunker_quantity = read.read_u8();
     let priority = read.read_u8();
-    let bunker_state = BunkerState {
+    let decl = BunkerDecl {
         pos: src.area,
         unit_id: unit_id,
         bunker_id: bunker_id,
@@ -1483,10 +1511,9 @@ pub unsafe extern fn load_bunkers(script: *mut bw::AiScript) {
         player: player as u8,
         priority: priority,
         bunker_quantity: bunker_quantity,
-        single_bunker_states: Vec::new(),
     };
 
-    globals.bunker_states.add(bunker_state);
+    globals.bunker_states.add(decl);
 }
 
 pub unsafe extern fn unit_avail(script: *mut bw::AiScript) {
@@ -1697,10 +1724,11 @@ pub unsafe extern fn bring_jump(script: *mut bw::AiScript) {
             return;
         }
     };
-    let units = unit::find_units(&src.area, |u| {
-        players.matches(u.player()) && unit_id.matches(u)
-    });
-    let count = units.len() as u32;
+    let search = aiscript_unit_search(game);
+    let count = search
+        .search_iter(&src.area)
+        .filter(|u| players.matches(u.player()) && unit_id.matches(u))
+        .count() as u32;
     let read_req = modifier.get_read_req();
     if read.compare(count, amount) == read_req {
         match modifier.action {
@@ -2649,6 +2677,7 @@ pub unsafe fn choose_building_placement(
     let player = builder.player();
 
     let globals = Globals::get();
+    let unit_search = UnitSearch::from_bw();
     if let Some(town_id) = globals.town_ids.iter().find(|x| x.town.0 == town) {
         let game = Game::get();
         let layouts = globals
@@ -2661,10 +2690,11 @@ pub unsafe fn choose_building_placement(
                     x.player == player
             })
             .filter(|layout| {
-                let units = unit::find_units(&layout.pos, |u| {
-                    u.player() == layout.player && u.id() == layout.unit_id
-                });
-                units.len() < usize::from(layout.amount)
+                let existing_count = unit_search
+                    .search_iter(&layout.pos)
+                    .filter(|u| u.player() == layout.player && u.id() == layout.unit_id)
+                    .count();
+                existing_count < usize::from(layout.amount)
             });
         for layout in layouts {
             //uses tiles instead of pixels
@@ -2676,7 +2706,7 @@ pub unsafe fn choose_building_placement(
             let offset_y = layout.pos.top - (pos_y * 32);
             for i in pos_x..rect_x + 1 {
                 for j in pos_y..rect_y + 1 {
-                    let mut ok = check_placement(game, builder, i, j, unit_id);
+                    let mut ok = check_placement(game, &unit_search, builder, i, j, unit_id);
                     if ok {
                         let mut workers = (*town).workers;
                         while workers != null_mut() {
@@ -2710,6 +2740,7 @@ pub unsafe fn choose_building_placement(
 
 unsafe fn check_placement(
     game: Game,
+    unit_search: &UnitSearch,
     builder: Unit,
     x_tile: i16,
     y_tile: i16,
@@ -2729,8 +2760,10 @@ unsafe fn check_placement(
         right: (x_tile * 32) + (placement.width as i16 / 2),
         bottom: (y_tile * 32) + (placement.height as i16 / 2),
     };
-    let units = unit::find_units(&area, |&u| u != builder);
-    if !units.is_empty() {
+    let blocked = unit_search
+        .search_iter(&area)
+        .any(|u| u != builder && !u.is_air());
+    if blocked {
         return false;
     }
 
@@ -2747,8 +2780,10 @@ unsafe fn check_placement(
             right: (x_tile * 32) + placement.width as i16 + 3 * 32,
             bottom: (y_tile * 32) + placement.height as i16 + 3 * 32,
         };
-        let res_units = unit::find_units(&area, |u| u.id().is_resource_container());
-        if !res_units.is_empty() {
+        let res_units = unit_search
+            .search_iter(&area)
+            .any(|u| u.id().is_resource_container());
+        if res_units {
             return false;
         }
     }

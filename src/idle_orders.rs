@@ -12,6 +12,7 @@ use globals::Globals;
 use rng::Rng;
 use swap_retain::SwapRetain;
 use unit::{self, Unit};
+use unit_search::UnitSearch;
 
 pub const IDLE_ORDERS_DISABLED: AtomicBool = ATOMIC_BOOL_INIT;
 
@@ -35,7 +36,7 @@ impl IdleOrders {
         self.returning_cloaked.swap_retain(|x| unit != x.unit);
     }
 
-    pub unsafe fn step_frame(&mut self, rng: &mut Rng) {
+    pub unsafe fn step_frame(&mut self, rng: &mut Rng, units: &UnitSearch) {
         for i in 0..8 {
             let ai = bw::player_ai(i);
             if (*ai).spell_cooldown > 200 {
@@ -73,9 +74,9 @@ impl IdleOrders {
 
                 if o.user.health() < o.panic_health {
                     for decl in deathrattles {
-                        if decl.unit_valid(&o.user, &[], CheckTargetingFlags::Yes, game) {
-                            let ctx = decl.target_validation_context(game, Some(o.user));
-                            let panic_target = find_target(&o.user, &decl, &[], &ctx);
+                        let ctx = decl.target_validation_context(game, units, Some(o.user));
+                        if decl.unit_valid(o.user, &[], CheckTargetingFlags::Yes, &ctx) {
+                            let panic_target = find_target(o.user, &decl, &[], &ctx);
                             if let Some((target, distance)) = panic_target {
                                 if distance < decl.radius as u32 {
                                     let (target, pos) = target_pos(&target, decl);
@@ -111,15 +112,17 @@ impl IdleOrders {
                             // Maybe should also not recheck target order? Depends a lot on
                             // the order though.
                             let flags_valid = o.decl.target_flags.match_status(
-                                &target,
+                                target,
                                 o.decl.player,
                                 CheckTargetingFlags::No,
                                 Some(o.user),
                                 game,
+                                units,
                             );
                             if !flags_valid || target.is_invincible() {
-                                let ctx = o.decl.target_validation_context(game, Some(o.user));
-                                new_target = find_target(&o.user, &o.decl, &[], &ctx);
+                                let ctx =
+                                    o.decl.target_validation_context(game, units, Some(o.user));
+                                new_target = find_target(o.user, &o.decl, &[], &ctx);
                                 // Drop the order unless new target is Some and good distance.
                                 retain = false;
                             }
@@ -164,7 +167,8 @@ impl IdleOrders {
         // Start new idle orders, if any can be started.
         for &mut (ref decl, ref mut state) in self.orders.iter_mut().rev() {
             if state.next_frame <= current_frame {
-                if let Some((user, target)) = find_user_target_pair(&decl, &ongoing, game) {
+                let pair = find_user_target_pair(&decl, &ongoing, game, units);
+                if let Some((user, target)) = pair {
                     let (order_target, pos) = target_pos(&target, &decl);
                     let home = match user.order() {
                         order::MOVE => (*user.0).order_target_pos,
@@ -637,30 +641,38 @@ impl IdleOrder {
     /// Idle order user
     fn unit_valid(
         &self,
-        user: &Unit,
+        user: Unit,
         ongoing: &[OngoingOrder],
         check_targeting: CheckTargetingFlags,
-        game: Game,
+        ctx: &IdleOrderTargetContext,
     ) -> bool {
         let energy_cost = self.order.tech().map(|x| x.energy_cost() << 8).unwrap_or(0);
         user.player() == self.player &&
-            self.unit_id.matches(user) &&
+            self.unit_id.matches(&user) &&
             user.order() != self.order &&
             user.energy() as u32 >= energy_cost &&
-            self.self_flags
-                .match_status(user, self.player, check_targeting, None, game) &&
-            !ongoing.iter().any(|x| x.user == *user)
+            self.self_flags.match_status(
+                user,
+                self.player,
+                check_targeting,
+                None,
+                ctx.game,
+                ctx.units,
+            ) &&
+            !ongoing.iter().any(|x| x.user == user)
     }
 
-    fn target_validation_context(
+    fn target_validation_context<'a>(
         &self,
         game: Game,
+        units: &'a UnitSearch,
         current_unit: Option<Unit>,
-    ) -> IdleOrderTargetContext {
+    ) -> IdleOrderTargetContext<'a> {
         let mut result = IdleOrderTargetContext {
             acceptable_players: [false; 12],
             game,
             current_unit,
+            units,
         };
 
         let accept_enemies = self.target_flags.simple & 0x1 == 0;
@@ -697,11 +709,12 @@ impl IdleOrder {
             return false;
         }
         let flags_ok = self.target_flags.match_status(
-            &unit,
+            unit,
             self.player,
             check_targeting,
             ctx.current_unit,
             ctx.game,
+            ctx.units,
         );
         if !flags_ok {
             return false;
@@ -749,9 +762,10 @@ impl IdleOrder {
     }
 }
 
-struct IdleOrderTargetContext {
+struct IdleOrderTargetContext<'a> {
     acceptable_players: [bool; 12],
     game: Game,
+    units: &'a UnitSearch,
     current_unit: Option<Unit>,
 }
 
@@ -774,6 +788,7 @@ fn find_user_target_pair(
     decl: &IdleOrder,
     ongoing: &[OngoingOrder],
     game: Game,
+    units: &UnitSearch,
 ) -> Option<(Unit, Unit)> {
     fn find_normal(
         decl: &IdleOrder,
@@ -781,14 +796,14 @@ fn find_user_target_pair(
         ctx: &IdleOrderTargetContext,
     ) -> Option<(Unit, Unit, u32)> {
         let unit = unit::active_units()
-            .find(|u| decl.unit_valid(u, ongoing, CheckTargetingFlags::Yes, ctx.game))?;
+            .find(|&u| decl.unit_valid(u, ongoing, CheckTargetingFlags::Yes, ctx))?;
         // Instead of a *perfect* solution of trying to find closest user-target pair,
         // find closest target for the first unit, and then find closest user for
         // the target (if the distance is large enough for it to matter)
-        let (target, distance) = find_target(&unit, decl, &ongoing, ctx)?;
+        let (target, distance) = find_target(unit, decl, &ongoing, ctx)?;
         let (user, distance) = {
             if distance > 16 * 32 || distance > decl.radius as u32 {
-                match find_user(&target, decl, &ongoing, ctx.game) {
+                match find_user(target, decl, &ongoing, ctx) {
                     None => (unit, distance),
                     Some(s) => s,
                 }
@@ -812,7 +827,7 @@ fn find_user_target_pair(
             .filter_map(|x| x.target().map(|target| (x, target)))
             .filter(|&(user, target)| target.target() == Some(user))
             .filter(|&(_, target)| decl.target_valid(target, ongoing, CheckTargetingFlags::No, ctx))
-            .filter(|(u, _)| decl.unit_valid(u, ongoing, CheckTargetingFlags::No, ctx.game))
+            .filter(|&(u, _)| decl.unit_valid(u, ongoing, CheckTargetingFlags::No, ctx))
             .map(|(user, tgt)| (user, tgt, bw::distance(user.position(), tgt.position())))
             .min_by_key(|x| x.2)
             .filter(|x| x.2 < decl.radius as u32)
@@ -826,7 +841,7 @@ fn find_user_target_pair(
         unit::active_units()
             .filter_map(|x| x.target().map(|user| (user, x)))
             .filter(|&(_, target)| decl.target_valid(target, ongoing, CheckTargetingFlags::No, ctx))
-            .filter(|(u, _)| decl.unit_valid(u, ongoing, CheckTargetingFlags::Yes, ctx.game))
+            .filter(|&(u, _)| decl.unit_valid(u, ongoing, CheckTargetingFlags::Yes, ctx))
             .map(|(user, tgt)| (user, tgt, bw::distance(user.position(), tgt.position())))
             .min_by_key(|x| x.2)
             .filter(|x| x.2 < decl.radius as u32)
@@ -842,7 +857,7 @@ fn find_user_target_pair(
             .filter(|&(_, target)| {
                 decl.target_valid(target, ongoing, CheckTargetingFlags::Yes, ctx)
             })
-            .filter(|(u, _)| decl.unit_valid(u, ongoing, CheckTargetingFlags::No, ctx.game))
+            .filter(|&(u, _)| decl.unit_valid(u, ongoing, CheckTargetingFlags::No, ctx))
             .map(|(user, tgt)| (user, tgt, bw::distance(user.position(), tgt.position())))
             .min_by_key(|x| x.2)
             .filter(|x| x.2 < decl.radius as u32)
@@ -870,7 +885,7 @@ fn find_user_target_pair(
         .contains(TargetingFlags::CURRENT_UNIT);
     let target_normal = decl.target_flags.targeting_filter != TargetingFlags::CURRENT_UNIT;
 
-    let ctx = decl.target_validation_context(game, None);
+    let ctx = decl.target_validation_context(game, units, None);
     if self_current_unit && target_current_unit {
         update_best(&mut best, both_targeting_each_other(decl, ongoing, &ctx));
     }
@@ -887,38 +902,39 @@ fn find_user_target_pair(
 }
 
 fn find_target(
-    user: &Unit,
+    user: Unit,
     decl: &IdleOrder,
     ongoing: &[OngoingOrder],
     ctx: &IdleOrderTargetContext,
 ) -> Option<(Unit, u32)> {
-    unit::find_nearest(user.position(), |unit| {
+    ctx.units.find_nearest(user.position(), |unit| {
         if unit == user {
             return false;
         }
-        decl.target_valid(*unit, ongoing, CheckTargetingFlags::Yes, ctx)
+        decl.target_valid(unit, ongoing, CheckTargetingFlags::Yes, ctx)
     })
 }
 
 fn find_user(
-    target: &Unit,
+    target: Unit,
     decl: &IdleOrder,
     ongoing: &[OngoingOrder],
-    game: Game,
+    ctx: &IdleOrderTargetContext,
 ) -> Option<(Unit, u32)> {
-    unit::find_nearest(target.position(), |unit| {
-        unit != target && decl.unit_valid(unit, ongoing, CheckTargetingFlags::Yes, game)
+    ctx.units.find_nearest(target.position(), |unit| {
+        unit != target && decl.unit_valid(unit, ongoing, CheckTargetingFlags::Yes, ctx)
     })
 }
 
 impl IdleOrderFlags {
     fn match_status(
         &self,
-        unit: &Unit,
+        unit: Unit,
         decl_player: u8,
         check_targeting: CheckTargetingFlags,
         current_unit: Option<Unit>,
         game: Game,
+        units: &UnitSearch,
     ) -> bool {
         unsafe {
             if let Some(order) = self.order {
@@ -929,10 +945,12 @@ impl IdleOrderFlags {
             if let Some(ref s) = self.count {
                 let mut position = Position::from_point(unit.position().x, unit.position().y);
                 position.extend_area(s.range as i16);
-                let units = unit::find_units(&position.area, |u| s.players.matches(u.player()));
-                let unit_count = units.len() as u32;
+                let unit_count = units
+                    .search_iter(&position.area)
+                    .filter(|u| s.players.matches(u.player()))
+                    .count();
 
-                if !s.modifier.compare(unit_count, s.value as u32) {
+                if !s.modifier.compare(unit_count as u32, s.value as u32) {
                     return false;
                 }
             }
