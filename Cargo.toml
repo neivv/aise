@@ -35,6 +35,13 @@ serde_derive = "1.0.27"
 smallvec = "0.6"
 thread_local = "0.3.5"
 
+cgmath = { version = "0.16", optional = true }
+euclid = { version = "0.19", optional = true }
+fnv = { version = "1.0.6", optional = true }
+font-kit = { version = "0.1", optional = true }
+glium = { version = "0.22", optional = true, default-features = false }
+gl = { version = "0.10", optional = true }
+
 [dependencies.rand]
 version = "0.5"
 features = ["serde1"]
@@ -52,14 +59,5 @@ git = "https://github.com/neivv/whack/"
 [dependencies.samase_shim]
 git = "https://github.com/neivv/samase_plugin"
 
-[dependencies.glium]
-version = "0.22"
-optional = true
-default-features = false
-
-[dependencies.gl]
-version = "0.10"
-optional = true
-
 [features]
-opengl = ["glium", "gl"]
+opengl = ["cgmath", "euclid", "fnv", "font-kit", "glium", "gl"]

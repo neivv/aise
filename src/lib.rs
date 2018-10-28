@@ -31,6 +31,14 @@ extern crate whack;
 extern crate samase_shim;
 
 #[cfg(feature = "opengl")]
+extern crate cgmath;
+#[cfg(feature = "opengl")]
+extern crate euclid;
+#[cfg(feature = "opengl")]
+extern crate fnv;
+#[cfg(feature = "opengl")]
+extern crate font_kit;
+#[cfg(feature = "opengl")]
 extern crate gl as opengl;
 #[cfg(feature = "opengl")]
 extern crate glium;

@@ -1,4 +1,6 @@
 mod bw_render;
+mod text;
+mod ui;
 
 use std::cell::RefCell;
 use std::io;
@@ -21,7 +23,7 @@ use winapi::um::wingdi::{
 use winapi::um::wingdi::{
     PFD_DOUBLEBUFFER, PFD_DRAW_TO_WINDOW, PFD_MAIN_PLANE, PFD_SUPPORT_OPENGL, PFD_TYPE_RGBA,
 };
-use winapi::um::winuser::{GetClientRect, GetDC, ReleaseDC};
+use winapi::um::winuser::{CallWindowProcW, GetClientRect, GetDC, ReleaseDC, SetWindowLongPtrW};
 
 use crate::bw;
 
@@ -53,6 +55,7 @@ struct GlState {
 
 struct DrawState {
     bw_render: bw_render::BwRender,
+    ui: ui::Ui,
     draw_skips: u32,
 }
 
@@ -61,11 +64,13 @@ impl DrawState {
         DrawState {
             bw_render: bw_render::BwRender::new(context),
             draw_skips: 7100, // Bw redraws screen a lot during loading, skip those
+            ui: ui::Ui::new(context),
         }
     }
 }
 
 static OPENGL32_DLL: AtomicUsize = ATOMIC_USIZE_INIT;
+static OLD_WINDOW_PROC: AtomicUsize = ATOMIC_USIZE_INIT;
 
 pub unsafe fn init_hooks(patcher: &mut whack::ActivePatcher) {
     let mut exe = patcher.patch_exe(0x00400000);
@@ -90,6 +95,7 @@ fn redraw_screen_hook(orig: &Fn()) {
     }
     let mut frame_buffer = glium::framebuffer::DefaultFramebuffer::back_left(context);
     state.bw_render.draw(context, &mut frame_buffer);
+    state.ui.draw(context, &mut frame_buffer);
     context.swap_buffers().unwrap();
 }
 
@@ -149,6 +155,54 @@ fn create_window_hook(orig: &Fn()) {
             storm.hook_opt(SDrawUnlockSurface, unlock_surface_hook);
             storm.hook_closure(SDrawRealizePalette, |_: &Fn()| {});
         }
+        hook_inputs(*bw_window);
+    }
+}
+
+unsafe fn hook_inputs(window: *mut c_void) {
+    let old_proc = SetWindowLongPtrW(window as *mut _, -4, window_proc as _);
+    OLD_WINDOW_PROC.store(old_proc as usize, Ordering::Relaxed);
+}
+
+fn toggle_debugui() {
+    CONTEXT.with(|x| {
+        let s = x.borrow();
+        if let Some(ref s) = *s {
+            let mut state = s.state.borrow_mut();
+            state.ui.toggle_shown();
+        }
+    });
+}
+
+unsafe extern "system" fn window_proc(
+    hwnd: *mut c_void,
+    msg: u32,
+    wparam: usize,
+    lparam: isize,
+) -> isize {
+    use winapi::um::winuser::{VK_F1, WM_KEYDOWN};
+
+    let old_proc = OLD_WINDOW_PROC.load(Ordering::Relaxed);
+    match msg {
+        WM_KEYDOWN => {
+            let key = wparam as i32;
+            if key == VK_F1 {
+                toggle_debugui();
+                return 0;
+            }
+        }
+        _ => (),
+    }
+    if old_proc != 0 {
+        CallWindowProcW(
+            mem::transmute(old_proc),
+            hwnd as *mut _,
+            msg,
+            wparam,
+            lparam,
+        )
+    } else {
+        0
     }
 }
 
@@ -157,7 +211,6 @@ fn update_palette_hook(start: u32, count: u32, colors: *const u32, _: u32) {
         let s = x.borrow();
         if let Some(ref s) = *s {
             let mut state = s.state.borrow_mut();
-            // I hope the RefCell is enough to have this mutability be reasonable :)
             let slice = unsafe { std::slice::from_raw_parts(colors, count as usize) };
             state.bw_render.update_palette(&s.context, start, slice);
         }
@@ -380,8 +433,13 @@ fn shader_path<P: AsRef<Path>>(filename: P) -> PathBuf {
 }
 
 fn read_shader(path: &Path) -> (String, SystemTime) {
-    let text = std::fs::read_to_string(path).unwrap();
-    (text, modified_time(path))
+    loop {
+        let text = std::fs::read_to_string(path).unwrap();
+        if !text.is_empty() {
+            return (text, modified_time(path));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
 }
 
 fn modified_time(path: &Path) -> SystemTime {

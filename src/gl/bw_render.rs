@@ -1,5 +1,7 @@
 use std::borrow::Cow;
 
+use cgmath::conv::array4x4;
+use cgmath::{Matrix4, SquareMatrix};
 use glium::backend::Facade;
 use glium::texture::{
     ClientFormat, MipmapsOption, RawImage1d, RawImage2d, SrgbFormat, SrgbTexture1d,
@@ -49,13 +51,15 @@ impl BwRender {
     }
 
     pub fn update_palette<F: Facade>(&mut self, facade: &F, start: u32, palette: &[u32]) {
-        let iter = self
-            .palette
-            .iter_mut()
-            .skip(start as usize)
-            .zip(palette.iter());
-        for (out, &new) in iter {
-            *out = new;
+        {
+            let iter = self
+                .palette
+                .iter_mut()
+                .skip(start as usize)
+                .zip(palette.iter());
+            for (out, &new) in iter {
+                *out = new;
+            }
         }
         let image = RawImage1d {
             data: Cow::Borrowed(&self.palette),
@@ -95,6 +99,7 @@ impl BwRender {
             image: self.image.sampled()
                 .magnify_filter(MagnifySamplerFilter::Nearest)
                 .minify_filter(MinifySamplerFilter::Nearest),
+            transform: array4x4(Matrix4::<f32>::identity()),
         };
         surface
             .draw(

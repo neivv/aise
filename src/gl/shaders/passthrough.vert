@@ -3,7 +3,10 @@
 in vec2 position;
 out vec2 pos;
 
+uniform mat4 transform;
+
 void main() {
-    gl_Position = vec4(position, 0.0, 1.0);
-    pos = position;
+    vec4 transformed = transform * vec4(position, 0.0, 1.0);
+    gl_Position = transformed;
+    pos = transformed.xy;
 }
