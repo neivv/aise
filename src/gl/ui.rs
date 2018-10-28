@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::rc::Rc;
 
 use cgmath::conv::{array3x3, array4x4};
@@ -42,10 +43,32 @@ struct Scroll {
     subline: u32,
 }
 
+fn font_cache_path() -> PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("_ui_font_cache.bin")
+}
+
+fn cached_fonts() -> Vec<(String, PathBuf, u32)> {
+    (|| {
+        let mut file = std::fs::File::open(font_cache_path()).ok()?;
+        bincode::deserialize_from(&mut file).ok()
+    })()
+    .unwrap_or_else(|| Vec::new())
+}
+
+fn cache_fonts(fonts: &[(String, PathBuf, u32)]) {
+    (|| {
+        let mut file = std::fs::File::create(font_cache_path()).ok()?;
+        bincode::serialize_into(&mut file, fonts).ok()?;
+        Some(())
+    })();
+}
+
 fn default_fonts() -> Vec<Font> {
     use font_kit::family_name::FamilyName;
 
     debug!("Loading fonts");
+    let mut font_cache = cached_fonts();
+    let mut font_cache_changed = false;
     let source = font_kit::source::SystemSource::new();
     let mut fonts = Vec::new();
     let names = [
@@ -54,14 +77,33 @@ fn default_fonts() -> Vec<Font> {
         //"Arial Unicode MS", // Broken since rendering assumes monospace
     ];
     for &name in names.iter() {
-        let result =
-            source.select_best_match(&[FamilyName::Title(name.into())], &Default::default());
-        let handle = match result {
-            Ok(o) => o,
-            Err(_) => continue,
+        let handle = if let Some(pos) = font_cache.iter().position(|x| x.0 == name) {
+            let &(_, ref path, index) = &font_cache[pos];
+            font_kit::handle::Handle::from_path(path.clone(), index)
+        } else {
+            let result =
+                source.select_best_match(&[FamilyName::Title(name.into())], &Default::default());
+            match result {
+                Ok(o) => {
+                    match o {
+                        font_kit::handle::Handle::Path {
+                            ref path,
+                            font_index,
+                        } => {
+                            font_cache.push((name.into(), path.clone(), font_index));
+                            font_cache_changed = true;
+                        }
+                        _ => (),
+                    }
+                    o
+                }
+                Err(_) => continue,
+            }
         };
         match handle.load() {
-            Ok(o) => fonts.push(o),
+            Ok(o) => {
+                fonts.push(o);
+            }
             Err(e) => {
                 warn!("Couldn't load a font: {}", e);
             }
@@ -81,6 +123,9 @@ fn default_fonts() -> Vec<Font> {
             }
         }
     } else {
+        if font_cache_changed {
+            cache_fonts(&font_cache);
+        }
         fonts
     }
 }
