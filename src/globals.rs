@@ -1,3 +1,4 @@
+use std::ffi::CString;
 use std::ptr::null_mut;
 use std::slice;
 use std::sync::{Mutex, MutexGuard};
@@ -211,6 +212,37 @@ pub struct SingleBunkerState {
     pub bunker: Unit,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct RenameStatus {
+    pub area: bw::Rect,
+    pub unit_id: UnitId,
+    pub name: CString,
+    pub players: PlayerMatch,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct RenameUnitState {
+    pub states: Vec<RenameStatus>,
+}
+
+impl RenameUnitState {
+    pub fn try_add(&mut self, value: RenameStatus) {
+        if !self.states.iter().any(|i| i == &value) {
+            self.states.push(value)
+        }
+        self.states.sort_by_key(|x| {
+            (x.area.right.saturating_sub(x.area.left)) as u32 *
+                (x.area.bottom.saturating_sub(x.area.top)) as u32
+        });
+    }
+
+    pub fn try_remove(&mut self, value: &RenameStatus) {
+        if let Some(pos) = self.states.iter().position(|i| i == value) {
+            self.states.remove(pos);
+        }
+    }
+}
+
 #[derive(Debug, Default, Serialize, Deserialize, Clone, PartialEq)]
 pub struct BankKey {
     pub label: String,
@@ -305,6 +337,7 @@ pub struct Globals {
     pub max_workers: Vec<MaxWorkers>,
     pub town_ids: Vec<TownId>,
     pub bunker_states: BunkerCondition,
+    pub renamed_units: RenameUnitState,
     pub guards: GuardState,
     pub bank: Bank,
     pub reveal_states: Vec<RevealState>,
@@ -332,6 +365,7 @@ impl Globals {
             town_ids: Vec::new(),
             reveal_states: Vec::new(),
             bunker_states: Default::default(),
+            renamed_units: Default::default(),
             guards: GuardState::new(),
             bank: Default::default(),
             under_attack_mode: [None; 8],

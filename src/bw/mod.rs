@@ -188,6 +188,7 @@ whack_hooks!(stdcall, 0x00400000,
     0x004465C0 => choose_placement_position(u32, u32, *mut Point, u32, @ecx *mut Unit) -> u32;
     0x00473FB0 => update_building_placement_state_hook(*mut Unit, u8, u32, u32, u16, u8, u8, u8, u8) -> u32;
     0x004A13C0 => ai_spellcast(bool, @eax *mut Unit) -> u32;
+    0x0047B090 => get_unit_name(@ecx u32) -> *const u8;
 );
 
 whack_funcs!(stdcall, init_funcs, 0x00400000,
@@ -206,4 +207,5 @@ whack_vars!(init_vars, 0x00400000,
     0x0057EE9C => player_name: [u8; 0x19];
     0x0057F0B4 => is_multiplayer: u8;
     0x006D1260 => tile_flags: *mut u32;
+    0x00597208 => client_selection: [*mut Unit; 0xc];
 );

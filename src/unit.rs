@@ -411,6 +411,6 @@ where
     result.map(|x| (x, result_dist))
 }
 
-fn rect_overlaps(a: &bw::Rect, b: &bw::Rect) -> bool {
+pub fn rect_overlaps(a: &bw::Rect, b: &bw::Rect) -> bool {
     a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top
 }
