@@ -1059,21 +1059,16 @@ pub unsafe extern fn load_bank(script: *mut bw::AiScript) {
     }
 }
 
-pub unsafe extern fn bank_data(script: *mut bw::AiScript) {
-    let old_pos = (*script).pos - 1;
-    let mut read = ScriptData::new(script);
-    let modifier = read.read_modifier();
-    let category = read.read_string();
-    let label = read.read_string();
-    let amount = read.read_u32();
-    let dest = read.read_jump_pos();
+unsafe fn add_bank_data(
+    script: *mut bw::AiScript,
+    old_pos: u32,
+    modifier: TriggerModifier,
+    key: BankKey,
+    amount: u32,
+    dest: u32,
+) {
     let mut globals = Globals::get();
     let globals = &mut *globals;
-    let key = BankKey {
-        label: String::from_utf8_lossy(label).to_string(),
-        category: String::from_utf8_lossy(category).to_string(),
-    };
-
     match modifier.ty {
         ModifierType::Read(read) => {
             let value = globals.bank.get(&key);
@@ -1102,6 +1097,36 @@ pub unsafe extern fn bank_data(script: *mut bw::AiScript) {
                 .update(key, |val| write.apply(val, amount, rng));
         }
     }
+}
+
+pub unsafe extern fn bank_data_old(script: *mut bw::AiScript) {
+    let old_pos = (*script).pos - 1;
+    let mut read = ScriptData::new(script);
+    let modifier = read.read_modifier();
+    let category = read.read_string();
+    let label = read.read_string();
+    let amount = read.read_u32();
+    let dest = read.read_jump_pos();
+    let key = BankKey {
+        label: String::from_utf8_lossy(label).to_string(),
+        category: String::from_utf8_lossy(category).to_string(),
+    };
+    add_bank_data(script, old_pos, modifier, key, amount, dest);
+}
+
+pub unsafe extern fn bank_data(script: *mut bw::AiScript) {
+    let old_pos = (*script).pos - 1;
+    let mut read = ScriptData::new(script);
+    let modifier = read.read_modifier();
+    let amount = read.read_u32();
+    let category = read.read_string();
+    let label = read.read_string();
+    let dest = read.read_jump_pos();
+    let key = BankKey {
+        label: String::from_utf8_lossy(label).to_string(),
+        category: String::from_utf8_lossy(category).to_string(),
+    };
+    add_bank_data(script, old_pos, modifier, key, amount, dest);
 }
 
 pub unsafe extern fn remove_creep(script: *mut bw::AiScript) {
