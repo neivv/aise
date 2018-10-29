@@ -1,3 +1,4 @@
+use std::ffi::CString;
 use std::fmt;
 use std::fs::{self, File};
 use std::mem;
@@ -21,7 +22,8 @@ use bw;
 use datreq::{DatReq, ReadDatReqs};
 use game::Game;
 use globals::{
-    self, BankKey, BaseLayout, BunkerCondition, BunkerDecl, Globals, RevealState, RevealType,
+    self, BankKey, BaseLayout, BunkerCondition, BunkerDecl, Globals, RenameStatus, RevealState,
+    RevealType,
 };
 use list::ListIter;
 use order::{self, OrderId};
@@ -1085,21 +1087,16 @@ pub unsafe extern fn load_bank(script: *mut bw::AiScript) {
     }
 }
 
-pub unsafe extern fn bank_data(script: *mut bw::AiScript) {
-    let old_pos = (*script).pos - 1;
-    let mut read = ScriptData::new(script);
-    let modifier = read.read_modifier();
-    let category = read.read_string();
-    let label = read.read_string();
-    let amount = read.read_u32();
-    let dest = read.read_jump_pos();
+unsafe fn add_bank_data(
+    script: *mut bw::AiScript,
+    old_pos: u32,
+    modifier: TriggerModifier,
+    key: BankKey,
+    amount: u32,
+    dest: u32,
+) {
     let mut globals = Globals::get();
     let globals = &mut *globals;
-    let key = BankKey {
-        label: String::from_utf8_lossy(label).to_string(),
-        category: String::from_utf8_lossy(category).to_string(),
-    };
-
     match modifier.ty {
         ModifierType::Read(read) => {
             let value = globals.bank.get(&key);
@@ -1128,6 +1125,36 @@ pub unsafe extern fn bank_data(script: *mut bw::AiScript) {
                 .update(key, |val| write.apply(val, amount, rng));
         }
     }
+}
+
+pub unsafe extern fn bank_data_old(script: *mut bw::AiScript) {
+    let old_pos = (*script).pos - 1;
+    let mut read = ScriptData::new(script);
+    let modifier = read.read_modifier();
+    let category = read.read_string();
+    let label = read.read_string();
+    let amount = read.read_u32();
+    let dest = read.read_jump_pos();
+    let key = BankKey {
+        label: String::from_utf8_lossy(label).to_string(),
+        category: String::from_utf8_lossy(category).to_string(),
+    };
+    add_bank_data(script, old_pos, modifier, key, amount, dest);
+}
+
+pub unsafe extern fn bank_data(script: *mut bw::AiScript) {
+    let old_pos = (*script).pos - 1;
+    let mut read = ScriptData::new(script);
+    let modifier = read.read_modifier();
+    let amount = read.read_u32();
+    let category = read.read_string();
+    let label = read.read_string();
+    let dest = read.read_jump_pos();
+    let key = BankKey {
+        label: String::from_utf8_lossy(label).to_string(),
+        category: String::from_utf8_lossy(category).to_string(),
+    };
+    add_bank_data(script, old_pos, modifier, key, amount, dest);
 }
 
 pub unsafe extern fn remove_creep(script: *mut bw::AiScript) {
@@ -1239,6 +1266,75 @@ pub unsafe extern fn attacking(script: *mut bw::AiScript) {
                 (*script).wait = 30;
             }
         }
+    }
+}
+
+fn unit_in_area(source: Unit, area: bw::Rect) -> bool {
+    source.collision_rect().overlaps(&area)
+}
+
+pub unsafe fn unit_name_hook(unit_id: u32, orig: &Fn(u32) -> *const u8) -> *const u8 {
+    let unit = bw::client_selection[0];
+    let unit = match Unit::from_ptr(unit) {
+        Some(s) => s,
+        None => return orig(unit_id),
+    };
+    let globals = Globals::get();
+    let name_match = globals
+        .renamed_units
+        .states
+        .iter()
+        .find(|x| {
+            unit_id == x.unit_id.0 as u32 &&
+                x.players.matches(unit.player()) &&
+                (unit_in_area(unit, x.area))
+        })
+        .map(|x| &x.name);
+
+    if let Some(name_match) = name_match {
+        name_match.as_ptr() as *const u8
+    } else {
+        orig(unit_id)
+    }
+}
+
+pub unsafe extern fn unit_name(script: *mut bw::AiScript) {
+    enum NameStatus {
+        Enable,
+        Disable,
+    }
+    let game = Game::get();
+    let mut read = ScriptData::new(script);
+    let players = read.read_player_match(game);
+    let unit = read.read_u16();
+    let mut src = read.read_position();
+    let radius = read.read_u16();
+    src.extend_area(radius as i16);
+    let replacement_string = read.read_string();
+    let flag = read.read_u8();
+    let flag = match flag {
+        0 => NameStatus::Enable,
+        1 => NameStatus::Disable,
+        x => {
+            bw::print_text(format!("Unsupported flag modifier in unit_name: {:x}", x));
+            return;
+        }
+    };
+    if bw::is_scr() {
+        bw::print_text("unit_name is not supported in SCR");
+        return;
+    }
+    let mut globals = Globals::get();
+
+    let rename_status = RenameStatus {
+        area: src.area,
+        unit_id: UnitId(unit),
+        name: CString::new(replacement_string).unwrap(),
+        players,
+    };
+    match flag {
+        NameStatus::Enable => globals.renamed_units.try_add(rename_status),
+        NameStatus::Disable => globals.renamed_units.try_remove(&rename_status),
     }
 }
 
@@ -1752,6 +1848,7 @@ unsafe fn ai_region(player: u32, region: u16) -> *mut bw::AiRegion {
     bw::ai_regions(player).offset(region as isize)
 }
 
+#[derive(Eq, PartialEq)]
 pub struct Position {
     pub center: bw::Point,
     pub area: bw::Rect,

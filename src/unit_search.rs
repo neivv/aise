@@ -118,6 +118,12 @@ fn lower_bound(slice: &[(Unit, Rect)], val: u16) -> usize {
         .unwrap_err()
 }
 
+impl Rect {
+    pub fn overlaps(&self, o: &Rect) -> bool {
+        self.left < o.right && self.right > o.left && self.top < o.bottom && self.bottom > o.top
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
