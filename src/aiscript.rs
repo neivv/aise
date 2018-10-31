@@ -3169,11 +3169,9 @@ mod test {
             let (new_first, first_free) =
                 take_bw_allocated_scripts(&mut scripts, &mut external[0], &mut lone_free);
             assert!(!new_first.is_null());
-            assert!(
-                external
-                    .iter_mut()
-                    .any(|x| (&mut *x) as *mut _ == first_free)
-            );
+            assert!(external
+                .iter_mut()
+                .any(|x| (&mut *x) as *mut _ == first_free));
             assert_eq!(scripts.len(), 10);
             validate_links(new_first, 10);
             validate_links(first_free, 11);
@@ -3184,11 +3182,9 @@ mod test {
             let (new_first, first_free) =
                 take_bw_allocated_scripts(&mut scripts, &mut external[0], first_free);
             assert!(!new_first.is_null());
-            assert!(
-                external
-                    .iter_mut()
-                    .any(|x| (&mut *x) as *mut _ == first_free)
-            );
+            assert!(external
+                .iter_mut()
+                .any(|x| (&mut *x) as *mut _ == first_free));
             assert_eq!(scripts.len(), 30);
             validate_links(new_first, 30);
             validate_links(first_free, 31);
