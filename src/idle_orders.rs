@@ -567,7 +567,7 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
         }
         return;
     }
-    let mut globals = Globals::get();
+    let mut globals = Globals::get("ais idle_orders");
     let orders = &mut globals.idle_orders;
     let deathrattle = target_flags.simple & 0x40 != 0;
     if delete_flags != 0 {

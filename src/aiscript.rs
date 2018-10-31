@@ -6,11 +6,12 @@ use std::path::{Component, Path, PathBuf};
 use std::ptr::null_mut;
 use std::slice;
 use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use bincode;
 use byteorder::{WriteBytesExt, LE};
 use directories::UserDirs;
+use parking_lot::Mutex;
 use serde::{self, Deserialize, Deserializer, Serialize, Serializer};
 use smallvec::SmallVec;
 
@@ -60,11 +61,11 @@ unsafe fn aiscript_unit_search(game: Game) -> Arc<UnitSearch> {
     let frame = game.frame_count() as usize;
     if CACHED_UNIT_SEARCH_FRAME.load(Ordering::Relaxed) != frame {
         let search = Arc::new(UnitSearch::from_bw());
-        *CACHED_UNIT_SEARCH.lock().unwrap() = Some(search.clone());
+        *CACHED_UNIT_SEARCH.lock() = Some(search.clone());
         CACHED_UNIT_SEARCH_FRAME.store(frame, Ordering::Relaxed);
         search
     } else {
-        let guard = CACHED_UNIT_SEARCH.lock().unwrap();
+        let guard = CACHED_UNIT_SEARCH.lock();
         guard.as_ref().unwrap().clone()
     }
 }
@@ -121,7 +122,8 @@ impl AttackTimeoutState {
 pub unsafe extern fn attack_timeout(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let timeout = read.read_u32();
-    Globals::get().attack_timeouts[(*script).player as usize].value = Some(timeout);
+    let mut globals = Globals::get("ais attack_timeout");
+    globals.attack_timeouts[(*script).player as usize].value = Some(timeout);
 }
 
 pub unsafe fn attack_timeouts_frame_hook(globals: &mut Globals, game: Game) {
@@ -389,7 +391,7 @@ pub unsafe extern fn set_town_id(script: *mut bw::AiScript) {
             return;
         }
     };
-    let mut globals = Globals::get();
+    let mut globals = Globals::get("ais set_id");
     globals.town_ids.swap_retain(|x| x.town != town);
     globals.town_ids.push(TownId {
         town,
@@ -402,7 +404,7 @@ pub unsafe extern fn remove_build(script: *mut bw::AiScript) {
     let amount = read.read_u8();
     let mut unit_id = read.read_unit_match();
     let id = read.read_u8();
-    let globals = Globals::get();
+    let globals = Globals::get("ais remove_build");
     let town = match id {
         255 => Town::from_ptr((*script).town),
         _ => globals
@@ -472,7 +474,7 @@ pub unsafe extern fn max_workers(script: *mut bw::AiScript) {
             return;
         }
     };
-    let mut globals = Globals::get();
+    let mut globals = Globals::get("ais max_workers");
     globals.max_workers.swap_retain(|x| x.town != town);
     if count != 255 {
         globals.max_workers.push(MaxWorkers {
@@ -495,7 +497,7 @@ pub unsafe extern fn under_attack(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let mode = read.read_u8();
     let player = (*script).player as usize;
-    let mut globals = Globals::get();
+    let mut globals = Globals::get("ais under_attack");
     globals.under_attack_mode[player] = match mode {
         0 => Some(false),
         1 => None,
@@ -607,7 +609,7 @@ pub unsafe extern fn aicontrol(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let mode = read.read_u8();
     let player = (*script).player as usize;
-    let mut globals = Globals::get();
+    let mut globals = Globals::get("ais aicontrol");
     let out = &mut globals.ai_mode[player];
 
     match mode {
@@ -767,7 +769,7 @@ pub unsafe extern fn supply(script: *mut bw::AiScript) {
         Max,
     }
     let old_pos = (*script).pos - 1;
-    let mut globals = Globals::get();
+    let mut globals = Globals::get("ais supply");
     let game = Game::get();
     let mut read = ScriptData::new(script);
     let players = read.read_player_match(game);
@@ -889,7 +891,7 @@ pub unsafe extern fn resources_command(script: *mut bw::AiScript) {
     }
     let old_pos = (*script).pos - 1;
     let game = Game::get();
-    let mut globals = Globals::get();
+    let mut globals = Globals::get("ais resources");
     let mut read = ScriptData::new(script);
     let players = read.read_player_match(game);
     let modifier = read.read_modifier();
@@ -994,7 +996,7 @@ pub unsafe extern fn reveal_area(script: *mut bw::AiScript) {
     }
     let mut read = ScriptData::new(script);
     let game = Game::get();
-    let mut globals = Globals::get();
+    let mut globals = Globals::get("ais reveal_area");
     let players = read.read_player_match(game);
     let mut src = read.read_position();
     let radius = read.read_u16();
@@ -1042,7 +1044,7 @@ fn get_bank_path(name: &str) -> Option<PathBuf> {
 pub unsafe extern fn save_bank(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let name = read.read_string();
-    let globals = Globals::get();
+    let globals = Globals::get("ais save_bank");
     let name = String::from_utf8_lossy(name).to_string();
     let path = match get_bank_path(&name) {
         Some(s) => s,
@@ -1067,7 +1069,7 @@ pub unsafe extern fn save_bank(script: *mut bw::AiScript) {
 pub unsafe extern fn load_bank(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let name = read.read_string();
-    let mut globals = Globals::get();
+    let mut globals = Globals::get("ais load_bank");
     globals.bank.reset();
     let name = String::from_utf8_lossy(name);
     let path = match get_bank_path(&name) {
@@ -1100,7 +1102,7 @@ unsafe fn add_bank_data(
     amount: u32,
     dest: u32,
 ) {
-    let mut globals = Globals::get();
+    let mut globals = Globals::get("ais bank_data");
     let globals = &mut *globals;
     match modifier.ty {
         ModifierType::Read(read) => {
@@ -1284,7 +1286,7 @@ pub unsafe fn ai_attack_focus_hook(
     orig: &Fn(*mut bw::Unit, u32) -> u32,
 ) -> u32 {
     if (*unit).player < 8 {
-        let globals = Globals::get();
+        let globals = Globals::get("ai focus unit hook");
         let ai_mode = globals.ai_mode[(*unit).player as usize];
         if !ai_mode.focus_disabled_units {
             return 0;
@@ -1299,7 +1301,7 @@ pub unsafe fn unit_name_hook(unit_id: u32, orig: &Fn(u32) -> *const u8) -> *cons
         Some(s) => s,
         None => return orig(unit_id),
     };
-    let globals = Globals::get();
+    let globals = Globals::get("unit name hook");
     let name_match = globals
         .renamed_units
         .states
@@ -1344,7 +1346,7 @@ pub unsafe extern fn unit_name(script: *mut bw::AiScript) {
         bw::print_text("unit_name is not supported in SCR");
         return;
     }
-    let mut globals = Globals::get();
+    let mut globals = Globals::get("ais unit_name");
 
     let rename_status = RenameStatus {
         area: src.area,
@@ -1369,7 +1371,7 @@ pub unsafe extern fn deaths(script: *mut bw::AiScript) {
     let mut units = read.read_unit_match();
     let dest = read.read_jump_pos();
 
-    let mut globals = Globals::get();
+    let mut globals = Globals::get("ais deaths");
     match modifier.ty {
         ModifierType::Read(read) => {
             let sum = units
@@ -1426,7 +1428,7 @@ pub unsafe extern fn wait_rand(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let mut r1 = read.read_u32();
     let mut r2 = read.read_u32();
-    let mut globals = Globals::get();
+    let mut globals = Globals::get("ais wait_rand");
     if r1 > r2 {
         mem::swap(&mut r1, &mut r2);
     }
@@ -1444,7 +1446,7 @@ pub unsafe extern fn kills_command(script: *mut bw::AiScript) {
     let amount = read.read_u32();
     let mut units = read.read_unit_match();
     let dest = read.read_jump_pos();
-    let mut globals = Globals::get();
+    let mut globals = Globals::get("ais kills");
 
     match modifier.ty {
         ModifierType::Read(read) => {
@@ -1512,7 +1514,7 @@ pub unsafe fn increment_deaths(
     let amount = 1;
     let player = (*target).player;
     {
-        let mut globals = Globals::get();
+        let mut globals = Globals::get("increment deaths hook");
         let kpos = globals::KCPos::new(attacker_p_id, player, unit_id);
         globals.kills_table.try_add(kpos, amount);
     }
@@ -1596,7 +1598,7 @@ pub unsafe extern fn upgrade_jump(script: *mut bw::AiScript) {
             }
         }
         ModifierType::Write(w) => {
-            let mut globals = Globals::get();
+            let mut globals = Globals::get("ais upgrade_jump");
             for player in players.players() {
                 let old = game.upgrade_level(player, upgrade);
                 let new = w.apply(u32::from(old), u32::from(level), &mut globals.rng);
@@ -1608,7 +1610,7 @@ pub unsafe extern fn upgrade_jump(script: *mut bw::AiScript) {
 
 pub unsafe extern fn load_bunkers(script: *mut bw::AiScript) {
     // load_bunkers(area, load_unit, quantity, bunker_unit, bunker_quantity, priority)
-    let mut globals = Globals::get();
+    let mut globals = Globals::get("ais load_bunkers");
     let mut read = ScriptData::new(script);
     let player = (*script).player;
     let mut src = read.read_position();
@@ -1635,7 +1637,7 @@ pub unsafe extern fn load_bunkers(script: *mut bw::AiScript) {
 pub unsafe extern fn unit_avail(script: *mut bw::AiScript) {
     let old_pos = (*script).pos - 1;
     let game = Game::get();
-    let mut globals = Globals::get();
+    let mut globals = Globals::get("ais unit_avail");
     let mut read = ScriptData::new(script);
     let players = read.read_player_match(game);
     let modifier = read.read_modifier();
@@ -1726,7 +1728,7 @@ pub unsafe extern fn tech_jump(script: *mut bw::AiScript) {
             }
         }
         ModifierType::Write(w) => {
-            let mut globals = Globals::get();
+            let mut globals = Globals::get("ais tech_jump");
             for player in players.players() {
                 let old = game.tech_researched(player, tech);
                 let new = w.apply(u32::from(old), u32::from(level), &mut globals.rng);
@@ -1770,7 +1772,7 @@ pub unsafe extern fn tech_avail(script: *mut bw::AiScript) {
             }
         }
         ModifierType::Write(w) => {
-            let mut globals = Globals::get();
+            let mut globals = Globals::get("ais tech_avail");
             for player in players.players() {
                 let old = game.tech_available(player, tech);
                 let new = w.apply(u32::from(old), u32::from(level), &mut globals.rng);
@@ -1785,7 +1787,7 @@ pub unsafe extern fn random_call(script: *mut bw::AiScript) {
     let chance = read.read_u8();
     let dest = read.read_jump_pos();
 
-    let mut globals = Globals::get();
+    let mut globals = Globals::get("ais random_call");
     let random = globals.rng.synced_rand(0..256);
     if u32::from(chance) > random {
         let ret = (*script).pos;
@@ -1802,7 +1804,7 @@ pub unsafe extern fn attack_rand(script: *mut bw::AiScript) {
     if r1 > r2 {
         mem::swap(&mut r1, &mut r2);
     }
-    let mut globals = Globals::get();
+    let mut globals = Globals::get("ais attack_rand");
     let random = globals.rng.synced_rand(r1..r2 + 1);
     add_to_attack_force((*script).player as u8, UnitId(unit), random);
 }
@@ -2494,7 +2496,7 @@ pub fn serialize_scripts<S: Serializer>(
 ) -> Result<S::Ok, S::Error> {
     use serde::ser::SerializeSeq;
 
-    let mut state = globals::save_state();
+    let mut state = globals::save_state("serialize_scripts");
     let state = state
         .as_mut()
         .expect("Serializing AI scripts without state init");
@@ -2733,7 +2735,7 @@ pub unsafe fn ai_spellcast_hook(
     unit: *mut bw::Unit,
     orig: &Fn(bool, *mut bw::Unit) -> u32,
 ) -> u32 {
-    let globals = Globals::get();
+    let globals = Globals::get("ai spellcast hook");
     let ai_mode = &globals.ai_mode[(*unit).player as usize];
     if !ai_mode.retaliation && revenge {
         0
@@ -2793,7 +2795,7 @@ pub unsafe fn choose_building_placement(
     let unit_id = UnitId(unit_id as u16);
     let player = builder.player();
 
-    let globals = Globals::get();
+    let globals = Globals::get("place building hook");
     let unit_search = UnitSearch::from_bw();
     if let Some(town_id) = globals.town_ids.iter().find(|x| x.town.0 == town) {
         let game = Game::get();
@@ -2966,7 +2968,7 @@ unsafe extern fn add_layout(
         }
     };
 
-    let mut globals = Globals::get();
+    let mut globals = Globals::get("ais base_layout");
     let town = Town::from_ptr((*script).town);
     if let Some(town) = town {
         let layout = BaseLayout {
@@ -3027,7 +3029,7 @@ pub unsafe extern fn guard_command(script: *mut bw::AiScript) {
     let quantity = read.read_u8();
     let death_limit = read.read_u8();
     let priority = read.read_u8();
-    let mut globals = Globals::get();
+    let mut globals = Globals::get("ais guard");
     for _n in 0..quantity {
         let guards = samase::guard_ais().add((*script).player as usize);
         let old_first_active = (*guards).first;
@@ -3092,7 +3094,7 @@ pub unsafe extern fn create_script(script: *mut bw::AiScript) {
         }
     };
 
-    let mut globals = Globals::get();
+    let mut globals = Globals::get("ais create_script");
     let flags = ((*script).flags & 1) | ((resarea as u32) << 3);
     let first_ai_script = bw::first_ai_script();
     let script = globals.ai_scripts.alloc(Script {

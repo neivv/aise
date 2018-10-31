@@ -16,6 +16,7 @@ extern crate libc;
 extern crate log;
 #[macro_use]
 extern crate memoffset;
+extern crate parking_lot;
 extern crate rand;
 #[macro_use]
 extern crate scopeguard;
@@ -62,6 +63,7 @@ mod globals;
 mod idle_orders;
 mod list;
 mod order;
+mod recurse_checked_mutex;
 mod rng;
 mod swap_retain;
 mod unit;
@@ -211,7 +213,7 @@ pub extern fn Initialize() {
 
 unsafe extern fn frame_hook() {
     let search = unit_search::UnitSearch::from_bw();
-    let mut globals = Globals::get();
+    let mut globals = Globals::get("frame hook");
     let globals = &mut *globals;
     let game = game::Game::get();
     aiscript::claim_bw_allocated_scripts(globals);
@@ -252,7 +254,7 @@ unsafe extern fn frame_hook() {
 }
 
 unsafe extern fn frame_hook_after() {
-    let mut globals = Globals::get();
+    let mut globals = Globals::get("frame hook after");
     aiscript::update_towns(&mut globals);
     aiscript::attack_timeouts_frame_hook_after(&mut globals);
 }
@@ -265,14 +267,14 @@ static FIRST_STEP_ORDER_OF_FRAME: AtomicBool = ATOMIC_BOOL_INIT;
 unsafe extern fn step_order_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_void)) {
     if FIRST_STEP_ORDER_OF_FRAME.load(Ordering::Relaxed) {
         FIRST_STEP_ORDER_OF_FRAME.store(false, Ordering::Relaxed);
-        let globals = Globals::get();
+        let globals = Globals::get("step order hook (start)");
         aiscript::clean_unsatisfiable_requests(&globals.ai_mode);
     }
 
     let unit = unit::Unit(u as *mut bw::Unit);
     match unit.order() {
         order::id::DIE => {
-            let mut globals = Globals::get();
+            let mut globals = Globals::get("step order hook (die)");
             globals.idle_orders.unit_removed(unit);
             globals.bunker_states.unit_removed(unit);
         }

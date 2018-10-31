@@ -1,7 +1,6 @@
 use std::ffi::CString;
 use std::ptr::null_mut;
 use std::slice;
-use std::sync::{Mutex, MutexGuard};
 
 use bincode;
 
@@ -14,13 +13,14 @@ use aiscript::{
 use block_alloc::BlockAllocSet;
 use bw;
 use idle_orders::IdleOrders;
+use recurse_checked_mutex::{Mutex, MutexGuard};
 use rng::Rng;
 use swap_retain::SwapRetain;
 use unit::{self, Unit};
 
 lazy_static! {
     static ref GLOBALS: Mutex<Globals> = Mutex::new(Globals::new());
-    static ref SAVE_STATE: Mutex<Option<SaveState>> = Mutex::new(None);
+    static ref SAVE_STATE: Mutex<Option<SaveState>> = Default::default();
 }
 
 pub struct SaveState {
@@ -387,18 +387,18 @@ impl Globals {
 
     // Should only be called on hook start to prevent deadlocks.
     // Should also have something to detect/typesystem level block misuse :l
-    pub fn get() -> MutexGuard<'static, Globals> {
-        GLOBALS.lock().unwrap()
+    pub fn get(caller: &'static str) -> MutexGuard<'static, Globals> {
+        GLOBALS.lock(caller)
     }
 }
 
-pub fn save_state() -> MutexGuard<'static, Option<SaveState>> {
-    SAVE_STATE.lock().unwrap()
+pub fn save_state(caller: &'static str) -> MutexGuard<'static, Option<SaveState>> {
+    SAVE_STATE.lock(caller)
 }
 
 pub unsafe extern fn init_game() {
     aiscript::invalidate_cached_unit_search();
-    *GLOBALS.lock().unwrap() = Globals::new();
+    *GLOBALS.lock("init") = Globals::new();
 }
 
 pub unsafe extern fn wrap_save(
@@ -409,7 +409,7 @@ pub unsafe extern fn wrap_save(
     orig: unsafe extern fn(*const u8, u32),
 ) {
     trace!("Saving..");
-    let mut globals = GLOBALS.lock().unwrap();
+    let mut globals = GLOBALS.lock("before save");
     aiscript::claim_bw_allocated_scripts(&mut globals);
 
     let first_ai_script = bw::first_ai_script();
@@ -417,7 +417,7 @@ pub unsafe extern fn wrap_save(
     defer!({
         bw::set_first_ai_script(first_ai_script);
     });
-    *SAVE_STATE.lock().unwrap() = Some(SaveState {
+    *SAVE_STATE.lock("init save state") = Some(SaveState {
         first_ai_script: SendPtr(first_ai_script),
     });
     drop(globals);
@@ -426,7 +426,7 @@ pub unsafe extern fn wrap_save(
 }
 
 pub unsafe extern fn save(set_data: unsafe extern fn(*const u8, usize)) {
-    let globals = GLOBALS.lock().unwrap();
+    let globals = GLOBALS.lock("save");
     unit::init_save_mapping();
     aiscript::init_save_mapping();
     defer!(aiscript::clear_save_mapping());
@@ -457,6 +457,6 @@ pub unsafe extern fn load(ptr: *const u8, len: usize) -> u32 {
             return 0;
         }
     };
-    *GLOBALS.lock().unwrap() = data;
+    *GLOBALS.lock("load") = data;
     1
 }
