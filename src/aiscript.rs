@@ -589,6 +589,7 @@ pub struct AiMode {
     pub wait_for_resources: bool,
     pub build_gas: bool,
     pub retaliation: bool,
+    pub focus_disabled_units: bool,
 }
 
 impl Default for AiMode {
@@ -597,6 +598,7 @@ impl Default for AiMode {
             wait_for_resources: true,
             build_gas: true,
             retaliation: true,
+            focus_disabled_units: true,
         }
     }
 }
@@ -607,6 +609,7 @@ pub unsafe extern fn aicontrol(script: *mut bw::AiScript) {
     let player = (*script).player as usize;
     let mut globals = Globals::get();
     let out = &mut globals.ai_mode[player];
+
     match mode {
         0 => out.wait_for_resources = true,
         1 => out.wait_for_resources = false,
@@ -614,6 +617,8 @@ pub unsafe extern fn aicontrol(script: *mut bw::AiScript) {
         3 => out.build_gas = false,
         4 => out.retaliation = true,
         5 => out.retaliation = false,
+        6 => out.focus_disabled_units = true,
+        7 => out.focus_disabled_units = false,
         _ => panic!("Invalid aicontrol {:x}", mode),
     };
 }
@@ -1271,6 +1276,21 @@ pub unsafe extern fn attacking(script: *mut bw::AiScript) {
 
 fn unit_in_area(source: Unit, area: bw::Rect) -> bool {
     source.collision_rect().overlaps(&area)
+}
+
+pub unsafe fn ai_attack_focus_hook(
+    unit: *mut bw::Unit,
+    func_param: u32,
+    orig: &Fn(*mut bw::Unit, u32) -> u32,
+) -> u32 {
+    if (*unit).player < 8 {
+        let globals = Globals::get();
+        let ai_mode = globals.ai_mode[(*unit).player as usize];
+        if !ai_mode.focus_disabled_units {
+            return 0;
+        }
+    }
+    orig(unit, func_param)
 }
 
 pub unsafe fn unit_name_hook(unit_id: u32, orig: &Fn(u32) -> *const u8) -> *const u8 {

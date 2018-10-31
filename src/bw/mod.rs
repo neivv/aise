@@ -189,6 +189,7 @@ whack_hooks!(stdcall, 0x00400000,
     0x00473FB0 => update_building_placement_state_hook(*mut Unit, u8, u32, u32, u16, u8, u8, u8, u8) -> u32;
     0x004A13C0 => ai_spellcast(bool, @eax *mut Unit) -> u32;
     0x0047B090 => get_unit_name(@ecx u32) -> *const u8;
+    0x0043FCF0 => ai_focus_unit_check(@ecx *mut Unit, @edx u32) -> u32;
 );
 
 whack_funcs!(stdcall, init_funcs, 0x00400000,
