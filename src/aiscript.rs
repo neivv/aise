@@ -778,7 +778,7 @@ pub unsafe extern fn supply(script: *mut bw::AiScript) {
     let supply_type = read.read_u8();
     let units = read.read_unit_match();
     let race = read.read_u8();
-    let dest = read.read_u16();
+    let dest = read.read_jump_pos();
     let supply_type = match supply_type {
         0 => SupplyType::Provided,
         1 => SupplyType::Used,
@@ -840,23 +840,7 @@ pub unsafe extern fn supply(script: *mut bw::AiScript) {
                     }
                 }
             }
-            let read_req = modifier.get_read_req();
-            if read.compare(sum, amount) == read_req {
-                match modifier.action {
-                    ModifierAction::Jump => {
-                        (*script).pos = dest as u32;
-                    }
-                    ModifierAction::Call => {
-                        let ret = (*script).pos;
-                        (*script).pos = dest as u32;
-                        (*Script::ptr_from_bw(script)).call_stack.push(ret);
-                    }
-                    ModifierAction::Wait => {
-                        (*script).pos = old_pos;
-                        (*script).wait = 30;
-                    }
-                }
-            }
+            read.compare_and_act(sum, amount, script, dest, old_pos);
         }
         ModifierType::Write(write) => {
             let race_i = match race {
@@ -897,7 +881,7 @@ pub unsafe extern fn resources_command(script: *mut bw::AiScript) {
     let modifier = read.read_modifier();
     let res = read.read_u8();
     let amount = read.read_u32();
-    let dest = read.read_u16();
+    let dest = read.read_jump_pos();
     let resources_to_check: &[_] = match res {
         // Matching trigger conditions
         0 => &[Resource::Ore],
@@ -921,22 +905,9 @@ pub unsafe extern fn resources_command(script: *mut bw::AiScript) {
                 })
             });
 
-            let read_req = modifier.get_read_req();
+            let read_req = read.action.get_read_req();
             if jump == read_req {
-                match modifier.action {
-                    ModifierAction::Jump => {
-                        (*script).pos = dest as u32;
-                    }
-                    ModifierAction::Call => {
-                        let ret = (*script).pos;
-                        (*script).pos = dest as u32;
-                        (*Script::ptr_from_bw(script)).call_stack.push(ret);
-                    }
-                    ModifierAction::Wait => {
-                        (*script).pos = old_pos;
-                        (*script).wait = 30;
-                    }
-                }
+                read.action.do_action(script, dest, old_pos);
             }
         }
         ModifierType::Write(write) => {
@@ -1107,23 +1078,7 @@ unsafe fn add_bank_data(
     match modifier.ty {
         ModifierType::Read(read) => {
             let value = globals.bank.get(&key);
-            let read_req = modifier.get_read_req();
-            if read.compare(value, amount) == read_req {
-                match modifier.action {
-                    ModifierAction::Jump => {
-                        (*script).pos = dest as u32;
-                    }
-                    ModifierAction::Call => {
-                        let ret = (*script).pos;
-                        (*script).pos = dest as u32;
-                        (*Script::ptr_from_bw(script)).call_stack.push(ret);
-                    }
-                    ModifierAction::Wait => {
-                        (*script).pos = old_pos;
-                        (*script).wait = 30;
-                    }
-                }
-            }
+            read.compare_and_act(value, amount, script, dest, old_pos);
         }
         ModifierType::Write(write) => {
             let rng = &mut globals.rng;
@@ -1227,23 +1182,7 @@ pub unsafe extern fn time_command(script: *mut bw::AiScript) {
             return;
         }
     };
-    let read_req = modifier.get_read_req();
-    if read.compare(time, amount) == read_req {
-        match modifier.action {
-            ModifierAction::Jump => {
-                (*script).pos = dest;
-            }
-            ModifierAction::Call => {
-                let ret = (*script).pos;
-                (*script).pos = dest;
-                (*Script::ptr_from_bw(script)).call_stack.push(ret);
-            }
-            ModifierAction::Wait => {
-                (*script).pos = old_pos;
-                (*script).wait = 30;
-            }
-        }
-    }
+    read.compare_and_act(time, amount, script, dest, old_pos);
 }
 
 pub unsafe extern fn attacking(script: *mut bw::AiScript) {
@@ -1253,26 +1192,8 @@ pub unsafe extern fn attacking(script: *mut bw::AiScript) {
     let dest = read.read_jump_pos();
     let ai = bw::player_ai((*script).player);
     let r_compare = ((*ai).attack_grouping_region != 0) == modifier.value;
-
-    match modifier.action {
-        ModifierAction::Jump => {
-            if r_compare {
-                (*script).pos = dest;
-            }
-        }
-        ModifierAction::Call => {
-            if r_compare {
-                let ret = (*script).pos;
-                (*script).pos = dest;
-                (*Script::ptr_from_bw(script)).call_stack.push(ret);
-            }
-        }
-        ModifierAction::Wait => {
-            if !r_compare {
-                (*script).pos = old_pos;
-                (*script).wait = 30;
-            }
-        }
+    if r_compare == modifier.action.get_read_req() {
+        modifier.action.do_action(script, dest, old_pos);
     }
 }
 
@@ -1390,23 +1311,7 @@ pub unsafe extern fn deaths(script: *mut bw::AiScript) {
                         .sum::<u32>()
                 })
                 .sum::<u32>();
-            let read_req = modifier.get_read_req();
-            if read.compare(sum, amount) == read_req {
-                match modifier.action {
-                    ModifierAction::Jump => {
-                        (*script).pos = dest;
-                    }
-                    ModifierAction::Call => {
-                        let ret = (*script).pos;
-                        (*script).pos = dest;
-                        (*Script::ptr_from_bw(script)).call_stack.push(ret);
-                    }
-                    ModifierAction::Wait => {
-                        (*script).pos = old_pos;
-                        (*script).wait = 30;
-                    }
-                }
-            }
+            read.compare_and_act(sum, amount, script, dest, old_pos);
         }
         ModifierType::Write(write) => {
             for unit_id in units.iter_flatten_groups() {
@@ -1464,23 +1369,7 @@ pub unsafe extern fn kills_command(script: *mut bw::AiScript) {
                         .sum::<u32>()
                 })
                 .sum::<u32>();
-            let read_req = modifier.get_read_req();
-            if read.compare(sum, amount) == read_req {
-                match modifier.action {
-                    ModifierAction::Jump => {
-                        (*script).pos = dest;
-                    }
-                    ModifierAction::Call => {
-                        let ret = (*script).pos;
-                        (*script).pos = dest;
-                        (*Script::ptr_from_bw(script)).call_stack.push(ret);
-                    }
-                    ModifierAction::Wait => {
-                        (*script).pos = old_pos;
-                        (*script).wait = 30;
-                    }
-                }
-            }
+            read.compare_and_act(sum, amount, script, dest, old_pos);
         }
         ModifierType::Write(write) => {
             for unit_id in units.iter_flatten_groups() {
@@ -1575,26 +1464,14 @@ pub unsafe extern fn upgrade_jump(script: *mut bw::AiScript) {
     let dest = read.read_jump_pos();
     match modifier.ty {
         ModifierType::Read(r) => {
-            let read_req = modifier.get_read_req();
+            let read_req = r.action.get_read_req();
             let jump = players.players().any(|player| {
                 let up_lev = game.upgrade_level(player, upgrade);
                 r.compare(u32::from(up_lev), u32::from(level))
             });
+
             if jump == read_req {
-                match modifier.action {
-                    ModifierAction::Jump => {
-                        (*script).pos = dest;
-                    }
-                    ModifierAction::Call => {
-                        let ret = (*script).pos;
-                        (*script).pos = dest;
-                        (*Script::ptr_from_bw(script)).call_stack.push(ret);
-                    }
-                    ModifierAction::Wait => {
-                        (*script).pos = old_pos;
-                        (*script).wait = 30;
-                    }
-                }
+                r.action.do_action(script, dest, old_pos);
             }
         }
         ModifierType::Write(w) => {
@@ -1649,35 +1526,16 @@ pub unsafe extern fn unit_avail(script: *mut bw::AiScript) {
         return;
     }
     match modifier.ty {
-        ModifierType::Read(r) => match r {
-            ReadModifier::AtLeast | ReadModifier::AtMost => {
-                bw::print_text("AtLeast/AtMost modifier is not supported in unit_avail");
-                return;
+        ModifierType::Read(r) => {
+            let read_req = r.action.get_read_req();
+            let jump = players.players().any(|player| {
+                let avail = game.unit_available(player, unit);
+                r.compare(avail as u32, u32::from(avail_modifier))
+            });
+            if jump == read_req {
+                r.action.do_action(script, dest, old_pos);
             }
-            ReadModifier::Exactly => {
-                let read_req = modifier.get_read_req();
-                let jump = players.players().any(|player| {
-                    let avail = game.unit_available(player, unit);
-                    r.compare(avail as u32, u32::from(avail_modifier))
-                });
-                if jump == read_req {
-                    match modifier.action {
-                        ModifierAction::Jump => {
-                            (*script).pos = dest;
-                        }
-                        ModifierAction::Call => {
-                            let ret = (*script).pos;
-                            (*script).pos = dest;
-                            (*Script::ptr_from_bw(script)).call_stack.push(ret);
-                        }
-                        ModifierAction::Wait => {
-                            (*script).pos = old_pos;
-                            (*script).wait = 30;
-                        }
-                    }
-                }
-            }
-        },
+        }
         ModifierType::Write(w) => {
             for player in players.players() {
                 let new_value = match w {
@@ -1705,26 +1563,13 @@ pub unsafe extern fn tech_jump(script: *mut bw::AiScript) {
     let dest = read.read_jump_pos();
     match modifier.ty {
         ModifierType::Read(r) => {
-            let read_req = modifier.get_read_req();
+            let read_req = r.action.get_read_req();
             let jump = players.players().any(|player| {
                 let up_lev = game.tech_researched(player, tech);
                 r.compare(u32::from(up_lev), u32::from(level))
             });
             if jump == read_req {
-                match modifier.action {
-                    ModifierAction::Jump => {
-                        (*script).pos = dest;
-                    }
-                    ModifierAction::Call => {
-                        let ret = (*script).pos;
-                        (*script).pos = dest;
-                        (*Script::ptr_from_bw(script)).call_stack.push(ret);
-                    }
-                    ModifierAction::Wait => {
-                        (*script).pos = old_pos;
-                        (*script).wait = 30;
-                    }
-                }
+                r.action.do_action(script, dest, old_pos);
             }
         }
         ModifierType::Write(w) => {
@@ -1749,26 +1594,13 @@ pub unsafe extern fn tech_avail(script: *mut bw::AiScript) {
     let dest = read.read_jump_pos();
     match modifier.ty {
         ModifierType::Read(r) => {
-            let read_req = modifier.get_read_req();
+            let read_req = r.action.get_read_req();
             let jump = players.players().any(|player| {
                 let up_lev = game.tech_available(player, tech);
                 r.compare(u32::from(up_lev), u32::from(level))
             });
             if jump == read_req {
-                match modifier.action {
-                    ModifierAction::Jump => {
-                        (*script).pos = dest;
-                    }
-                    ModifierAction::Call => {
-                        let ret = (*script).pos;
-                        (*script).pos = dest;
-                        (*Script::ptr_from_bw(script)).call_stack.push(ret);
-                    }
-                    ModifierAction::Wait => {
-                        (*script).pos = old_pos;
-                        (*script).wait = 30;
-                    }
-                }
+                r.action.do_action(script, dest, old_pos);
             }
         }
         ModifierType::Write(w) => {
@@ -1847,23 +1679,7 @@ pub unsafe extern fn bring_jump(script: *mut bw::AiScript) {
         .search_iter(&src.area)
         .filter(|u| players.matches(u.player()) && unit_id.matches(u))
         .count() as u32;
-    let read_req = modifier.get_read_req();
-    if read.compare(count, amount) == read_req {
-        match modifier.action {
-            ModifierAction::Jump => {
-                (*script).pos = dest;
-            }
-            ModifierAction::Call => {
-                let ret = (*script).pos;
-                (*script).pos = dest;
-                (*Script::ptr_from_bw(script)).call_stack.push(ret);
-            }
-            ModifierAction::Wait => {
-                (*script).pos = old_pos;
-                (*script).wait = 30;
-            }
-        }
-    }
+    read.compare_and_act(count, amount, script, dest, old_pos);
 }
 
 unsafe fn ai_region(player: u32, region: u16) -> *mut bw::AiRegion {
@@ -1933,18 +1749,38 @@ impl fmt::Display for Position {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub enum ReadModifier {
+pub enum ReadModifierType {
     AtLeast,
     AtMost,
     Exactly,
 }
 
-impl ReadModifier {
-    pub fn compare(self, value: u32, constant: u32) -> bool {
+impl ReadModifierType {
+    pub fn compare(&self, value: u32, constant: u32) -> bool {
         match self {
-            ReadModifier::AtLeast => value >= constant,
-            ReadModifier::AtMost => value <= constant,
-            ReadModifier::Exactly => value == constant,
+            ReadModifierType::AtLeast => value >= constant,
+            ReadModifierType::AtMost => value <= constant,
+            ReadModifierType::Exactly => value == constant,
+        }
+    }
+}
+
+impl ReadModifier {
+    pub fn compare(&self, value: u32, constant: u32) -> bool {
+        self.ty.compare(value, constant)
+    }
+
+    pub unsafe fn compare_and_act(
+        &self,
+        value: u32,
+        constant: u32,
+        script: *mut bw::AiScript,
+        dest: u32,
+        old_pos: u32,
+    ) {
+        let read_req = self.action.get_read_req();
+        if self.ty.compare(value, constant) == read_req {
+            self.action.do_action(script, dest, old_pos);
         }
     }
 }
@@ -1975,6 +1811,11 @@ impl WriteModifier {
     }
 }
 
+struct ReadModifier {
+    ty: ReadModifierType,
+    action: ModifierAction,
+}
+
 enum ModifierType {
     Read(ReadModifier),
     Write(WriteModifier),
@@ -1982,16 +1823,6 @@ enum ModifierType {
 
 struct TriggerModifier {
     ty: ModifierType,
-    action: ModifierAction,
-}
-
-impl TriggerModifier {
-    pub fn get_read_req(&self) -> bool {
-        match self.action {
-            ModifierAction::Jump | ModifierAction::Call => true,
-            ModifierAction::Wait => false,
-        }
-    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -1999,6 +1830,33 @@ enum ModifierAction {
     Jump,
     Call,
     Wait,
+}
+
+impl ModifierAction {
+    /// Whether the action should be done on comparision being false or true.
+    pub fn get_read_req(&self) -> bool {
+        match self {
+            ModifierAction::Jump | ModifierAction::Call => true,
+            ModifierAction::Wait => false,
+        }
+    }
+
+    pub unsafe fn do_action(&self, script: *mut bw::AiScript, dest: u32, old_pos: u32) {
+        match self {
+            ModifierAction::Jump => {
+                (*script).pos = dest;
+            }
+            ModifierAction::Call => {
+                let ret = (*script).pos;
+                (*script).pos = dest;
+                (*Script::ptr_from_bw(script)).call_stack.push(ret);
+            }
+            ModifierAction::Wait => {
+                (*script).pos = old_pos;
+                (*script).wait = 30;
+            }
+        }
+    }
 }
 
 struct BoolModifier {
@@ -2331,20 +2189,23 @@ impl ScriptData {
                 ModifierAction::Jump
             }
         };
-        TriggerModifier {
+        let read_modifier = |ty, action| ReadModifier {
+            ty,
             action,
+        };
+        TriggerModifier {
             ty: match val & 0x1f {
                 // Matching triggers in chk
-                0 => ModifierType::Read(ReadModifier::AtLeast),
-                1 => ModifierType::Read(ReadModifier::AtMost),
+                0 => ModifierType::Read(read_modifier(ReadModifierType::AtLeast, action)),
+                1 => ModifierType::Read(read_modifier(ReadModifierType::AtMost, action)),
                 7 => ModifierType::Write(WriteModifier::Set),
                 8 => ModifierType::Write(WriteModifier::Add),
                 9 => ModifierType::Write(WriteModifier::Subtract),
-                10 => ModifierType::Read(ReadModifier::Exactly),
+                10 => ModifierType::Read(read_modifier(ReadModifierType::Exactly, action)),
                 11 => ModifierType::Write(WriteModifier::Randomize),
                 x => {
                     bw::print_text(format!("Unsupported modifier: {:x}", x));
-                    ModifierType::Read(ReadModifier::AtLeast)
+                    ModifierType::Read(read_modifier(ReadModifierType::AtLeast, action))
                 }
             },
         }

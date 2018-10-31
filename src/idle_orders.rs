@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use bw_dat::{self, order, OrderId, UnitId};
 
-use aiscript::{PlayerMatch, Position, ReadModifier, ScriptData, UnitMatch};
+use aiscript::{PlayerMatch, Position, ReadModifierType, ScriptData, UnitMatch};
 use bw;
 use game::Game;
 use globals::Globals;
@@ -258,7 +258,7 @@ struct RandomRate {
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 struct IdleOrderCount {
-    modifier: ReadModifier,
+    modifier: ReadModifierType,
     value: u16,
     range: u16,
     players: PlayerMatch,
@@ -478,15 +478,15 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
                         let game = Game::get();
                         let players = read.read_player_match(game);
                         let modifier = match modifier {
-                            0 => ReadModifier::AtLeast,
-                            1 => ReadModifier::AtMost,
-                            10 => ReadModifier::Exactly,
+                            0 => ReadModifierType::AtLeast,
+                            1 => ReadModifierType::AtMost,
+                            10 => ReadModifierType::Exactly,
                             x => {
                                 bw::print_text(format!(
                                     "Unsupported modifier in count flag: {:x}",
                                     x
                                 ));
-                                ReadModifier::AtLeast
+                                ReadModifierType::AtLeast
                             }
                         };
                         flags.count = Some(IdleOrderCount {
