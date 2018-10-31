@@ -94,9 +94,12 @@ pub struct BaseLayouts {
 impl BaseLayouts {
     pub fn try_add(&mut self, value: BaseLayout) {
         if !self.layouts.iter().any(|i| i == &value) {
-            self.layouts.push(value)
+            let insert_pos = self
+                .layouts
+                .binary_search_by(|a| value.priority.cmp(&a.priority))
+                .unwrap_or_else(|e| e);
+            self.layouts.insert(insert_pos, value)
         }
-        self.layouts.sort_by_key(|x| !0 - x.priority);
     }
 
     pub fn try_remove(&mut self, value: &BaseLayout) {
@@ -239,13 +242,19 @@ pub struct RenameUnitState {
 
 impl RenameUnitState {
     pub fn try_add(&mut self, value: RenameStatus) {
-        if !self.states.iter().any(|i| i == &value) {
-            self.states.push(value)
+        fn area(x: &bw::Rect) -> u32 {
+            (x.right.saturating_sub(x.left) as u32) * (x.bottom.saturating_sub(x.top) as u32)
         }
-        self.states.sort_by_key(|x| {
-            (x.area.right.saturating_sub(x.area.left)) as u32 *
-                (x.area.bottom.saturating_sub(x.area.top)) as u32
-        });
+
+        if !self.states.iter().any(|i| i == &value) {
+            let area_size = area(&value.area);
+            let insert_pos = self
+                .states
+                .binary_search_by_key(&area_size, |x| area(&x.area))
+                .unwrap_or_else(|e| e);
+
+            self.states.insert(insert_pos, value)
+        }
     }
 
     pub fn try_remove(&mut self, value: &RenameStatus) {
@@ -320,8 +329,12 @@ pub struct BunkerCondition {
 
 impl BunkerCondition {
     pub fn add(&mut self, decl: BunkerDecl) {
-        self.bunker_states.push((decl, BunkerState::default()));
-        self.bunker_states.sort_by_key(|x| !x.0.priority);
+        let insert_pos = self
+            .bunker_states
+            .binary_search_by(|a| decl.priority.cmp(&a.0.priority))
+            .unwrap_or_else(|e| e);
+        self.bunker_states
+            .insert(insert_pos, (decl, BunkerState::default()));
     }
 
     pub fn in_list(&self, unit: Unit) -> bool {
@@ -386,7 +399,8 @@ impl Globals {
     }
 
     // Should only be called on hook start to prevent deadlocks.
-    // Should also have something to detect/typesystem level block misuse :l
+    // Inline never since it keeps getting inlined and lazy_static init code is fat ;_;
+    #[inline(never)]
     pub fn get(caller: &'static str) -> MutexGuard<'static, Globals> {
         GLOBALS.lock(caller)
     }
@@ -398,7 +412,7 @@ pub fn save_state(caller: &'static str) -> MutexGuard<'static, Option<SaveState>
 
 pub unsafe extern fn init_game() {
     aiscript::invalidate_cached_unit_search();
-    *GLOBALS.lock("init") = Globals::new();
+    *Globals::get("init") = Globals::new();
 }
 
 pub unsafe extern fn wrap_save(
@@ -409,7 +423,7 @@ pub unsafe extern fn wrap_save(
     orig: unsafe extern fn(*const u8, u32),
 ) {
     trace!("Saving..");
-    let mut globals = GLOBALS.lock("before save");
+    let mut globals = Globals::get("before save");
     aiscript::claim_bw_allocated_scripts(&mut globals);
 
     let first_ai_script = bw::first_ai_script();
@@ -417,7 +431,7 @@ pub unsafe extern fn wrap_save(
     defer!({
         bw::set_first_ai_script(first_ai_script);
     });
-    *SAVE_STATE.lock("init save state") = Some(SaveState {
+    *save_state("init save state") = Some(SaveState {
         first_ai_script: SendPtr(first_ai_script),
     });
     drop(globals);
@@ -426,7 +440,7 @@ pub unsafe extern fn wrap_save(
 }
 
 pub unsafe extern fn save(set_data: unsafe extern fn(*const u8, usize)) {
-    let globals = GLOBALS.lock("save");
+    let globals = Globals::get("save");
     unit::init_save_mapping();
     aiscript::init_save_mapping();
     defer!(aiscript::clear_save_mapping());
@@ -457,6 +471,6 @@ pub unsafe extern fn load(ptr: *const u8, len: usize) -> u32 {
             return 0;
         }
     };
-    *GLOBALS.lock("load") = data;
+    *Globals::get("load") = data;
     1
 }

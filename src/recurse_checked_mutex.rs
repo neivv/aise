@@ -3,10 +3,14 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use winapi::um::processthreadsapi::GetCurrentThreadId;
 
+// Repr C to move the 3 metadata words first as a optimization, the mutex can be pretty big
+// since parking_lot is able to store T without boxing.
+// Would be nice to have &'static str be only one word, but &&str would be worse to use
+#[repr(C)]
 pub struct Mutex<T> {
-    inner: parking_lot::Mutex<T>,
     locking_thread: AtomicUsize,
     locking_call: UnsafeCell<&'static str>,
+    inner: parking_lot::Mutex<T>,
 }
 
 pub struct MutexGuard<'a, T: 'a> {
@@ -20,12 +24,20 @@ impl<T> Mutex<T> {
     pub fn new(value: T) -> Mutex<T> {
         Mutex {
             inner: parking_lot::Mutex::new(value),
-            locking_thread: AtomicUsize::new(!0),
+            locking_thread: AtomicUsize::new(0),
             locking_call: UnsafeCell::new(""),
         }
     }
 
+    #[inline]
     pub fn lock<'s>(&'s self, locking_call: &'static str) -> MutexGuard<'s, T> {
+        MutexGuard {
+            mutex: self,
+            guard: self.lock_inner(locking_call),
+        }
+    }
+
+    fn lock_inner<'s>(&'s self, locking_call: &'static str) -> parking_lot::MutexGuard<'s, T> {
         let self_thread_id;
         unsafe {
             self_thread_id = GetCurrentThreadId();
@@ -36,10 +48,7 @@ impl<T> Mutex<T> {
                 );
             }
         }
-        let guard = MutexGuard {
-            mutex: self,
-            guard: self.inner.lock(),
-        };
+        let guard = self.inner.lock();
         self.locking_thread
             .store(self_thread_id as usize, Ordering::Relaxed);
         unsafe {
@@ -53,7 +62,7 @@ impl<T: Default> Default for Mutex<T> {
     fn default() -> Self {
         Mutex {
             inner: Default::default(),
-            locking_thread: AtomicUsize::new(!0),
+            locking_thread: AtomicUsize::new(0),
             locking_call: UnsafeCell::new(""),
         }
     }
@@ -61,7 +70,7 @@ impl<T: Default> Default for Mutex<T> {
 
 impl<'a, T: 'a> Drop for MutexGuard<'a, T> {
     fn drop(&mut self) {
-        self.mutex.locking_thread.store(!0, Ordering::Relaxed);
+        self.mutex.locking_thread.store(0, Ordering::Relaxed);
     }
 }
 
