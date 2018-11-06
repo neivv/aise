@@ -15,7 +15,7 @@ use glium::backend::{Context, Facade};
 use glium::implement_vertex;
 use libc::c_void;
 use opengl;
-use winapi::um::libloaderapi::GetProcAddress;
+use winapi::um::libloaderapi::{FreeLibrary, GetProcAddress};
 use winapi::um::wingdi::{
     wglCreateContext, wglDeleteContext, wglGetCurrentContext, wglGetProcAddress, wglMakeCurrent,
     ChoosePixelFormat, SetPixelFormat, SwapBuffers, PIXELFORMATDESCRIPTOR,
@@ -23,7 +23,9 @@ use winapi::um::wingdi::{
 use winapi::um::wingdi::{
     PFD_DOUBLEBUFFER, PFD_DRAW_TO_WINDOW, PFD_MAIN_PLANE, PFD_SUPPORT_OPENGL, PFD_TYPE_RGBA,
 };
-use winapi::um::winuser::{CallWindowProcW, GetClientRect, GetDC, ReleaseDC, SetWindowLongPtrW};
+use winapi::um::winuser::{
+    CallWindowProcW, GetClientRect, GetDC, ReleaseDC, SetWindowLongPtrW, MSG,
+};
 
 use crate::bw;
 
@@ -32,6 +34,7 @@ whack_hooks!(stdcall, 0x00400000,
     0x0041CA00 => redraw_screen();
 
     0x00410244 => SDrawUpdatePalette(u32, u32, *const u32, u32);
+    !0 => TranslateAcceleratorA(*mut c_void, *mut c_void, *const MSG) -> u32;
 );
 
 whack_hooks!(stdcall, 0x15000000,
@@ -148,6 +151,14 @@ fn create_window_hook(orig: &Fn()) {
             exe.hook(SDrawUpdatePalette, update_palette_hook);
         }
         {
+            let lib = crate::windows::LoadLibrary("user32");
+            let mut user32 = patcher.patch_library("user32", 0);
+            let proc_address = crate::windows::GetProcAddress(lib, "TranslateAcceleratorA");
+            let addr = proc_address as usize - lib as usize;
+            user32.hook_closure_address(TranslateAcceleratorA, translate_accelerator_hook, addr);
+            FreeLibrary(lib);
+        }
+        {
             // Hooking storm for aidebug compat
             let mut storm = patcher.patch_library("storm", 0);
 
@@ -174,24 +185,44 @@ fn toggle_debugui() {
     });
 }
 
+fn handle_msg(msg: u32, wparam: usize, _lparam: isize) -> bool {
+    use winapi::um::winuser::{VK_F1, WM_KEYDOWN};
+
+    match msg {
+        WM_KEYDOWN => {
+            let key = wparam as i32;
+            if key == VK_F1 {
+                toggle_debugui();
+                return true;
+            }
+        }
+        _ => (),
+    }
+    false
+}
+
+fn translate_accelerator_hook(
+    hwnd: *mut c_void,
+    accel: *mut c_void,
+    msg: *const MSG,
+    orig: &Fn(*mut c_void, *mut c_void, *const MSG) -> u32,
+) -> u32 {
+    if unsafe { handle_msg((*msg).message, (*msg).wParam, (*msg).lParam) } == true {
+        1
+    } else {
+        orig(hwnd, accel, msg)
+    }
+}
+
 unsafe extern "system" fn window_proc(
     hwnd: *mut c_void,
     msg: u32,
     wparam: usize,
     lparam: isize,
 ) -> isize {
-    use winapi::um::winuser::{VK_F1, WM_KEYDOWN};
-
     let old_proc = OLD_WINDOW_PROC.load(Ordering::Relaxed);
-    match msg {
-        WM_KEYDOWN => {
-            let key = wparam as i32;
-            if key == VK_F1 {
-                toggle_debugui();
-                return 0;
-            }
-        }
-        _ => (),
+    if handle_msg(msg, wparam, lparam) == true {
+        return 0;
     }
     if old_proc != 0 {
         CallWindowProcW(
