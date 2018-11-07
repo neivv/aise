@@ -10,7 +10,7 @@ use glium::uniforms::{MagnifySamplerFilter, MinifySamplerFilter};
 use glium::{implement_vertex, uniform, IndexBuffer, Surface, VertexBuffer};
 
 use super::text::Atlas;
-use super::{compile_program, vertex2d, Program, Vertex2d};
+use super::{compile_program, vertex2d, Program, UiInput, Vertex2d};
 
 struct Rect {
     left: f32,
@@ -27,6 +27,7 @@ pub struct Ui {
     pages: Vec<Page>,
     active_page: usize,
     font_data: Option<FontData>,
+    input_buffer: String,
 }
 
 pub struct Page {
@@ -184,7 +185,15 @@ impl Ui {
             pages: Vec::new(),
             active_page: 0,
             font_data,
+            input_buffer: String::new(),
         }
+    }
+
+    pub fn current_page(&self) -> &'static str {
+        self.pages
+            .get(self.active_page)
+            .map(|x| x.name)
+            .unwrap_or("")
     }
 
     pub fn page(&mut self, name: &'static str) -> &mut Page {
@@ -204,6 +213,7 @@ impl Ui {
 
     pub fn toggle_shown(&mut self) {
         self.shown = !self.shown;
+        self.input_buffer.clear();
     }
 
     #[cfg_attr(rustfmt, rustfmt_skip)]
@@ -259,6 +269,7 @@ impl Ui {
         let mut line_end_pos = page.scroll.line;
         let mut skip_sublines = page.scroll.subline;
         let width = right - 10.0 - x;
+        let page_bottom = bottom - 20.0;
         let line_iter = page.lines.iter().skip(page.scroll.line as usize);
         'outer: for line in line_iter {
             let mut remaining = &line[..];
@@ -280,7 +291,7 @@ impl Ui {
                     skip_sublines -= 1;
                     continue;
                 }
-                if y > bottom - 10.0 {
+                if y > page_bottom {
                     break 'outer;
                 }
                 text_draw.line((x, y), part);
@@ -292,7 +303,45 @@ impl Ui {
         let scroll_pos_str = format!("{}/{}", line_end_pos, page.lines.len());
         text_draw.line((right - 60.0, top + 20.0), &scroll_pos_str);
 
+        text_draw.line((x, bottom - 5.0), &self.input_buffer);
+
         text_draw.render(facade, surface);
+    }
+
+    pub fn input_key(&mut self, key: i32) -> UiInput {
+        use winapi::um::winuser::VK_BACK;
+        if !self.shown {
+            return UiInput::NotHandled;
+        }
+        match key {
+            VK_BACK => {
+                self.input_buffer.pop();
+                UiInput::Handled
+            }
+            _ => UiInput::NotHandled,
+        }
+    }
+
+    pub fn input_char(&mut self, value: char) -> UiInput {
+        if !self.shown {
+            return UiInput::NotHandled;
+        }
+        if self.page_specific_input(value) == UiInput::Handled {
+            return UiInput::Handled;
+        }
+        match value {
+            '0'...'9' => self.input_buffer.push(value),
+            _ => {
+                self.input_buffer.clear();
+            }
+        }
+        UiInput::Handled
+    }
+
+    fn page_specific_input(&mut self, _value: char) -> UiInput {
+        match self.current_page() {
+            _ => UiInput::NotHandled,
+        }
     }
 }
 

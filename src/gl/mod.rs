@@ -64,10 +64,12 @@ struct DrawState {
 
 impl DrawState {
     fn new(context: &Rc<Context>) -> DrawState {
+        let mut ui = ui::Ui::new(context);
+        ui.page("test");
         DrawState {
             bw_render: bw_render::BwRender::new(context),
             draw_skips: 7100, // Bw redraws screen a lot during loading, skip those
-            ui: ui::Ui::new(context),
+            ui,
         }
     }
 }
@@ -175,30 +177,57 @@ unsafe fn hook_inputs(window: *mut c_void) {
     OLD_WINDOW_PROC.store(old_proc as usize, Ordering::Relaxed);
 }
 
-fn toggle_debugui() {
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub enum UiInput {
+    Handled,
+    NotHandled,
+}
+
+fn with_ctx_state<F, R>(func: F) -> Option<R>
+where
+    F: FnOnce(&mut DrawState) -> R,
+{
     CONTEXT.with(|x| {
         let s = x.borrow();
         if let Some(ref s) = *s {
             let mut state = s.state.borrow_mut();
-            state.ui.toggle_shown();
+            Some(func(&mut state))
+        } else {
+            None
         }
-    });
+    })
 }
 
-fn handle_msg(msg: u32, wparam: usize, _lparam: isize) -> bool {
-    use winapi::um::winuser::{VK_F1, WM_KEYDOWN};
+fn handle_msg(msg: u32, wparam: usize, _lparam: isize) -> UiInput {
+    use winapi::um::winuser::{VK_F1, WM_CHAR, WM_KEYDOWN};
 
-    match msg {
+    with_ctx_state(|state| match msg {
         WM_KEYDOWN => {
             let key = wparam as i32;
             if key == VK_F1 {
-                toggle_debugui();
-                return true;
+                state.ui.toggle_shown();
+                UiInput::Handled
+            } else {
+                state.ui.input_key(key)
             }
         }
-        _ => (),
-    }
-    false
+        WM_CHAR => {
+            let chara = if wparam < 0x80 {
+                Some(wparam as u8 as char)
+            } else {
+                String::from_utf16(&[wparam as u16])
+                    .ok()
+                    .and_then(|s| s.chars().next())
+            };
+            if let Some(c) = chara {
+                state.ui.input_char(c)
+            } else {
+                UiInput::NotHandled
+            }
+        }
+        _ => UiInput::NotHandled,
+    })
+    .unwrap_or_else(|| UiInput::NotHandled)
 }
 
 fn translate_accelerator_hook(
@@ -207,7 +236,7 @@ fn translate_accelerator_hook(
     msg: *const MSG,
     orig: &Fn(*mut c_void, *mut c_void, *const MSG) -> u32,
 ) -> u32 {
-    if unsafe { handle_msg((*msg).message, (*msg).wParam, (*msg).lParam) } == true {
+    if unsafe { handle_msg((*msg).message, (*msg).wParam, (*msg).lParam) } == UiInput::Handled {
         1
     } else {
         orig(hwnd, accel, msg)
@@ -221,7 +250,7 @@ unsafe extern "system" fn window_proc(
     lparam: isize,
 ) -> isize {
     let old_proc = OLD_WINDOW_PROC.load(Ordering::Relaxed);
-    if handle_msg(msg, wparam, lparam) == true {
+    if handle_msg(msg, wparam, lparam) == UiInput::Handled {
         return 0;
     }
     if old_proc != 0 {
@@ -260,15 +289,9 @@ fn lock_surface_hook(
         if id != 0 || out.is_null() || width.is_null() {
             return orig(id, area, out, width, unused);
         }
-        let ptr = CONTEXT.with(|x| {
-            let s = x.borrow();
-            if let Some(ref s) = *s {
-                let mut state = s.state.borrow_mut();
-                // I hope the RefCell is enough to have this mutability be reasonable :)
-                Some(state.bw_render.get_framebuf().as_mut_ptr())
-            } else {
-                None
-            }
+        let ptr = with_ctx_state(|state| {
+            // I hope the RefCell is enough to have this mutability be reasonable :)
+            state.bw_render.get_framebuf().as_mut_ptr()
         });
         if let Some(ptr) = ptr {
             *out = ptr;
@@ -290,12 +313,8 @@ fn unlock_surface_hook(
     if id != 0 {
         return orig(id, ptr, unused1, unused2);
     }
-    CONTEXT.with(|x| {
-        let s = x.borrow();
-        if let Some(ref s) = *s {
-            let mut state = s.state.borrow_mut();
-            state.bw_render.framebuf_updated();
-        }
+    with_ctx_state(|state| {
+        state.bw_render.framebuf_updated();
     });
     1
 }
