@@ -224,6 +224,7 @@ unsafe extern fn frame_hook() {
     ai::update_guard_needs(game, &mut globals.guards);
     ai::continue_incomplete_buildings();
 
+    aiscript::lift_land_hook(&mut globals.lift_lands, &search, game);
     for unit in unit::active_units() {
         aiscript::bunker_fill_hook(&mut globals.bunker_states, unit, &search);
         if let Some(ai) = unit.building_ai() {
@@ -277,6 +278,7 @@ unsafe extern fn step_order_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_v
             let mut globals = Globals::get("step order hook (die)");
             globals.idle_orders.unit_removed(unit);
             globals.bunker_states.unit_removed(unit);
+            globals.lift_lands.unit_removed(unit);
         }
         order::id::COMPUTER_AI => {
             if let Some(_) = unit.building_ai() {

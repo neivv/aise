@@ -23,10 +23,10 @@ use bw;
 use datreq::{DatReq, ReadDatReqs};
 use game::Game;
 use globals::{
-    self, BankKey, BaseLayout, BunkerCondition, BunkerDecl, Globals, RenameStatus, RevealState,
-    RevealType,
+    self, BankKey, BaseLayout, BunkerCondition, BunkerDecl, Globals, LiftLand, LiftLandBuilding,
+    LiftLandStage, RenameStatus, RevealState, RevealType,
 };
-use list::ListIter;
+use list::{ListEntry, ListIter};
 use order::{self, OrderId};
 use rng::Rng;
 use samase;
@@ -175,6 +175,7 @@ pub unsafe extern fn issue_order(script: *mut bw::AiScript) {
     //      0x4 = Target allies,
     //      0x8 = Target single unit
     //      0x10 = Target each unit once
+    //		0x20 = Do not issue if unit is busy
     let mut read = ScriptData::new(script);
     let order = OrderId(read.read_u8());
     let limit = read.read_u16();
@@ -197,6 +198,7 @@ pub unsafe extern fn issue_order(script: *mut bw::AiScript) {
         .search_iter(&src.area)
         .filter(|u| u.player() as u32 == (*script).player && unit_id.matches(u))
         .take(limit as usize);
+
     let targets = if flags & 0x7 != 0 {
         let mut acceptable_players = [false; 12];
         for i in 0..12 {
@@ -210,6 +212,7 @@ pub unsafe extern fn issue_order(script: *mut bw::AiScript) {
                 }
             }
         }
+
         let limit = match flags & 0x8 != 0 {
             true => 1,
             false => !0,
@@ -219,6 +222,7 @@ pub unsafe extern fn issue_order(script: *mut bw::AiScript) {
             .filter(|u| acceptable_players[u.player() as usize] && target_misc.matches(u))
             .take(limit)
             .collect::<Vec<_>>();
+
         Some(targets)
     } else {
         None
@@ -330,6 +334,10 @@ pub fn update_towns(globals: &mut Globals) {
         if !globals.towns.iter().any(|&x| x == old) {
             globals.max_workers.swap_retain(|x| x.town != old);
             globals.town_ids.swap_retain(|x| x.town != old);
+            globals
+                .lift_lands
+                .structures
+                .swap_retain(|x| x.town_src != old && x.town_tgt != old);
         }
     }
 }
@@ -404,15 +412,8 @@ pub unsafe extern fn remove_build(script: *mut bw::AiScript) {
     let amount = read.read_u8();
     let mut unit_id = read.read_unit_match();
     let id = read.read_u8();
-    let globals = Globals::get("ais remove_build");
-    let town = match id {
-        255 => Town::from_ptr((*script).town),
-        _ => globals
-            .town_ids
-            .iter()
-            .find(|x| id == x.id && u32::from((*x.town.0).player) == (*script).player)
-            .map(|x| x.town),
-    };
+    let mut globals = Globals::get("ais remove_build");
+    let town = town_from_id(script, &mut globals, id);
     if let Some(town) = town {
         remove_build_from_town(town, &mut unit_id, amount);
     }
@@ -507,6 +508,132 @@ pub unsafe extern fn under_attack(script: *mut bw::AiScript) {
             return;
         }
     };
+}
+
+unsafe fn building_in_town(unit: Unit, town: Town) -> bool {
+    ListIter((*town.0).buildings).any(|x| (*x).parent == unit.0)
+}
+
+pub unsafe fn lift_land_hook(lift_lands: &mut LiftLand, search: &UnitSearch, game: Game) {
+    use bw_dat::order::{BUILDING_LAND, LIFTOFF, MOVE};
+    lift_lands
+        .structures
+        .swap_retain(|x| x.stage() != LiftLandStage::End);
+    let unit_search = UnitSearch::from_bw();
+    for lift_land in &mut lift_lands.structures {
+        if lift_land.state.is_none() {
+            let unit = unit_search
+                .search_iter(&lift_land.src)
+                .find(|x| x.id() == lift_land.unit_id && building_in_town(*x, lift_land.town_src));
+            if let Some(unit) = unit {
+                lift_land.init_state(unit);
+            }
+        }
+
+        if let Some(ref mut state) = lift_land.state {
+            let unit = state.unit;
+            let target_area = match state.is_returning {
+                false => lift_land.tgt,
+                true => lift_land.src,
+            };
+            match state.stage {
+                LiftLandStage::LiftOff_Start => {
+                    if lift_land.return_hp_percent as i32 >= unit.hp_percent() {
+                        unit.issue_order_ground(LIFTOFF, unit.position());
+                        state.stage = LiftLandStage::LiftOff_End;
+                    }
+                }
+                LiftLandStage::LiftOff_End => {
+                    if unit.order() != LIFTOFF {
+                        state.stage = LiftLandStage::Fly;
+                        state.is_returning = false;
+                    }
+                }
+                LiftLandStage::Fly => {
+                    if unit.hp_percent() < lift_land.return_hp_percent as i32 {
+                        state.is_returning = true;
+                    }
+                    if unit_in_area(unit, target_area) {
+                        state.stage = LiftLandStage::FindLocation;
+                    } else {
+                        unit.issue_order_ground(MOVE, bw::point_from_rect(target_area));
+                    }
+                }
+                LiftLandStage::FindLocation => {
+                    let rect_x = target_area.right / 32;
+                    let rect_y = target_area.bottom / 32;
+                    let pos_x = target_area.left / 32;
+                    let pos_y = target_area.top / 32;
+                    'outer: for i in pos_x..rect_x + 1 {
+                        for j in pos_y..rect_y + 1 {
+                            if check_placement(game, search, unit, i, j, unit.id()) {
+                                state.target = bw::Point {
+                                    x: i * 32,
+                                    y: j * 32,
+                                };
+                                unit.issue_order_ground(MOVE, state.target);
+                                state.stage = LiftLandStage::Land;
+                                break 'outer;
+                            }
+                        }
+                    }
+                }
+                LiftLandStage::Land => {
+                    if unit_in_area(unit, bw::Rect::from_point(state.target)) {
+                        if unit.is_air() {
+                            let placement_ok = check_placement(
+                                game,
+                                search,
+                                unit,
+                                unit.position().x / 32,
+                                unit.position().y / 32,
+                                unit.id(),
+                            );
+                            if placement_ok {
+                                if unit.order() != BUILDING_LAND {
+                                    unit.issue_order_ground(BUILDING_LAND, unit.position());
+                                }
+                            } else {
+                                state.stage = LiftLandStage::FindLocation;
+                            }
+                        } else {
+                            match state.is_returning {
+                                false => {
+                                    let old_town = lift_land.town_src.0;
+                                    let new_town = lift_land.town_tgt.0;
+                                    if old_town != new_town {
+                                        if let Some(ai) = unit.building_ai() {
+                                            ListEntry::move_to(
+                                                ai,
+                                                &mut (*old_town).buildings,
+                                                &mut (*new_town).buildings,
+                                            );
+                                        }
+                                    }
+                                    state.stage = LiftLandStage::End;
+                                }
+                                true => state.stage = LiftLandStage::LiftOff_Start,
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+impl bw::Rect {
+    pub fn from_point(point: bw::Point) -> bw::Rect {
+        let x = point.x;
+        let y = point.y;
+        bw::Rect {
+            left: x,
+            right: x.saturating_add(1),
+            top: y,
+            bottom: y.saturating_add(1),
+        }
+    }
 }
 
 pub unsafe fn bunker_fill_hook(
@@ -2845,6 +2972,52 @@ unsafe extern fn add_layout(
         match layout_modifier {
             LayoutModifier::Set => globals.base_layouts.try_add(layout),
             LayoutModifier::Remove => globals.base_layouts.try_remove(&layout),
+        }
+    }
+}
+
+unsafe fn town_from_id(script: *mut bw::AiScript, globals: &mut Globals, id: u8) -> Option<Town> {
+    let town_src = match id {
+        255 => Town::from_ptr((*script).town),
+        _ => globals
+            .town_ids
+            .iter()
+            .find(|x| id == x.id && u32::from((*x.town.0).player) == (*script).player)
+            .map(|x| x.town),
+    };
+    town_src
+}
+
+pub unsafe extern fn lift_land(script: *mut bw::AiScript) {
+    let mut read = ScriptData::new(script);
+    //unitId quantity liftLocation landLocation lifttownid landtownid hpval
+    let unit_id = UnitId(read.read_u16());
+    let amount = read.read_u8();
+    let mut src = read.read_position();
+    let radius = read.read_u16();
+    src.extend_area(radius as i16);
+    let mut tgt = read.read_position();
+    let radius_target = read.read_u16();
+    tgt.extend_area(radius_target as i16);
+    let id_source = read.read_u8();
+    let id_target = read.read_u8();
+    let return_hp_percent = read.read_u8();
+    let mut globals = Globals::get("ais lift_land");
+    let town_src = town_from_id(script, &mut globals, id_source);
+    let town_tgt = town_from_id(script, &mut globals, id_target);
+    if let Some(town_src) = town_src {
+        if let Some(town_tgt) = town_tgt {
+            let lift_land = LiftLandBuilding {
+                player: (*script).player as u8,
+                unit_id: unit_id,
+                src: src.area,
+                tgt: tgt.area,
+                town_src,
+                town_tgt,
+                return_hp_percent,
+                state: Default::default(),
+            };
+            globals.lift_lands.add(lift_land, amount);
         }
     }
 }

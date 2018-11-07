@@ -179,6 +179,8 @@ pub mod order {
     pub const INTERCEPTOR_ATTACK: OrderId = OrderId(0x40);
     pub const SCARAB_ATTACK: OrderId = OrderId(0x41);
     pub const SHIELD_BATTERY: OrderId = OrderId(0x44);
+    pub const BUILDING_LAND: OrderId = OrderId(0x47);
+    pub const LIFTOFF: OrderId = OrderId(0x48);
     pub const UPGRADE: OrderId = OrderId(0x4c);
     pub const SPAWNING_LARVA: OrderId = OrderId(0x4e);
     pub const HARVEST_GAS: OrderId = OrderId(0x53);

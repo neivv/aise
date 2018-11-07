@@ -171,6 +171,10 @@ impl Unit {
         unsafe { (*self.0).hitpoints }
     }
 
+    pub fn hp_percent(&self) -> i32 {
+        self.hitpoints().saturating_mul(100) / (self.id().hitpoints())
+    }
+
     pub fn spider_mines(&self, game: Game) -> u8 {
         if game.tech_researched(self.player(), tech::SPIDER_MINES) {
             unsafe { (*self.0).unit_specific[0] }
@@ -318,6 +322,10 @@ impl Unit {
 
     pub fn cargo_count(&self) -> u8 {
         unsafe { (*self.0).loaded_units.iter().filter(|&&x| x != 0).count() as u8 }
+    }
+
+    pub fn issue_order_ground(&self, order: OrderId, target: bw::Point) {
+        unsafe { bw::issue_order(self.0, order, target, null_mut(), id::NONE) }
     }
 }
 

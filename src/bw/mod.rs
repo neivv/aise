@@ -61,6 +61,13 @@ pub fn location(location: u8) -> Location {
     unsafe { (*game()).locations[location as usize] }
 }
 
+pub fn point_from_rect(rect: Rect) -> Point {
+    Point {
+        x: rect.left + (rect.right - rect.left) / 2,
+        y: rect.top + (rect.bottom - rect.top) / 2,
+    }
+}
+
 pub unsafe fn issue_order(
     unit: *mut Unit,
     order: OrderId,

@@ -109,6 +109,78 @@ impl BaseLayouts {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq)]
+pub struct LiftLandState {
+    pub unit: Unit,
+    pub stage: LiftLandStage,
+    pub is_returning: bool,
+    pub target: bw::Point,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq)]
+pub struct LiftLandBuilding {
+    pub player: u8,
+    pub unit_id: UnitId,
+    pub src: bw::Rect,
+    pub tgt: bw::Rect,
+    pub town_src: Town,
+    pub town_tgt: Town,
+    pub return_hp_percent: u8,
+    pub state: Option<LiftLandState>,
+}
+
+impl LiftLandBuilding {
+    pub fn stage(&mut self) -> LiftLandStage {
+        match self.state {
+            Some(s) => s.stage,
+            None => LiftLandStage::LiftOff_Start,
+        }
+    }
+
+    pub fn init_state(&mut self, unit: Unit) {
+        self.state = Some(LiftLandState {
+            unit: unit,
+            stage: LiftLandStage::LiftOff_Start,
+            is_returning: false,
+            target: bw::Point {
+                x: 0,
+                y: 0,
+            },
+        });
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq)]
+#[allow(non_camel_case_types)]
+pub enum LiftLandStage {
+    LiftOff_Start,
+    LiftOff_End,
+    Fly,
+    FindLocation,
+    Land,
+    End,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct LiftLand {
+    pub structures: Vec<LiftLandBuilding>,
+}
+
+impl LiftLand {
+    pub fn add(&mut self, value: LiftLandBuilding, amount: u8) {
+        for _ in 0..amount {
+            self.structures.push(value);
+        }
+    }
+
+    pub fn unit_removed(&mut self, unit: Unit) {
+        self.structures.swap_retain(|x| match x.state {
+            Some(s) => s.unit != unit,
+            None => true,
+        });
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct KillsTable {
     pub kills: Vec<KillCount>,
@@ -356,6 +428,7 @@ pub struct Globals {
     pub idle_orders: IdleOrders,
     pub kills_table: KillsTable,
     pub base_layouts: BaseLayouts,
+    pub lift_lands: LiftLand,
     pub max_workers: Vec<MaxWorkers>,
     pub town_ids: Vec<TownId>,
     pub bunker_states: BunkerCondition,
@@ -383,6 +456,7 @@ impl Globals {
             idle_orders: Default::default(),
             kills_table: Default::default(),
             base_layouts: Default::default(),
+            lift_lands: Default::default(),
             max_workers: Vec::new(),
             town_ids: Vec::new(),
             reveal_states: Vec::new(),
