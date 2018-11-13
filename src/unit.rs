@@ -324,8 +324,38 @@ impl Unit {
         unsafe { (*self.0).loaded_units.iter().filter(|&&x| x != 0).count() as u8 }
     }
 
+    pub fn issue_order(&self, order: OrderId, pos: bw::Point, unit: Option<Unit>) {
+        if self.can_issue_order(order) {
+            let unit_ptr = unit.map(|x| x.0).unwrap_or(null_mut());
+            unsafe { bw::issue_order(self.0, order, pos, unit_ptr, id::NONE) }
+        }
+    }
+
     pub fn issue_order_ground(&self, order: OrderId, target: bw::Point) {
-        unsafe { bw::issue_order(self.0, order, target, null_mut(), id::NONE) }
+        self.issue_order(order, target, None)
+    }
+
+    pub fn issue_order_unit(&self, order: OrderId, target: Unit) {
+        self.issue_order(order, target.position(), Some(target));
+    }
+
+    pub fn is_disabled(&self) -> bool {
+        unsafe {
+            (*self.0).lockdown_timer != 0 ||
+                (*self.0).stasis_timer != 0 ||
+                (*self.0).maelstrom_timer != 0 ||
+                (*self.0).flags & 0x400 != 0
+        }
+    }
+
+    pub fn can_issue_order(&self, order: OrderId) -> bool {
+        // This is checked by targeted command/rclick/etc command handlers, but bw accepts
+        // it otherwise, but doesn't clear related unit, so things would end up buggy.
+        if self.id() == id::SCV && self.order() == bw_dat::order::CONSTRUCTING_BUILDING {
+            return order == bw_dat::order::STOP;
+        }
+        // Technically should also check datreqs, oh well
+        self.is_completed() && !self.is_disabled()
     }
 }
 

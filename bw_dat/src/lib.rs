@@ -148,6 +148,7 @@ pub mod tech {
 pub mod order {
     use super::OrderId;
     pub const DIE: OrderId = OrderId(0x0);
+    pub const STOP: OrderId = OrderId(0x1);
     pub const MOVE: OrderId = OrderId(0x6);
     pub const ATTACK: OrderId = OrderId(0x8);
     pub const ATTACK_OBSCURED: OrderId = OrderId(0x9);

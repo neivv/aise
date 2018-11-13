@@ -439,13 +439,7 @@ pub unsafe fn continue_incomplete_buildings() {
                     is_building_safe(x, regions)
             });
         for (scv, building) in free_scvs.zip(incomplete_buildings) {
-            bw::issue_order(
-                scv.0,
-                order::CONSTRUCTING_BUILDING,
-                building.position(),
-                building.0,
-                unit::NONE,
-            );
+            scv.issue_order_unit(order::CONSTRUCTING_BUILDING, building);
             (*building.0).related = scv.0;
         }
     }

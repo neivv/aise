@@ -27,9 +27,7 @@ pub struct IdleOrders {
 impl IdleOrders {
     pub fn unit_removed(&mut self, unit: Unit) {
         for x in self.ongoing.iter().filter(|x| x.target == Some(unit)) {
-            unsafe {
-                bw::issue_order(x.user.0, order::MOVE, x.home, null_mut(), unit::id::NONE);
-            }
+            x.user.issue_order_ground(order::MOVE, x.home);
         }
         self.ongoing
             .swap_retain(|x| unit != x.user && Some(unit) != x.target);
@@ -85,14 +83,7 @@ impl IdleOrders {
                                     o.target = target;
                                     o.decl = decl.clone();
                                     o.order = decl.order;
-                                    let target_ptr = target.map(|x| x.0).unwrap_or(null_mut());
-                                    bw::issue_order(
-                                        o.user.0,
-                                        decl.order,
-                                        pos,
-                                        target_ptr,
-                                        unit::id::NONE,
-                                    );
+                                    o.user.issue_order(decl.order, pos, target);
                                 }
                             }
                         }
@@ -132,15 +123,14 @@ impl IdleOrders {
                                 retain = true;
                                 let (target, pos) = target_pos(&new_target, &o.decl);
                                 o.target = target;
-                                let target_ptr = target.map(|x| x.0).unwrap_or(null_mut());
-                                bw::issue_order(o.user.0, o.order, pos, target_ptr, unit::id::NONE);
+                                o.user.issue_order(o.order, pos, target);
                             }
                         }
                     }
                 }
             }
             if !retain {
-                bw::issue_order(o.user.0, order::MOVE, o.home, null_mut(), unit::id::NONE);
+                o.user.issue_order_ground(order::MOVE, o.home);
                 if o.cloaked {
                     returning_cloaked.push(ReturningCloaked {
                         unit: o.user,
@@ -174,8 +164,7 @@ impl IdleOrders {
                         order::MOVE => (*user.0).order_target_pos,
                         _ => user.position(),
                     };
-                    let target_ptr = order_target.map(|x| x.0).unwrap_or(null_mut());
-                    bw::issue_order(user.0, decl.order, pos, target_ptr, unit::id::NONE);
+                    user.issue_order(decl.order, pos, order_target);
                     ongoing.push(OngoingOrder {
                         user,
                         start_frame: game.frame_count(),
@@ -650,6 +639,7 @@ impl IdleOrder {
         user.player() == self.player &&
             self.unit_id.matches(&user) &&
             user.order() != self.order &&
+            user.can_issue_order(self.order) &&
             user.energy() as u32 >= energy_cost &&
             self.self_flags.match_status(
                 user,

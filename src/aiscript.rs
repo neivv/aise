@@ -197,6 +197,7 @@ pub unsafe extern fn issue_order(script: *mut bw::AiScript) {
     let units = search
         .search_iter(&src.area)
         .filter(|u| u.player() as u32 == (*script).player && unit_id.matches(u))
+        .filter(|u| u.can_issue_order(order))
         .take(limit as usize);
 
     let targets = if flags & 0x7 != 0 {
@@ -243,11 +244,10 @@ pub unsafe extern fn issue_order(script: *mut bw::AiScript) {
                     }
                     target_pos = 0;
                 }
-                let target = &targets[target_pos];
+                unit.issue_order_unit(order, targets[target_pos]);
                 target_pos += 1;
-                bw::issue_order(unit.0, order, target.position(), target.0, unit::id::NONE);
             } else {
-                bw::issue_order(unit.0, order, target.center, null_mut(), unit::id::NONE);
+                unit.issue_order_ground(order, target.center);
             }
         }
         match order {
@@ -675,13 +675,7 @@ pub unsafe fn bunker_fill_hook(
                     }
                 }
                 if free_slots > 0 && decl.quantity > 0 {
-                    bw::issue_order(
-                        picked_unit.0,
-                        ENTER_TRANSPORT,
-                        picked_unit.position(),
-                        bunker.0,
-                        unit::id::NONE,
-                    );
+                    picked_unit.issue_order_unit(ENTER_TRANSPORT, bunker);
                     state.add_targeter(picked_unit, bunker);
                     debug!(
                         "Add Targeter: uid {} at {} {} to pos {} {}",
