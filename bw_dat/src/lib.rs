@@ -89,6 +89,7 @@ pub mod unit {
     pub const EDMUND_DUKE_SIEGE: UnitId = UnitId(0x19);
     pub const SIEGE_TANK_SIEGE: UnitId = UnitId(0x1e);
     pub const FIREBAT: UnitId = UnitId(0x20);
+    pub const LARVA: UnitId = UnitId(0x23);
     pub const EGG: UnitId = UnitId(0x24);
     pub const ZERGLING: UnitId = UnitId(0x25);
     pub const HYDRALISK: UnitId = UnitId(0x26);

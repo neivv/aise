@@ -167,6 +167,10 @@ impl Unit {
         OrderId(unsafe { (*self.0).order })
     }
 
+    pub fn secondary_order(&self) -> OrderId {
+        OrderId(unsafe { (*self.0).secondary_order })
+    }
+
     pub fn hitpoints(&self) -> i32 {
         unsafe { (*self.0).hitpoints }
     }

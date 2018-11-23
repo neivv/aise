@@ -110,6 +110,63 @@ impl BaseLayouts {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq)]
+pub struct UnitQueue {
+    pub player: u8,
+    pub current_quantity: u8,
+    pub unit_id: UnitId,
+    pub factory_id: UnitId,
+    pub town: Option<Town>,
+    pub pos: bw::Rect,
+    pub priority: u8,
+}
+
+impl UnitQueue {
+    pub unsafe fn can_train(&mut self, unit: Unit) -> bool {
+        use bw_dat::order::{ARCHON_WARP, DARK_ARCHON_MELD, TRAIN, UNIT_MORPH};
+        if unit.id() != self.factory_id || unit.player() != self.player {
+            return false;
+        }
+        let is_train_order = match unit.order() {
+            UNIT_MORPH | ARCHON_WARP | DARK_ARCHON_MELD => true,
+            _ => unit.secondary_order() == TRAIN,
+        };
+        if is_train_order {
+            return false;
+        }
+
+        if unit.is_air() && unit.id().is_building() {
+            return false;
+        }
+        use bw_dat::unit::*;
+        if !unit.id().is_building() && unit.id() != LARVA {
+            return true;
+        }
+
+        match &mut self.town {
+            None => return true,
+            Some(s) => return s.has_building(unit),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Queues {
+    pub queue: Vec<UnitQueue>,
+}
+
+impl Queues {
+    pub fn add(&mut self, value: UnitQueue) {
+        if !self.queue.iter().any(|i| i == &value) {
+            let insert_pos = self
+                .queue
+                .binary_search_by(|a| value.priority.cmp(&a.priority))
+                .unwrap_or_else(|e| e);
+            self.queue.insert(insert_pos, value)
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq)]
 pub struct LiftLandState {
     pub unit: Unit,
     pub stage: LiftLandStage,
@@ -433,6 +490,7 @@ pub struct Globals {
     pub kills_table: KillsTable,
     pub base_layouts: BaseLayouts,
     pub lift_lands: LiftLand,
+    pub queues: Queues,
     pub max_workers: Vec<MaxWorkers>,
     pub town_ids: Vec<TownId>,
     pub bunker_states: BunkerCondition,
@@ -461,6 +519,7 @@ impl Globals {
             kills_table: Default::default(),
             base_layouts: Default::default(),
             lift_lands: Default::default(),
+            queues: Default::default(),
             max_workers: Vec::new(),
             town_ids: Vec::new(),
             reveal_states: Vec::new(),

@@ -24,7 +24,7 @@ use datreq::{DatReq, ReadDatReqs};
 use game::Game;
 use globals::{
     self, BankKey, BaseLayout, BunkerCondition, BunkerDecl, Globals, LiftLand, LiftLandBuilding,
-    LiftLandStage, RenameStatus, RevealState, RevealType,
+    LiftLandStage, Queues, RenameStatus, RevealState, RevealType, UnitQueue,
 };
 use list::ListIter;
 use order::{self, OrderId};
@@ -338,12 +338,13 @@ pub fn update_towns(globals: &mut Globals) {
                 .lift_lands
                 .structures
                 .swap_retain(|x| x.town_src != old && x.town_tgt != old);
+            globals.queues.queue.swap_retain(|x| x.town != Some(old));
         }
     }
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub struct Town(*mut bw::AiTown);
+pub struct Town(pub *mut bw::AiTown);
 
 impl Town {
     fn from_ptr(ptr: *mut bw::AiTown) -> Option<Town> {
@@ -512,6 +513,61 @@ pub unsafe extern fn under_attack(script: *mut bw::AiScript) {
             return;
         }
     };
+}
+
+unsafe fn subtract_cost(game: Game, id: UnitId, player: u8) {
+    (*game.0).minerals[player as usize] -= &ai::unit_cost(id).minerals;
+    (*game.0).gas[player as usize] -= &ai::unit_cost(id).gas;
+}
+
+pub unsafe fn queues_frame_hook(queues: &mut Queues, unit_search: &UnitSearch, game: Game) {
+    use bw_dat::order::{ARCHON_WARP, DARK_ARCHON_MELD, TRAIN, UNIT_MORPH};
+    use bw_dat::unit::{ARCHON, DARK_ARCHON};
+    queues.queue.swap_retain(|x| x.current_quantity > 0);
+    for queue in &mut queues.queue {
+        let mut units = unit_search
+            .search_iter(&queue.pos)
+            .filter(|x| queue.can_train(*x))
+            .collect::<Vec<_>>();
+        for u in &mut units {
+            if has_resources(game, u.player(), &ai::unit_cost(queue.unit_id)) {
+                queue.current_quantity = queue.current_quantity.saturating_sub(1);
+                match u.id().is_building() {
+                    true => {
+                        u.issue_secondary_order(TRAIN);
+                        (*u.0).build_queue[(*u.0).current_build_slot as usize] = queue.unit_id.0;
+                        subtract_cost(game, queue.unit_id, queue.player);
+                    }
+                    false => {
+                        match queue.unit_id {
+                            ARCHON | DARK_ARCHON => {
+                                let order = match queue.unit_id {
+                                    ARCHON => ARCHON_WARP,
+                                    _ => DARK_ARCHON_MELD,
+                                };
+                                let find_pair = unit_search.find_nearest(u.position(), |x| {
+                                    x != *u && x.id() == u.id() && x.order() != order
+                                });
+                                if let Some((unit, _distance)) = find_pair {
+                                    unit.issue_order_unit(order, *u);
+                                    u.issue_order_unit(order, unit);
+                                    //archons have no cost
+                                }
+                            }
+                            _ => {
+                                u.issue_order(UNIT_MORPH, u.position(), None);
+                                (*u.0).build_queue[0] = queue.unit_id.0;
+                                subtract_cost(game, queue.unit_id, queue.player);
+                            }
+                        }
+                    }
+                }
+                if queue.current_quantity == 0 {
+                    break;
+                }
+            }
+        }
+    }
 }
 
 pub unsafe fn lift_land_hook(lift_lands: &mut LiftLand, search: &UnitSearch, game: Game) {
@@ -2981,6 +3037,60 @@ unsafe fn town_from_id(script: *mut bw::AiScript, globals: &mut Globals, id: u8)
             .map(|x| x.town),
     };
     town_src
+}
+
+pub unsafe extern fn queue(script: *mut bw::AiScript) {
+    #[derive(Eq, PartialEq, Copy, Clone, Debug)]
+    enum LocalModifier {
+        Local,
+        Global,
+    }
+    //quantity unit_id factory_id id modifier location priority
+    let mut read = ScriptData::new(script);
+    let mut globals = Globals::get("ais queue");
+    let quantity = read.read_u8();
+    let unit_id = UnitId(read.read_u16());
+    let factory_id = UnitId(read.read_u16());
+    let town_id = read.read_u8();
+    let modifier = read.read_u8();
+    let mut src = read.read_position();
+    let radius = read.read_u16();
+    src.extend_area(radius as i16);
+    let priority = read.read_u8();
+    let modifier = match modifier {
+        0 => LocalModifier::Local,
+        1 => LocalModifier::Global,
+        x => {
+            bw::print_text(format!("Unsupported local modifier in queue: {:x}", x));
+            return;
+        }
+    };
+    let town = match modifier {
+        LocalModifier::Global => None,
+        LocalModifier::Local => {
+            let id = town_from_id(script, &mut globals, town_id);
+            match id {
+                None => {
+                    bw::print_text(format!(
+                        "town id {:x} for local queue do not exist",
+                        town_id
+                    ));
+                    return;
+                }
+                Some(s) => Some(s),
+            }
+        }
+    };
+    let queue = UnitQueue {
+        player: (*script).player as u8,
+        current_quantity: quantity,
+        unit_id,
+        factory_id,
+        town,
+        pos: src.area,
+        priority,
+    };
+    globals.queues.add(queue);
 }
 
 pub unsafe extern fn lift_land(script: *mut bw::AiScript) {

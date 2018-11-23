@@ -223,8 +223,9 @@ unsafe extern fn frame_hook() {
     aiscript::reveal_vision_hook(globals, game);
     ai::update_guard_needs(game, &mut globals.guards);
     ai::continue_incomplete_buildings();
-
     aiscript::lift_land_hook(&mut globals.lift_lands, &search, game);
+    aiscript::queues_frame_hook(&mut globals.queues, &search, game);
+
     for unit in unit::active_units() {
         aiscript::bunker_fill_hook(&mut globals.bunker_states, unit, &search);
         if let Some(ai) = unit.building_ai() {
