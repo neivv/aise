@@ -1,11 +1,11 @@
 use bw;
 
-use std::ptr::null_mut;
-
 pub trait ListEntry: Sized {
     unsafe fn next(*mut Self) -> *mut *mut Self;
     unsafe fn prev(*mut Self) -> *mut *mut Self;
 
+    // Remove cfg filters if these happen to be needed
+    #[cfg(test)]
     unsafe fn remove(value: *mut Self, list_head: *mut *mut Self) {
         let next = ListEntry::next(value);
         let prev = ListEntry::prev(value);
@@ -22,6 +22,7 @@ pub trait ListEntry: Sized {
         }
     }
 
+    #[cfg(test)]
     unsafe fn add(value: *mut Self, list_head: *mut *mut Self) {
         let next = *list_head;
         if !next.is_null() {
@@ -29,9 +30,10 @@ pub trait ListEntry: Sized {
         }
         *ListEntry::next(value) = next;
         *list_head = value;
-        *ListEntry::prev(value) = null_mut();
+        *ListEntry::prev(value) = std::ptr::null_mut();
     }
 
+    #[cfg(test)]
     unsafe fn move_to(value: *mut Self, old: *mut *mut Self, new: *mut *mut Self) {
         ListEntry::remove(value, old);
         ListEntry::add(value, new);
@@ -89,6 +91,7 @@ impl<T: ListEntry> Iterator for ListIter<T> {
 mod test {
     use super::*;
     use std::mem;
+    use std::ptr::null_mut;
 
     fn generate_list(amount: usize) -> Vec<bw::AiTown> {
         unsafe {

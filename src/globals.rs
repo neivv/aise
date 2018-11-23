@@ -174,10 +174,14 @@ impl LiftLand {
     }
 
     pub fn unit_removed(&mut self, unit: Unit) {
-        self.structures.swap_retain(|x| match x.state {
-            Some(s) => s.unit != unit,
-            None => true,
-        });
+        for liftland in &mut self.structures {
+            let state = liftland.state;
+            if let Some(state) = state {
+                if state.unit == unit {
+                    liftland.state = None;
+                }
+            }
+        }
     }
 }
 

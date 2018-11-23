@@ -203,6 +203,8 @@ whack_funcs!(stdcall, init_funcs, 0x00400000,
     0x00473FB0 => update_building_placement_state(*mut Unit, u8, u32, u32, u16, u8, u8, u8, u8) -> u32;
     0x004936B0 => is_powered(u32, u32, u8, @eax u32) -> u32;
     0x004A34C0 => ping_minimap(u32, u32, u8);
+    0x00433DD0 => add_town_unit_ai(@ebx *mut Unit, @edi *mut AiTown);
+    0x004A1E50 => remove_unit_ai(@ecx *mut Unit, @edx u32);
     0x00414560 => remove_creep_at_unit(
         @ecx u32,
         @eax u32,
@@ -216,4 +218,5 @@ whack_vars!(init_vars, 0x00400000,
     0x0057F0B4 => is_multiplayer: u8;
     0x006D1260 => tile_flags: *mut u32;
     0x00597208 => client_selection: [*mut Unit; 0xc];
+
 );

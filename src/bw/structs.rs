@@ -26,14 +26,14 @@ pub struct TownReq {
 
 #[repr(C, packed)]
 pub struct AiTown {
-    pub next: *mut AiTown,
-    pub prev: *mut AiTown,
-    pub free_workers: *mut c_void,
-    pub workers: *mut WorkerAi,
-    pub free_buildings: *mut c_void,
-    pub buildings: *mut BuildingAi,
-    pub player: u8,
-    pub inited: u8,
+    pub next: *mut AiTown,           // 0x0
+    pub prev: *mut AiTown,           // 0x4
+    pub free_workers: *mut c_void,   // 0x8
+    pub workers: *mut WorkerAi,      // 0xc
+    pub free_buildings: *mut c_void, // 0x10
+    pub buildings: *mut BuildingAi,  // 0x14
+    pub player: u8,                  // 0x18
+    pub inited: u8,                  // 0x19
     pub worker_count: u8,
     pub worker_limit: u8,
     pub resource_area: u8,
@@ -74,7 +74,7 @@ pub struct BuildingAi {
     pub ai_type: u8,
     pub train_queue_types: [u8; 0x5],
     pub dce: [u8; 0x2],
-    pub parent: *mut Unit,
+    pub parent: *mut Unit, // 0x10
     pub town: *mut AiTown,
     pub train_queue_values: [*mut c_void; 0x5],
 }

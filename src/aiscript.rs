@@ -26,7 +26,7 @@ use globals::{
     self, BankKey, BaseLayout, BunkerCondition, BunkerDecl, Globals, LiftLand, LiftLandBuilding,
     LiftLandStage, RenameStatus, RevealState, RevealType,
 };
-use list::{ListEntry, ListIter};
+use list::ListIter;
 use order::{self, OrderId};
 use rng::Rng;
 use samase;
@@ -353,6 +353,10 @@ impl Town {
             Some(Town(ptr))
         }
     }
+
+    pub unsafe fn has_building(&mut self, unit: Unit) -> bool {
+        ListIter((*self.0).buildings).any(|x| (*x).parent == unit.0)
+    }
 }
 
 unsafe impl Send for Town {}
@@ -510,21 +514,16 @@ pub unsafe extern fn under_attack(script: *mut bw::AiScript) {
     };
 }
 
-unsafe fn building_in_town(unit: Unit, town: Town) -> bool {
-    ListIter((*town.0).buildings).any(|x| (*x).parent == unit.0)
-}
-
 pub unsafe fn lift_land_hook(lift_lands: &mut LiftLand, search: &UnitSearch, game: Game) {
     use bw_dat::order::{BUILDING_LAND, LIFTOFF, MOVE};
     lift_lands
         .structures
         .swap_retain(|x| x.stage() != LiftLandStage::End);
-    let unit_search = UnitSearch::from_bw();
     for lift_land in &mut lift_lands.structures {
         if lift_land.state.is_none() {
-            let unit = unit_search
+            let unit = search
                 .search_iter(&lift_land.src)
-                .find(|x| x.id() == lift_land.unit_id && building_in_town(*x, lift_land.town_src));
+                .find(|x| x.id() == lift_land.unit_id && lift_land.town_src.has_building(*x));
             if let Some(unit) = unit {
                 lift_land.init_state(unit);
             }
@@ -538,7 +537,7 @@ pub unsafe fn lift_land_hook(lift_lands: &mut LiftLand, search: &UnitSearch, gam
             };
             match state.stage {
                 LiftLandStage::LiftOff_Start => {
-                    if lift_land.return_hp_percent as i32 >= unit.hp_percent() {
+                    if unit.hp_percent() >= lift_land.return_hp_percent as i32 {
                         unit.issue_order_ground(LIFTOFF, unit.position());
                         state.stage = LiftLandStage::LiftOff_End;
                     }
@@ -564,12 +563,15 @@ pub unsafe fn lift_land_hook(lift_lands: &mut LiftLand, search: &UnitSearch, gam
                     let rect_y = target_area.bottom / 32;
                     let pos_x = target_area.left / 32;
                     let pos_y = target_area.top / 32;
+
+                    let offset_x = target_area.left - (pos_x * 32);
+                    let offset_y = target_area.top - (pos_y * 32);
                     'outer: for i in pos_x..rect_x + 1 {
                         for j in pos_y..rect_y + 1 {
                             if check_placement(game, search, unit, i, j, unit.id()) {
                                 state.target = bw::Point {
-                                    x: i * 32,
-                                    y: j * 32,
+                                    x: (i * 32) + offset_x,
+                                    y: (j * 32) + offset_y,
                                 };
                                 unit.issue_order_ground(MOVE, state.target);
                                 state.stage = LiftLandStage::Land;
@@ -585,13 +587,13 @@ pub unsafe fn lift_land_hook(lift_lands: &mut LiftLand, search: &UnitSearch, gam
                                 game,
                                 search,
                                 unit,
-                                unit.position().x / 32,
-                                unit.position().y / 32,
+                                state.target.x / 32,
+                                state.target.y / 32,
                                 unit.id(),
                             );
                             if placement_ok {
                                 if unit.order() != BUILDING_LAND {
-                                    unit.issue_order_ground(BUILDING_LAND, unit.position());
+                                    unit.issue_order_ground(BUILDING_LAND, state.target);
                                 }
                             } else {
                                 state.stage = LiftLandStage::FindLocation;
@@ -602,12 +604,9 @@ pub unsafe fn lift_land_hook(lift_lands: &mut LiftLand, search: &UnitSearch, gam
                                     let old_town = lift_land.town_src.0;
                                     let new_town = lift_land.town_tgt.0;
                                     if old_town != new_town {
-                                        if let Some(ai) = unit.building_ai() {
-                                            ListEntry::move_to(
-                                                ai,
-                                                &mut (*old_town).buildings,
-                                                &mut (*new_town).buildings,
-                                            );
+                                        if unit.building_ai().is_some() {
+                                            bw::remove_unit_ai(unit.0, 0);
+                                            bw::add_town_unit_ai(unit.0, new_town);
                                         }
                                     }
                                     state.stage = LiftLandStage::End;
@@ -2828,6 +2827,8 @@ pub unsafe fn choose_building_placement(
                             "Placing {:x} to {:x}, {:x} for player {:x}",
                             unit_id.0, i, j, player
                         );
+                        // modify coordinates by offset for buildings (offset will be 0 is width/height has even number of tiles)
+                        // to avoid placement of structures unaligned to tile grid
                         (*out_pos).x = (i * 32) + offset_x;
                         (*out_pos).y = (j * 32) + offset_y;
                         return result;
@@ -2876,9 +2877,9 @@ unsafe fn check_placement(
 
     if unit_id.is_town_hall() {
         let area = bw::Rect {
-            left: (x_tile * 32).saturating_sub(3 * 32),
+            left: (x_tile * 32).saturating_sub(3 * 32) - (placement.width as i16 / 2),
             top: (y_tile * 32).saturating_sub(3 * 32),
-            right: (x_tile * 32) + placement.width as i16 + 3 * 32,
+            right: (x_tile * 32) + placement.width as i16 + (3 * 32) - (placement.width as i16 / 2),
             bottom: (y_tile * 32) + placement.height as i16 + 3 * 32,
         };
         let res_units = unit_search
@@ -3012,7 +3013,11 @@ pub unsafe extern fn lift_land(script: *mut bw::AiScript) {
                 state: Default::default(),
             };
             globals.lift_lands.add(lift_land, amount);
+        } else {
+            debug!("No target town");
         }
+    } else {
+        debug!("No src town");
     }
 }
 
