@@ -541,6 +541,9 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
             &mut rate,
         );
         if !ok {
+            // Kill (hang) the script since we have no idea if it is left in a pos where
+            // the next command is more unknown idle_orders data or what.
+            (*script).wait = 0x7fff_ffff;
             return;
         }
     };
