@@ -1,4 +1,3 @@
-use std::mem;
 use std::ptr::null_mut;
 use std::sync::atomic::{AtomicBool, Ordering, ATOMIC_BOOL_INIT};
 use std::sync::Arc;
@@ -177,9 +176,10 @@ impl IdleOrders {
                     });
                     // Round to multiple of decl.rate so that priority is somewhat useful.
                     // Adds [rate, rate * 2) frames of wait.
-                    let mut rate = match decl.target_flags.random_rate {
-                        Some(ref s) => rng.synced_rand(s.lower..s.upper + 1),
-                        None => decl.rate as u32,
+                    let rate = if decl.rate.lower == decl.rate.upper {
+                        decl.rate.lower as u32
+                    } else {
+                        rng.synced_rand((decl.rate.lower as u32)..(decl.rate.upper as u32 + 1))
                     };
 
                     state.next_frame = current_frame
@@ -240,9 +240,9 @@ struct OngoingOrder {
 unsafe impl Send for OngoingOrder {}
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-struct RandomRate {
-    lower: u32,
-    upper: u32,
+struct Rate {
+    lower: u16,
+    upper: u16,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -263,7 +263,7 @@ struct IdleOrder {
     radius: u16,
     target_flags: IdleOrderFlags,
     self_flags: IdleOrderFlags,
-    rate: u16,
+    rate: Rate,
     player: u8,
 }
 
@@ -279,7 +279,6 @@ struct IdleOrderFlags {
     targeting_filter: TargetingFlags,
     order: Option<OrderId>,
     numeric: Vec<(IdleOrderNumeric, Comparision, i32)>,
-    random_rate: Option<RandomRate>,
     count: Option<IdleOrderCount>,
 }
 
@@ -357,12 +356,17 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
     let mut delete_flags = 0;
     let mut target_flags;
     let mut self_flags;
+    let mut rate = Rate {
+        upper: rate,
+        lower: rate,
+    };
     {
         unsafe fn parse_flags(
             read: &mut ScriptData,
             flags: &mut IdleOrderFlags,
             mut self_flags: Option<&mut IdleOrderFlags>,
             delete_flags: &mut u16,
+            rate: &mut Rate,
         ) -> bool {
             loop {
                 let val = read.read_u16();
@@ -414,7 +418,7 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
                     4 => {
                         if val & 0xff == 0 {
                             if let Some(ref mut self_flags) = self_flags {
-                                let ok = parse_flags(read, *self_flags, None, delete_flags);
+                                let ok = parse_flags(read, *self_flags, None, delete_flags, rate);
                                 if !ok {
                                     return false;
                                 }
@@ -448,16 +452,14 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
                         };
                     }
                     8 => {
-                        let mut lower = read.read_u16() as u32;
-                        let mut upper = read.read_u16() as u32;
-                        if lower > upper {
-                            mem::swap(&mut lower, &mut upper);
-                        }
-                        if lower > 0 {
-                            flags.random_rate = Some(RandomRate {
-                                lower: lower,
-                                upper: upper,
-                            });
+                        let mut first = read.read_u16();
+                        let mut second = read.read_u16();
+                        if first > second {
+                            rate.lower = second;
+                            rate.upper = first;
+                        } else {
+                            rate.lower = first;
+                            rate.upper = second;
                         }
                     }
                     9 => {
@@ -516,7 +518,6 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
             targeting_filter: TargetingFlags::empty(),
             order: None,
             numeric: Vec::new(),
-            random_rate: None,
             count: None,
         };
         self_flags = IdleOrderFlags {
@@ -530,7 +531,6 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
             targeting_filter: TargetingFlags::empty(),
             order: None,
             numeric: Vec::new(),
-            random_rate: None,
             count: None,
         };
         let ok = parse_flags(
@@ -538,6 +538,7 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
             &mut target_flags,
             Some(&mut self_flags),
             &mut delete_flags,
+            &mut rate,
         );
         if !ok {
             return;
