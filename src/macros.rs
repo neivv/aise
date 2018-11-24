@@ -40,13 +40,15 @@ macro_rules! bw_print {
     }};
 
     ($lit:expr, $($toks:tt)*) => {{
-        crate::macros::print_and_drop(format!($lit, $($toks)*));
+        crate::macros::print_and_drop(format_args!($lit, $($toks)*));
     }};
 }
 
-// For binsize with bw_print, as freeing is bloat.
+// For keeping binsize low with bw_print
 #[inline(never)]
-pub fn print_and_drop(mut text: String) {
+pub fn print_and_drop(args: std::fmt::Arguments) {
+    let mut text = String::new();
+    let _ = std::fmt::write(&mut text, args);
     text.push('\0');
     crate::samase::print_text(text.as_ptr());
 }
