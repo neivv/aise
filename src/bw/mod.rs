@@ -132,12 +132,6 @@ pub fn bwscript_bin() -> *mut u8 {
     *SAMASE_BWSCRIPT_BIN as *mut u8
 }
 
-pub fn print_text<M: AsRef<str>>(msg: M) {
-    let mut buf: Vec<u8> = msg.as_ref().as_bytes().into();
-    buf.push(0);
-    samase::print_text(buf.as_ptr());
-}
-
 pub fn unit_dat_requirements(unit: UnitId) -> Option<*const u16> {
     let result = samase::requirements(0, unit.0 as u32);
     if result == null() {

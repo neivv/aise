@@ -32,3 +32,21 @@ macro_rules! ome2_thread_local {
         }
     );
 }
+
+#[macro_export]
+macro_rules! bw_print {
+    ($lit:expr $(,)*) => {{
+        crate::samase::print_text(concat!($lit, "\0").as_ptr());
+    }};
+
+    ($lit:expr, $($toks:tt)*) => {{
+        crate::macros::print_and_drop(format!($lit, $($toks)*));
+    }};
+}
+
+// For binsize with bw_print, as freeing is bloat.
+#[inline(never)]
+pub fn print_and_drop(mut text: String) {
+    text.push('\0');
+    crate::samase::print_text(text.as_ptr());
+}

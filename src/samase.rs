@@ -164,6 +164,9 @@ pub fn issue_order(
 }
 
 static mut PRINT_TEXT: GlobalFunc<fn(*const u8)> = GlobalFunc(None);
+// Too common to be inlined. Would be better if PRINT_TEXT were changed to always be valid
+// (But C ABI is still worse for binsize)
+#[inline(never)]
 pub fn print_text(msg: *const u8) {
     unsafe {
         if let Some(print) = PRINT_TEXT.0 {

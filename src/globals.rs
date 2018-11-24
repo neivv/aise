@@ -588,7 +588,7 @@ pub unsafe extern fn save(set_data: unsafe extern fn(*const u8, usize)) {
         }
         Err(e) => {
             error!("Couldn't save game: {}", e);
-            bw::print_text(format!("(Aise) Couldn't save game: {}", e));
+            bw_print!("(Aise) Couldn't save game: {}", e);
         }
     }
 }

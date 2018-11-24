@@ -77,22 +77,22 @@ pub unsafe extern fn attack_to(script: *mut bw::AiScript) {
     let grouping_region = match bw::get_region(grouping.center) {
         Some(s) => s,
         None => {
-            bw::print_text(format!(
+            bw_print!(
                 "Aiscript attackto (player {}): invalid grouping coordinates {}",
                 (*script).player,
                 grouping,
-            ));
+            );
             return;
         }
     };
     let target_region = match bw::get_region(target.center) {
         Some(s) => s,
         None => {
-            bw::print_text(format!(
+            bw_print!(
                 "Aiscript attackto (player {}): invalid target coordinates {}",
                 (*script).player,
                 target,
-            ));
+            );
             return;
         }
     };
@@ -189,7 +189,7 @@ pub unsafe extern fn issue_order(script: *mut bw::AiScript) {
     let target_misc = read.read_unit_match();
     let flags = read.read_u16();
     if flags & 0xffe0 != 0 {
-        bw::print_text(format!("Aiscript issue_order: Unknown flags 0x{:x}", flags));
+        bw_print!("Aiscript issue_order: Unknown flags 0x{:x}", flags);
         return;
     }
     let game = Game::get();
@@ -394,13 +394,13 @@ pub unsafe extern fn set_town_id(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let id = read.read_u8();
     if id == 255 {
-        bw::print_text(format!("Unsupported id {} in set_id", id));
+        bw_print!("Unsupported id {} in set_id", id);
         return;
     }
     let town = match Town::from_ptr((*script).town) {
         Some(s) => s,
         None => {
-            bw::print_text(format!("Used `set_id {}` without town", id));
+            bw_print!("Used `set_id {}` without town", id);
             return;
         }
     };
@@ -476,7 +476,7 @@ pub unsafe extern fn max_workers(script: *mut bw::AiScript) {
     let town = match Town::from_ptr((*script).town) {
         Some(s) => s,
         None => {
-            bw::print_text(format!("Used `max_workers {}` without town", count));
+            bw_print!("Used `max_workers {}` without town", count);
             return;
         }
     };
@@ -509,7 +509,7 @@ pub unsafe extern fn under_attack(script: *mut bw::AiScript) {
         1 => None,
         2 => Some(true),
         _ => {
-            bw::print_text(format!("Invalid `under_attack` mode: {}", mode));
+            bw_print!("Invalid `under_attack` mode: {}", mode);
             return;
         }
     };
@@ -821,10 +821,10 @@ pub unsafe extern fn ret(script: *mut bw::AiScript) {
             (*script).bw.pos = s;
         }
         None => {
-            bw::print_text(format!(
+            bw_print!(
                 "Script {} used return without call",
                 (*script).debug_string()
-            ));
+            );
             (*script).bw.wait = !1;
             (*script).bw.pos -= 1;
         }
@@ -961,7 +961,7 @@ pub unsafe extern fn supply(script: *mut bw::AiScript) {
         2 => SupplyType::Max,
         3 => SupplyType::InUnits,
         x => {
-            bw::print_text(format!("Unsupported supply type in supply: {:x}", x));
+            bw_print!("Unsupported supply type in supply: {:x}", x);
             return;
         }
     };
@@ -973,7 +973,7 @@ pub unsafe extern fn supply(script: *mut bw::AiScript) {
         16 => (Race::Any, Mode::Sum),
         17 => (Race::Any, Mode::Max),
         x => {
-            bw::print_text(format!("Unsupported race in supply: {:x}", x));
+            bw_print!("Unsupported race in supply: {:x}", x);
             return;
         }
     };
@@ -1024,7 +1024,7 @@ pub unsafe extern fn supply(script: *mut bw::AiScript) {
                 Race::Terran => 1,
                 Race::Protoss => 2,
                 Race::Any => {
-                    bw::print_text("Only specific race supply can be modified.");
+                    bw_print!("Only specific race supply can be modified.");
                     return;
                 }
             };
@@ -1036,7 +1036,7 @@ pub unsafe extern fn supply(script: *mut bw::AiScript) {
                     }
                 }
             } else {
-                bw::print_text("Only Max supply can be modified.");
+                bw_print!("Only Max supply can be modified.");
                 return;
             }
         }
@@ -1064,7 +1064,7 @@ pub unsafe extern fn resources_command(script: *mut bw::AiScript) {
         1 => &[Resource::Gas],
         2 => &[Resource::Ore, Resource::Gas],
         x => {
-            bw::print_text(format!("Unsupported resource type in resources: {:x}", x));
+            bw_print!("Unsupported resource type in resources: {:x}", x);
             return;
         }
     };
@@ -1138,7 +1138,7 @@ unsafe extern fn reveal(game: Game, area: bw::Rect, players: PlayerMatch, reveal
 
 pub unsafe extern fn reveal_area(script: *mut bw::AiScript) {
     if bw::is_scr() {
-        bw::print_text("reveal_area is not supported in SCR");
+        bw_print!("reveal_area is not supported in SCR");
         return;
     }
     let mut read = ScriptData::new(script);
@@ -1153,7 +1153,7 @@ pub unsafe extern fn reveal_area(script: *mut bw::AiScript) {
     let reveal_type = match flag {
         0 => RevealType::RevealFog,
         x => {
-            bw::print_text(format!("Unsupported flag modifier: {:x}", x));
+            bw_print!("Unsupported flag modifier: {:x}", x);
             return;
         }
     };
@@ -1204,12 +1204,12 @@ pub unsafe extern fn save_bank(script: *mut bw::AiScript) {
     let mut file = match File::create(&path) {
         Ok(o) => o,
         Err(e) => {
-            bw::print_text(format!("Bank load error: {}", e));
+            bw_print!("Bank load error: {}", e);
             return;
         }
     };
     if let Err(e) = bincode::serialize_into(&mut file, &globals.bank) {
-        bw::print_text(format!("Bank save error: {}", e));
+        bw_print!("Bank save error: {}", e);
     }
 }
 
@@ -1227,14 +1227,14 @@ pub unsafe extern fn load_bank(script: *mut bw::AiScript) {
         let mut file = match File::open(path) {
             Ok(o) => o,
             Err(e) => {
-                bw::print_text(format!("Bank load error: {}", e));
+                bw_print!("Bank load error: {}", e);
                 return;
             }
         };
         globals.bank = match bincode::deserialize_from(&mut file) {
             Ok(o) => o,
             Err(e) => {
-                bw::print_text(format!("Bank load error: {}", e));
+                bw_print!("Bank load error: {}", e);
                 return;
             }
         };
@@ -1297,7 +1297,7 @@ pub unsafe extern fn bank_data(script: *mut bw::AiScript) {
 
 pub unsafe extern fn remove_creep(script: *mut bw::AiScript) {
     if bw::is_scr() {
-        bw::print_text("remove_creep is not supported in SCR");
+        bw_print!("remove_creep is not supported in SCR");
         return;
     }
     let mut read = ScriptData::new(script);
@@ -1342,7 +1342,7 @@ pub unsafe extern fn time_command(script: *mut bw::AiScript) {
         0 => TimeType::Frames,
         1 => TimeType::Minutes,
         x => {
-            bw::print_text(format!("Unsupported time modifier in time: {:x}", x));
+            bw_print!("Unsupported time modifier in time: {:x}", x);
             return;
         }
     };
@@ -1354,7 +1354,7 @@ pub unsafe extern fn time_command(script: *mut bw::AiScript) {
     let read = match modifier.ty {
         ModifierType::Read(r) => r,
         ModifierType::Write(w) => {
-            bw::print_text(format!("Used writing modifier {:?} in time", w));
+            bw_print!("Used writing modifier {:?} in time", w);
             return;
         }
     };
@@ -1435,12 +1435,12 @@ pub unsafe extern fn unit_name(script: *mut bw::AiScript) {
         0 => NameStatus::Enable,
         1 => NameStatus::Disable,
         x => {
-            bw::print_text(format!("Unsupported flag modifier in unit_name: {:x}", x));
+            bw_print!("Unsupported flag modifier in unit_name: {:x}", x);
             return;
         }
     };
     if bw::is_scr() {
-        bw::print_text("unit_name is not supported in SCR");
+        bw_print!("unit_name is not supported in SCR");
         return;
     }
     let mut globals = Globals::get("ais unit_name");
@@ -1589,8 +1589,8 @@ pub unsafe fn increment_deaths(
 pub unsafe extern fn print_command(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let msg = read.read_string();
-    let s = String::from_utf8_lossy(&msg);
-    bw::print_text(s);
+    // The null isn't included in returned slice, but it still is always there for ptr.
+    samase::print_text(msg.as_ptr());
 }
 
 pub unsafe extern fn ping(script: *mut bw::AiScript) {
@@ -1599,7 +1599,7 @@ pub unsafe extern fn ping(script: *mut bw::AiScript) {
     let y = read.read_u16();
     let color = read.read_u8();
     if bw::is_scr() {
-        bw::print_text("ping is not supported in SCR");
+        bw_print!("ping is not supported in SCR");
         return;
     }
     bw::ping_minimap(x as u32, y as u32, color);
@@ -1610,7 +1610,7 @@ pub unsafe extern fn player_jump(script: *mut bw::AiScript) {
     let player = read.read_string();
     let dest = read.read_jump_pos();
     if bw::is_scr() {
-        bw::print_text("player_jump is not supported in SCR");
+        bw_print!("player_jump is not supported in SCR");
         return;
     }
     if *bw::is_multiplayer != 0 {
@@ -1698,7 +1698,7 @@ pub unsafe extern fn unit_avail(script: *mut bw::AiScript) {
     let unit = UnitId(read.read_u16());
     let dest = read.read_jump_pos();
     if avail_modifier >= 2 {
-        bw::print_text("Invalid modifier in unit_avail");
+        bw_print!("Invalid modifier in unit_avail");
         return;
     }
     match modifier.ty {
@@ -1716,7 +1716,7 @@ pub unsafe extern fn unit_avail(script: *mut bw::AiScript) {
             for player in players.players() {
                 let new_value = match w {
                     WriteModifier::Add | WriteModifier::Subtract => {
-                        bw::print_text("Add/subtract modifier is not supported in unit_avail");
+                        bw_print!("Add/subtract modifier is not supported in unit_avail");
                         return;
                     }
                     WriteModifier::Set => avail_modifier,
@@ -1846,7 +1846,7 @@ pub unsafe extern fn bring_jump(script: *mut bw::AiScript) {
     let read = match modifier.ty {
         ModifierType::Read(r) => r,
         ModifierType::Write(w) => {
-            bw::print_text(format!("Used writing modifier {:?} in bring_jump", w));
+            bw_print!("Used writing modifier {:?} in bring_jump", w);
             return;
         }
     };
@@ -1979,7 +1979,7 @@ impl WriteModifier {
                 if operand != 0 {
                     rng.synced_rand(0..operand)
                 } else {
-                    bw::print_text("Cannot randomize with 0 cases");
+                    bw_print!("Cannot randomize with 0 cases");
                     !0
                 }
             }
@@ -2329,7 +2329,7 @@ impl ScriptData {
                     }
                 }
                 x => {
-                    bw::print_text(format!("Unsupported player: {:x}", x));
+                    bw_print!("Unsupported player: {:x}", x);
                 }
             };
         }
@@ -2343,7 +2343,7 @@ impl ScriptData {
             0x40 => ModifierAction::Call,
             0x0 => ModifierAction::Jump,
             _ => {
-                bw::print_text(format!("Unsupported modifier: {:x}", val));
+                bw_print!("Unsupported modifier: {:x}", val);
                 ModifierAction::Jump
             }
         };
@@ -2361,7 +2361,7 @@ impl ScriptData {
             0x80 => ModifierAction::Call,
             0x0 => ModifierAction::Jump,
             _ => {
-                bw::print_text(format!("Unsupported modifier: {:x}", val));
+                bw_print!("Unsupported modifier: {:x}", val);
                 ModifierAction::Jump
             }
         };
@@ -2380,7 +2380,7 @@ impl ScriptData {
                 10 => ModifierType::Read(read_modifier(ReadModifierType::Exactly, action)),
                 11 => ModifierType::Write(WriteModifier::Randomize),
                 x => {
-                    bw::print_text(format!("Unsupported modifier: {:x}", x));
+                    bw_print!("Unsupported modifier: {:x}", x);
                     ModifierType::Read(read_modifier(ReadModifierType::AtLeast, action))
                 }
             },
@@ -2400,7 +2400,7 @@ impl ScriptData {
                 units: vec![UnitId(val)],
             }
         } else {
-            bw::print_text(format!("Invalid script encoding: unit match {:x}", val));
+            bw_print!("Invalid script encoding: unit match {:x}", val);
             UnitMatch {
                 units: vec![],
             }
@@ -2413,7 +2413,7 @@ impl ScriptData {
         if x == !0 {
             assert!(y < 255);
             let location = if y >= 255 {
-                bw::print_text(format!("Invalid location id 0x{:x} used", y));
+                bw_print!("Invalid location id 0x{:x} used", y);
                 bw::location(63)
             } else {
                 bw::location(y as u8)
@@ -2623,9 +2623,9 @@ pub fn claim_bw_allocated_scripts(globals: &mut Globals) {
         }
 
         if first_free.is_null() {
-            bw::print_text(
-                "Warning: ran out of AI scripts for the frame, some of the scripts
-                may not have started.",
+            bw_print!(
+                "Warning: ran out of AI scripts for the frame, some of the scripts \
+                 may not have started.",
             );
         }
         let (new_first, mut new_first_free) =
@@ -2710,7 +2710,7 @@ unsafe fn take_bw_allocated_scripts(
     // bw inserts new scripts at start of the list.
     while !script.is_null() {
         if scripts.len() == AISCRIPT_LIMIT {
-            bw::print_text("AI script limit reached.");
+            bw_print!("AI script limit reached.");
             break;
         }
         if !scripts.contains(Script::ptr_from_bw(script)) {
@@ -2999,10 +2999,7 @@ unsafe extern fn add_layout(
         0 => LayoutModifier::Set,
         1 => LayoutModifier::Remove,
         x => {
-            bw::print_text(format!(
-                "Unsupported layout modifier in base_layout: {:x}",
-                x
-            ));
+            bw_print!("Unsupported layout modifier in base_layout: {:x}", x);
             return;
         }
     };
@@ -3061,7 +3058,7 @@ pub unsafe extern fn queue(script: *mut bw::AiScript) {
         0 => LocalModifier::Local,
         1 => LocalModifier::Global,
         x => {
-            bw::print_text(format!("Unsupported local modifier in queue: {:x}", x));
+            bw_print!("Unsupported local modifier in queue: {:x}", x);
             return;
         }
     };
@@ -3071,10 +3068,7 @@ pub unsafe extern fn queue(script: *mut bw::AiScript) {
             let id = town_from_id(script, &mut globals, town_id);
             match id {
                 None => {
-                    bw::print_text(format!(
-                        "town id {:x} for local queue do not exist",
-                        town_id
-                    ));
+                    bw_print!("town id {:x} for local queue do not exist", town_id);
                     return;
                 }
                 Some(s) => Some(s),
@@ -3232,7 +3226,7 @@ pub unsafe extern fn create_script(script: *mut bw::AiScript) {
         0 => null_mut(),
         255 => (*script).town,
         _ => {
-            bw::print_text("Invalid town in create_script");
+            bw_print!("Invalid town in create_script");
             return;
         }
     };

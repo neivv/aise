@@ -390,10 +390,10 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
                             2 => Comparision::LessThanPercentage,
                             3 => Comparision::GreaterThanPercentage,
                             x => {
-                                bw::print_text(format!(
+                                bw_print!(
                                     "idle_orders: invalid encoding, invalid comparison: {}",
                                     x
-                                ));
+                                );
                                 return false;
                             }
                         };
@@ -405,10 +405,7 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
                             4 => IdleOrderNumeric::Hangar,
                             5 => IdleOrderNumeric::Cargo,
                             x => {
-                                bw::print_text(format!(
-                                    "idle_orders: invalid encoding, invalid numeric: {}",
-                                    x
-                                ));
+                                bw_print!("idle_orders: invalid encoding, invalid numeric: {}", x);
                                 return false;
                             }
                         };
@@ -424,7 +421,7 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
                                 }
                             }
                         } else {
-                            bw::print_text("idle_orders: invalid self encoding");
+                            bw_print!("idle_orders: invalid self encoding");
                             return false;
                         }
                     }
@@ -437,7 +434,7 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
                             0 => flags.units_dat_required = units_dat_flags,
                             1 => flags.units_dat_not = units_dat_flags,
                             _ => {
-                                bw::print_text("idle_orders: invalid encoding");
+                                bw_print!("idle_orders: invalid encoding");
                                 return false;
                             }
                         }
@@ -446,7 +443,7 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
                         match TargetingFlags::from_bits((val & 0xff) as u8) {
                             Some(s) => flags.targeting_filter = s,
                             None => {
-                                bw::print_text("idle_orders: invalid encoding");
+                                bw_print!("idle_orders: invalid encoding");
                                 return false;
                             }
                         };
@@ -473,10 +470,7 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
                             1 => ReadModifierType::AtMost,
                             10 => ReadModifierType::Exactly,
                             x => {
-                                bw::print_text(format!(
-                                    "Unsupported modifier in count flag: {:x}",
-                                    x
-                                ));
+                                bw_print!("Unsupported modifier in count flag: {:x}", x);
                                 ReadModifierType::AtLeast
                             }
                         };
@@ -498,12 +492,12 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
                             0 => flags.tiles_required = tile_flags,
                             1 => flags.tiles_not = tile_flags,
                             _ => {
-                                bw::print_text("idle_orders: invalid encoding (tile)");
+                                bw_print!("idle_orders: invalid encoding (tile)");
                                 return false;
                             }
                         }
                     }
-                    _ => bw::print_text("idle_orders: invalid encoding"),
+                    _ => bw_print!("idle_orders: invalid encoding"),
                 }
             }
         }
@@ -593,10 +587,10 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
             },
             None => {
                 if !silent_fail {
-                    bw::print_text(&format!(
+                    bw_print!(
                         "idle_orders: Unable to find match to remove for {:#?}",
                         matchee
-                    ));
+                    );
                 }
             }
         }
