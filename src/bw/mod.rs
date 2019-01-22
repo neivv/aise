@@ -119,9 +119,9 @@ pub fn change_ai_region_state(region: *mut AiRegion, state: u32) {
 
 lazy_static! {
     static ref SAMASE_AISCRIPT_BIN: usize =
-        samase::read_file("scripts\\aiscript.bin").unwrap() as usize;
+        samase::read_file("scripts\\aiscript.bin").unwrap().0 as usize;
     static ref SAMASE_BWSCRIPT_BIN: usize =
-        samase::read_file("scripts\\bwscript.bin").unwrap() as usize;
+        samase::read_file("scripts\\bwscript.bin").unwrap().0 as usize;
 }
 
 pub fn aiscript_bin() -> *mut u8 {

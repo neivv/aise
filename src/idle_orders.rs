@@ -541,6 +541,9 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
             return;
         }
     };
+    if crate::feature_disabled("idle_orders") {
+        return;
+    }
     if IDLE_ORDERS_DISABLED.load(Ordering::Acquire) == true {
         return;
     }

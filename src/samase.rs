@@ -187,7 +187,7 @@ pub fn rng_seed() -> Option<u32> {
 }
 
 static mut READ_FILE: GlobalFunc<fn(*const u8, *mut usize) -> *mut u8> = GlobalFunc(None);
-pub fn read_file(name: &str) -> Option<*mut u8> {
+pub fn read_file(name: &str) -> Option<(*mut u8, usize)> {
     // Uh, should work fine
     let cstring = format!("{}\0", name);
     let mut size = 0usize;
@@ -195,7 +195,7 @@ pub fn read_file(name: &str) -> Option<*mut u8> {
     if result == null_mut() {
         None
     } else {
-        Some(result)
+        Some((result, size))
     }
 }
 
@@ -321,18 +321,21 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
         ((*api).change_ai_region_state)().map(|x| mem::transmute(x)),
         "change_ai_region_state",
     );
-    let result = ((*api).hook_step_objects)(::frame_hook, 0);
-    if result == 0 {
-        fatal("Couldn't hook step_objects");
-    }
-    let result = ((*api).hook_step_objects)(::frame_hook_after, 1);
-    if result == 0 {
-        fatal("Couldn't hook step_objects");
-    }
-    let result = ((*api).hook_step_order)(::step_order_hook);
-    if result == 0 {
-        ((*api).warn_unsupported_feature)(b"Ai script idle_orders\0".as_ptr());
-        ::idle_orders::IDLE_ORDERS_DISABLED.store(true, ::std::sync::atomic::Ordering::Release);
+    if !crate::feature_disabled("everything_else") {
+        let result = ((*api).hook_step_objects)(::frame_hook, 0);
+        if result == 0 {
+            fatal("Couldn't hook step_objects");
+        }
+        let result = ((*api).hook_step_objects)(::frame_hook_after, 1);
+        if result == 0 {
+            fatal("Couldn't hook step_objects");
+        }
+        let result = ((*api).hook_step_order)(::step_order_hook);
+        if result == 0 {
+            use std::sync::atomic::Ordering;
+            ((*api).warn_unsupported_feature)(b"Ai script idle_orders\0".as_ptr());
+            ::idle_orders::IDLE_ORDERS_DISABLED.store(true, Ordering::Release);
+        }
     }
     UNITS_DAT.init(((*api).dat)(0).map(|x| mem::transmute(x)), "units.dat");
     bw_dat::init_units(units_dat());

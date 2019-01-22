@@ -175,6 +175,82 @@ fn init() {
 
 static IS_1161: AtomicBool = ATOMIC_BOOL_INIT;
 
+#[cfg(debug_assertions)]
+fn feature_disabled(name: &str) -> bool {
+    use parking_lot::Mutex;
+    lazy_static! {
+        static ref DISABLED_FEATURES: Mutex<Option<Vec<String>>> = Mutex::new(None);
+    }
+    let mut disabled_features = DISABLED_FEATURES.lock();
+    let disabled_features = disabled_features.get_or_insert_with(|| unsafe {
+        let feats = [
+            "attack_to",
+            "attack_timeout",
+            "issue_order",
+            "if_attacking",
+            "unstart_campaign",
+            "set_town_id",
+            "remove_build",
+            "max_workers",
+            "under_attack",
+            "aicontrol",
+            "supply",
+            "resources",
+            "reveal_area",
+            "load_bank",
+            "remove_creep",
+            "time",
+            "attacking",
+            "unit_name",
+            "deaths",
+            "wait_rand",
+            "kills_command",
+            "player_jump",
+            "upgrade_jump",
+            "load_bunkers",
+            "unit_avail",
+            "tech_jump",
+            "tech_avail",
+            "random_call",
+            "attack_rand",
+            "bring_jump",
+            "base_layout",
+            "queue",
+            "lift_land",
+            "guard",
+            "create_script",
+            "idle_orders",
+            "everything_else",
+        ];
+        let (data, len) = match samase::read_file("samase\\aise_disabled_features.txt") {
+            Some(s) => s,
+            None => return Vec::new(),
+        };
+        let slice = std::slice::from_raw_parts(data, len);
+        let mut result = Vec::new();
+        for line in slice.split(|&x| x == b'\n') {
+            let line = String::from_utf8_lossy(line);
+            let line = line.trim();
+            if line.starts_with("#") || line.starts_with(";") || line.is_empty() {
+                continue;
+            }
+            if !feats.iter().any(|&x| x == line) {
+                let msg = format!("Feature '{}' not known", line);
+                windows::message_box("Aiscript extension plugin", &msg);
+                TerminateProcess(GetCurrentProcess(), 0x4230daef);
+            }
+            result.push(line.into());
+        }
+        result
+    });
+    disabled_features.iter().any(|x| x == name)
+}
+
+#[cfg(not(debug_assertions))]
+fn feature_disabled(name: &str) -> bool {
+    false
+}
+
 #[no_mangle]
 #[allow(non_snake_case)]
 pub extern fn Initialize() {
@@ -184,29 +260,32 @@ pub extern fn Initialize() {
         let f: fn() = || {
             let ctx = samase_shim::init_1161();
             samase::samase_plugin_init(ctx.api());
+
+            let mut active_patcher = ::PATCHER.lock().unwrap();
+
+            #[cfg(feature = "opengl")]
+            gl::init_hooks(&mut active_patcher);
+
+            let mut exe = active_patcher.patch_exe(0x00400000);
+            bw::init_funcs(&mut exe);
+            bw::init_vars(&mut exe);
+            if !feature_disabled("everything_else") {
+                exe.hook_opt(bw::increment_death_scores, aiscript::increment_deaths);
+                exe.hook_opt(
+                    bw::choose_placement_position,
+                    aiscript::choose_building_placement,
+                );
+                exe.hook_opt(
+                    bw::update_building_placement_state_hook,
+                    aiscript::update_placement_hook,
+                );
+                exe.hook_opt(bw::ai_spellcast, aiscript::ai_spellcast_hook);
+                exe.hook_opt(bw::get_unit_name, aiscript::unit_name_hook);
+                exe.hook_opt(bw::ai_focus_unit_check, aiscript::ai_attack_focus_hook);
+            }
         };
         samase_shim::on_win_main(f);
 
-        let mut active_patcher = ::PATCHER.lock().unwrap();
-
-        #[cfg(feature = "opengl")]
-        gl::init_hooks(&mut active_patcher);
-
-        let mut exe = active_patcher.patch_exe(0x00400000);
-        bw::init_funcs(&mut exe);
-        bw::init_vars(&mut exe);
-        exe.hook_opt(bw::increment_death_scores, aiscript::increment_deaths);
-        exe.hook_opt(
-            bw::choose_placement_position,
-            aiscript::choose_building_placement,
-        );
-        exe.hook_opt(
-            bw::update_building_placement_state_hook,
-            aiscript::update_placement_hook,
-        );
-        exe.hook_opt(bw::ai_spellcast, aiscript::ai_spellcast_hook);
-        exe.hook_opt(bw::get_unit_name, aiscript::unit_name_hook);
-        exe.hook_opt(bw::ai_focus_unit_check, aiscript::ai_attack_focus_hook);
         bw::IS_1161.store(true, std::sync::atomic::Ordering::Release);
     }
 }
