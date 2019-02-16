@@ -425,22 +425,24 @@ unsafe fn region_can_rebuild_guards(region: *mut bw::AiRegion) -> bool {
 }
 
 pub unsafe fn continue_incomplete_buildings() {
-    for town in ListIter(bw::first_active_ai_town()) {
-        let regions = bw::ai_regions(u32::from((*town).player));
-        let free_scvs = ListIter((*town).workers)
-            .map(|x| Unit((*x).parent))
-            .filter(|x| x.id() == unit::SCV && x.order() == order::COMPUTER_AI);
-        let incomplete_buildings = ListIter((*town).buildings)
-            .map(|x| Unit((*x).parent))
-            .filter(|&x| {
-                !x.is_completed() &&
-                    (*x.0).related.is_null() &&
-                    x.id().group_flags() & 0x2 != 0 &&
-                    is_building_safe(x, regions)
-            });
-        for (scv, building) in free_scvs.zip(incomplete_buildings) {
-            scv.issue_order_unit(order::CONSTRUCTING_BUILDING, building);
-            (*building.0).related = scv.0;
+    for i in 0..8 {
+        for town in ListIter(bw::first_active_ai_town(i)) {
+            let regions = bw::ai_regions(u32::from((*town).player));
+            let free_scvs = ListIter((*town).workers)
+                .map(|x| Unit((*x).parent))
+                .filter(|x| x.id() == unit::SCV && x.order() == order::COMPUTER_AI);
+            let incomplete_buildings = ListIter((*town).buildings)
+                .map(|x| Unit((*x).parent))
+                .filter(|&x| {
+                    !x.is_completed() &&
+                        (*x.0).related.is_null() &&
+                        x.id().group_flags() & 0x2 != 0 &&
+                        is_building_safe(x, regions)
+                });
+            for (scv, building) in free_scvs.zip(incomplete_buildings) {
+                scv.issue_order_unit(order::CONSTRUCTING_BUILDING, building);
+                (*building.0).related = scv.0;
+            }
         }
     }
 }

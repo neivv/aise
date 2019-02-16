@@ -180,8 +180,8 @@ pub fn town_array_start() -> *mut AiTown {
     }
 }
 
-pub fn first_active_ai_town() -> *mut AiTown {
-    unsafe { (*samase::active_towns()).first }
+pub fn first_active_ai_town(player: u8) -> *mut AiTown {
+    unsafe { (*samase::active_towns().add(player as usize)).first }
 }
 
 whack_hooks!(stdcall, 0x00400000,
