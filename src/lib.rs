@@ -77,7 +77,8 @@ use libc::c_void;
 
 use winapi::um::processthreadsapi::{GetCurrentProcess, TerminateProcess};
 
-use globals::Globals;
+use crate::globals::Globals;
+use crate::unit::Unit;
 
 lazy_static! {
     static ref PATCHER: whack::Patcher = whack::Patcher::new();
@@ -321,11 +322,13 @@ unsafe extern fn frame_hook() {
             for (ty, val) in iter {
                 if *ty == 2 && *val != null_mut() {
                     let ai = *val as *mut bw::GuardAi;
-                    if (*ai).parent != null_mut() {
-                        // Guard ai share bug, remove the ai from queue
-                        debug!("Guard AI share for unit at {:?}", unit.position());
-                        *val = null_mut();
-                        *ty = 0;
+                    if let Some(parent) = Unit::from_ptr((*ai).parent) {
+                        if parent != unit {
+                            // Guard ai share bug, remove the ai from queue
+                            debug!("Guard AI share for unit at {:?}", unit.position());
+                            *val = null_mut();
+                            *ty = 0;
+                        }
                     }
                 }
             }
