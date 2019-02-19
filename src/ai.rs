@@ -175,20 +175,19 @@ impl PlayerAi {
             }
         }
         requests[0] = requests[1];
-        let mut pos = 0;
-        while pos < new_count - 1 {
-            let next = pos * 2 + 1;
+        let mut pos = 1;
+        while pos <= new_count - 1 {
             let index =
-                if next + 1 >= new_count || requests[next].priority > requests[next + 1].priority {
-                    next
+                if pos + 1 >= new_count || requests[pos].priority > requests[pos + 1].priority {
+                    pos
                 } else {
-                    next + 1
+                    pos + 1
                 };
             if requests[pos].priority >= requests[index].priority {
                 break;
             }
             requests.swap(pos, index);
-            pos = next * 2 + 1;
+            pos = pos * 2 + 1;
         }
     }
 }
