@@ -3,10 +3,10 @@ use std::ptr::null_mut;
 
 use libc::c_void;
 
-use bw_dat::{order, unit, TechId, UnitId, UpgradeId};
+use bw_dat::{order, unit, RaceFlags, TechId, UnitId, UpgradeId};
 
 use bw;
-use game::Game;
+use game::{Game, Race};
 use list::{ListEntry, ListIter};
 use unit::{active_units, Unit};
 
@@ -170,6 +170,9 @@ impl PlayerAi {
             requests = &mut ((*self.0).requests)[..(*self.0).request_count as usize];
             (*self.0).request_count -= 1;
             new_count = (*self.0).request_count as usize;
+            if new_count == 0 {
+                return;
+            }
         }
         requests[0] = requests[1];
         let mut pos = 0;
@@ -256,6 +259,7 @@ pub struct Cost {
     pub minerals: u32,
     pub gas: u32,
     pub supply: u32,
+    pub races: RaceFlags,
 }
 
 pub fn unit_cost(unit: UnitId) -> Cost {
@@ -264,6 +268,7 @@ pub fn unit_cost(unit: UnitId) -> Cost {
         minerals: unit.mineral_cost(),
         gas: unit.gas_cost(),
         supply: unit.supply_cost() * if dual_birth { 2 } else { 1 },
+        races: unit.races(),
     }
 }
 
@@ -272,6 +277,7 @@ pub fn upgrade_cost(upgrade: UpgradeId) -> Cost {
         minerals: upgrade.mineral_cost(),
         gas: upgrade.gas_cost(),
         supply: 0,
+        races: RaceFlags::empty(),
     }
 }
 
@@ -280,6 +286,7 @@ pub fn tech_cost(tech: TechId) -> Cost {
         minerals: tech.mineral_cost(),
         gas: tech.gas_cost(),
         supply: 0,
+        races: RaceFlags::empty(),
     }
 }
 
@@ -608,6 +615,15 @@ unsafe fn update_slowest_unit_in_region(region: *mut bw::AiRegion) {
 }
 
 pub fn has_resources(game: Game, player: u8, cost: &Cost) -> bool {
-    // TODO supply
+    static RACES: &[(RaceFlags, Race)] = &[
+        (RaceFlags::ZERG, Race::Zerg),
+        (RaceFlags::TERRAN, Race::Terran),
+        (RaceFlags::PROTOSS, Race::Protoss),
+    ];
+    for &(flag, race) in RACES {
+        if cost.races.contains(flag) && game.supply_free(player, race) < cost.supply {
+            return false;
+        }
+    }
     game.minerals(player) >= cost.minerals && game.gas(player) >= cost.gas
 }

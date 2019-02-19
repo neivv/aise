@@ -1,6 +1,8 @@
 use smallvec::SmallVec;
 
-use bw_dat::{self, TechId, UnitId};
+use bw_dat::{self, tech, unit, upgrade, TechId, UnitId};
+use game::Game;
+use unit::Unit;
 
 impl DatReq {
     unsafe fn read(pos: &mut *const u16) -> DatReq {
@@ -175,6 +177,121 @@ impl ReadDatReqs {
                     }
                 }
             }
+        }
+    }
+}
+
+pub unsafe fn check_dat_requirements(
+    game: Game,
+    reqs: *const u16,
+    unit: Unit,
+    upgrade_level: u8,
+) -> bool {
+    if unit.is_disabled() || !unit.is_completed() {
+        return false;
+    }
+    let mut dat_reqs: SmallVec<_> = SmallVec::new();
+    let mut read = ReadDatReqs::new(reqs, upgrade_level);
+    let mut hallucinations_allowed = false;
+    let player = unit.player();
+    loop {
+        read.next_dat_requirements(&mut dat_reqs);
+        if dat_reqs.is_empty() {
+            // End
+            if !hallucinations_allowed && unit.is_hallucination() {
+                return false;
+            }
+            return true;
+        }
+        let pass = dat_reqs.iter().any(|req| {
+            match *req {
+                DatReq::Disabled => false,
+                DatReq::Blank => false,
+                DatReq::BwOnly => true, // w/e
+                DatReq::IsTransport => unit.is_transport(game),
+                DatReq::IsNotBusy => {
+                    let current_build_unit =
+                        UnitId((*unit.0).build_queue[(*unit.0).current_build_slot as usize]);
+                    current_build_unit == unit::NONE &&
+                        !unit.is_building_addon() &&
+                        unit.upgrade_in_progress() == upgrade::NONE &&
+                        unit.tech_in_progress() == tech::NONE
+                }
+                DatReq::IsNotConstructingAddon => !unit.is_building_addon(),
+                DatReq::IsNotConstructingBuilding => !unit.is_constructing_building(),
+                DatReq::IsNotTeching => unit.tech_in_progress() == tech::NONE,
+                DatReq::IsNotUpgrading => unit.upgrade_in_progress() == upgrade::NONE,
+                DatReq::IsLifted => unit.id().is_building() && !unit.is_landed_building(),
+                DatReq::IsNotLifted => unit.is_landed_building(),
+                DatReq::HasNoNydusExit => *((*unit.0).unit_specific2.as_ptr() as *const u32) == 0,
+                DatReq::NotBurrowedOnly => !unit.is_burrowed(),
+                DatReq::BurrowedOnly => unit.is_burrowed(),
+                DatReq::NotLandedBuildingOnly => !unit.is_landed_building(),
+                DatReq::LandedBuildingOnly => unit.is_landed_building(),
+                DatReq::CanMoveOnly => {
+                    let rclick_action = unit.id().rclick_action();
+                    !unit.is_landed_building() &&
+                        rclick_action != 0 &&
+                        rclick_action != 3 &&
+                        (unit.id() != unit::LURKER || !unit.is_burrowed())
+                }
+                DatReq::CanAttackOnly => {
+                    fn can_attack(unit: Unit) -> bool {
+                        if unit.id().ground_weapon().is_some() {
+                            if unit.id() != unit::LURKER || unit.is_burrowed() {
+                                return true;
+                            }
+                        }
+                        if unit.id().air_weapon().is_some() {
+                            return true;
+                        }
+                        match unit.id() {
+                            unit::REAVER | unit::WARBRINGER | unit::CARRIER | unit::GANTRITHOR => {
+                                return unit.hangar_count() > 0;
+                            }
+                            _ => (),
+                        }
+                        if let Some(subunit) = unit.subunit_linked() {
+                            if subunit.id().ground_weapon().is_some() {
+                                return true;
+                            }
+                            if subunit.id().air_weapon().is_some() {
+                                return true;
+                            }
+                        }
+                        false
+                    }
+                    can_attack(unit)
+                }
+                DatReq::SubunitOnly => unit.id().flags() & 0x10 != 0,
+                DatReq::WorkerOnly => unit.id().is_worker(),
+                DatReq::FlyingBuildingOnly => unit.id().flags() & 0x20 != 0,
+                DatReq::PowerupOnly => unit.id().flags() & 0x800 != 0,
+                DatReq::HasSpiderMinesOnly => unit.spider_mines(game) > 0,
+                DatReq::CanHoldPositionOnly => true, // The check is dumb anyway
+                DatReq::AllowOnHallucinations => {
+                    hallucinations_allowed = true;
+                    true
+                }
+                DatReq::TechOnly(tech) => game.tech_researched(player, tech),
+                DatReq::TechResearched(tech) => game.tech_researched(player, tech),
+                DatReq::HasUnit(unit) => game.unit_count(player, unit) != 0,
+                DatReq::Unit(unit) => game.completed_count(player, unit) != 0,
+                DatReq::Unknown(id) => {
+                    warn!("Unknown req ty {:x}", id);
+                    true
+                }
+                DatReq::CurrentUnitIs(unit_id) => unit.matches_id(unit_id),
+                DatReq::HasHangarSpace => unit.hangar_count() < unit.hangar_cap(game),
+                DatReq::HasNotNukeOnly => !unit.has_nuke(),
+                DatReq::HasNoAddon => unit.addon().is_none(),
+                DatReq::HasAddonAttached(id) => {
+                    unit.addon().map(|x| x.matches_id(id)).unwrap_or(false)
+                }
+            }
+        });
+        if !pass {
+            return false;
         }
     }
 }

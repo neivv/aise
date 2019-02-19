@@ -7,7 +7,7 @@ use byteorder::{ReadBytesExt, LE};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use bw;
-use bw_dat::tech;
+use bw_dat::{tech, upgrade};
 use game::Game;
 use order::OrderId;
 
@@ -180,7 +180,7 @@ impl Unit {
     }
 
     pub fn spider_mines(&self, game: Game) -> u8 {
-        if game.tech_researched(self.player(), tech::SPIDER_MINES) {
+        if game.tech_researched(self.player(), tech::SPIDER_MINES) || self.id().is_hero() {
             unsafe { (*self.0).unit_specific[0] }
         } else {
             0
@@ -196,6 +196,37 @@ impl Unit {
                 }
                 _ => (*self.0).unit_specific[8],
             }
+        }
+    }
+
+    pub fn hangar_cap(&self, game: Game) -> u8 {
+        match self.id() {
+            id::CARRIER | id::GANTRITHOR => {
+                let upgrade = upgrade::CARRIER_CAPACITY;
+                if self.id().is_hero() || game.upgrade_level(self.player(), upgrade) > 0 {
+                    8
+                } else {
+                    4
+                }
+            }
+            id::REAVER | id::WARBRINGER => {
+                let upgrade = upgrade::REAVER_CAPACITY;
+                if self.id().is_hero() || game.upgrade_level(self.player(), upgrade) > 0 {
+                    10
+                } else {
+                    5
+                }
+            }
+            _ => 0,
+        }
+    }
+
+    pub fn is_transport(&self, game: Game) -> bool {
+        let upgrade = upgrade::VENTRAL_SACS;
+        if self.id() == id::OVERLORD && game.upgrade_level(self.player(), upgrade) == 0 {
+            false
+        } else {
+            self.id().cargo_space_provided() > 0
         }
     }
 
@@ -324,6 +355,22 @@ impl Unit {
         unsafe { (*self.0).flags & 0x1 != 0 }
     }
 
+    pub fn is_landed_building(&self) -> bool {
+        unsafe { (*self.0).flags & 0x2 != 0 }
+    }
+
+    pub fn is_burrowed(&self) -> bool {
+        unsafe { (*self.0).flags & 0x10 != 0 }
+    }
+
+    pub fn is_hallucination(&self) -> bool {
+        unsafe { (*self.0).flags & 0x4000_0000 != 0 }
+    }
+
+    pub fn subunit_linked(&self) -> Option<Unit> {
+        unsafe { Unit::from_ptr((*self.0).subunit) }
+    }
+
     pub fn addon(&self) -> Option<Unit> {
         unsafe {
             if self.id().is_building() {
@@ -331,6 +378,26 @@ impl Unit {
                 Unit::from_ptr(ptr)
             } else {
                 None
+            }
+        }
+    }
+
+    pub fn tech_in_progress(self) -> bw_dat::TechId {
+        unsafe {
+            if self.id().is_building() {
+                bw_dat::TechId((*self.0).unit_specific[0x8].into())
+            } else {
+                tech::NONE
+            }
+        }
+    }
+
+    pub fn upgrade_in_progress(self) -> bw_dat::UpgradeId {
+        unsafe {
+            if self.id().is_building() {
+                bw_dat::UpgradeId((*self.0).unit_specific[0x9].into())
+            } else {
+                upgrade::NONE
             }
         }
     }
@@ -375,6 +442,38 @@ impl Unit {
 
     pub fn is_hidden(&self) -> bool {
         unsafe { (*(*self.0).sprite).flags & 0x20 != 0 }
+    }
+
+    pub fn empty_build_slot(self) -> Option<u8> {
+        unsafe {
+            let mut pos = (*self.0).current_build_slot as usize;
+            for _ in 0..5 {
+                if pos == 5 {
+                    pos = 0;
+                }
+                if (*self.0).build_queue[pos] == id::NONE.0 {
+                    return Some(pos as u8);
+                }
+                pos += 1;
+            }
+            None
+        }
+    }
+
+    pub fn is_building_addon(self) -> bool {
+        if let Some(addon) = self.addon() {
+            self.order() == bw_dat::order::BUILD_ADDON &&
+                self.is_landed_building() &&
+                !addon.is_completed()
+        } else {
+            false
+        }
+    }
+
+    pub fn is_constructing_building(self) -> bool {
+        let current_build_unit =
+            unsafe { UnitId((*self.0).build_queue[(*self.0).current_build_slot as usize]) };
+        current_build_unit != id::NONE && current_build_unit.is_building()
     }
 }
 

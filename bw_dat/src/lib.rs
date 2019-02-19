@@ -1,3 +1,5 @@
+#[macro_use]
+extern crate bitflags;
 extern crate libc;
 #[macro_use]
 extern crate serde_derive;
@@ -50,6 +52,14 @@ init_fns! {
     init_techdata, TECHDATA_DAT,
     init_sfxdata, SFXDATA_DAT,
     init_portdata, PORTDATA_DAT,
+}
+
+bitflags! {
+    pub struct RaceFlags: u8 {
+        const ZERG = 0x1;
+        const TERRAN = 0x2;
+        const PROTOSS = 0x4;
+    }
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize, Ord, PartialOrd, Hash)]
@@ -137,6 +147,9 @@ pub mod weapon {
 
 pub mod upgrade {
     use super::UpgradeId;
+    pub const VENTRAL_SACS: UpgradeId = UpgradeId(0x18);
+    pub const REAVER_CAPACITY: UpgradeId = UpgradeId(0x24);
+    pub const CARRIER_CAPACITY: UpgradeId = UpgradeId(0x2b);
     pub const NONE: UpgradeId = UpgradeId(0x3d);
 }
 
@@ -294,6 +307,10 @@ impl UnitId {
         self.get(44)
     }
 
+    pub fn races(&self) -> RaceFlags {
+        RaceFlags::from_bits_truncate((self.group_flags() as u8) & 0x7)
+    }
+
     pub fn armor(&self) -> u32 {
         self.get(27)
     }
@@ -336,6 +353,10 @@ impl UnitId {
             assert!(dat.entries > u32::from(self.0));
             *(dat.data as *const Rect).offset(self.0 as isize)
         }
+    }
+
+    pub fn rclick_action(&self) -> u8 {
+        self.get(28) as u8
     }
 }
 

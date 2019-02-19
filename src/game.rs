@@ -7,6 +7,13 @@ use bw;
 #[derive(Copy, Clone)]
 pub struct Game(pub *mut bw::Game);
 
+#[derive(Copy, Clone)]
+pub enum Race {
+    Zerg,
+    Terran,
+    Protoss,
+}
+
 impl Game {
     pub fn get() -> Game {
         let game = bw::game();
@@ -22,17 +29,41 @@ impl Game {
         unsafe { (*self.0).gas[player as usize] }
     }
 
+    pub fn reduce_minerals(self, player: u8, amount: u32) {
+        unsafe {
+            (*self.0).minerals[player as usize] -= amount;
+        }
+    }
+
+    pub fn reduce_gas(self, player: u8, amount: u32) {
+        unsafe {
+            (*self.0).gas[player as usize] -= amount;
+        }
+    }
+
     pub fn frame_count(self) -> u32 {
         unsafe { (*self.0).frame_count }
     }
 
-    pub fn unit_available(self, player: u8, unit: UnitId) -> u8 {
-        unsafe { (*self.0).unit_availability[player as usize][unit.0 as usize] }
+    pub fn unit_available(self, player: u8, unit: UnitId) -> bool {
+        unsafe { (*self.0).unit_availability[player as usize][unit.0 as usize] != 0 }
     }
 
-    pub fn set_unit_availability(self, player: u8, unit: UnitId, available: u8) {
+    pub fn set_unit_availability(self, player: u8, unit: UnitId, available: bool) {
         unsafe {
-            (*self.0).unit_availability[player as usize][unit.0 as usize] = available;
+            (*self.0).unit_availability[player as usize][unit.0 as usize] = available as u8;
+        }
+    }
+
+    pub fn supply_free(self, player: u8, race: Race) -> u32 {
+        let index = match race {
+            Race::Zerg => 0,
+            Race::Terran => 1,
+            Race::Protoss => 2,
+        };
+        unsafe {
+            let supplies = &(*self.0).supplies[index];
+            supplies.provided[player as usize].saturating_sub(supplies.used[player as usize])
         }
     }
 

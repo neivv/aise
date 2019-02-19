@@ -2,12 +2,12 @@ use std::ptr::null_mut;
 
 use smallvec::SmallVec;
 
-use bw_dat::{self, TechId, UnitId, UpgradeId};
+use bw_dat::{self, order, TechId, UnitId, UpgradeId};
 
-use crate::ai::{self, has_resources, PlayerAi};
-use crate::aiscript::AiMode;
+use crate::ai::{self, has_resources, Cost, PlayerAi};
+use crate::aiscript::{AiMode, Town};
 use crate::bw;
-use crate::datreq::{DatReq, ReadDatReqs};
+use crate::datreq::{check_dat_requirements, DatReq, ReadDatReqs};
 use crate::game::Game;
 use crate::list::ListIter;
 use crate::unit::{self, Unit};
@@ -20,11 +20,58 @@ pub unsafe fn frame_hook(ai_mode: &[AiMode; 8]) {
         while let Some(request) = player_ai.first_request() {
             let can = can_satisfy_request(game, player, &request, ai_mode);
             if can {
-                break;
+                let mut handled = false;
+                // Handle building morphs since preplaced colonies don't check for requests
+                // (Since their order switches to idle because they don't have a town on frame 0)
+                // Could handle other requests as well, but no need at the moment.
+                if handle_building_morph(game, &request, player) == Ok(()) {
+                    handled = true;
+                }
+                if !handled {
+                    break;
+                }
             }
             player_ai.pop_request()
         }
     }
+}
+
+fn handle_building_morph(
+    game: Game,
+    request: &bw::AiSpendingRequest,
+    player: u8,
+) -> Result<(), ()> {
+    if request.ty == 3 {
+        let unit_id = UnitId(request.id);
+        let cost = ai::unit_cost(unit_id);
+        if has_resources(game, player, &cost) && game.unit_available(player, unit_id) {
+            let town = Town(request.val as *mut bw::AiTown);
+            let reqs = match bw::unit_dat_requirements(unit_id) {
+                Some(s) => s,
+                None => return Err(()),
+            };
+            let mut valid_unit_ids: SmallVec<[UnitId; 4]> = SmallVec::new();
+            parent_unit_ids_for_request(reqs, 0, &mut valid_unit_ids);
+            if valid_unit_ids.iter().any(|x| x.is_building()) {
+                let unit = town
+                    .buildings()
+                    .map(|x| {
+                        Unit::from_ptr(unsafe { (*x).parent }).expect("Parentless building ai")
+                    })
+                    .find(|&unit| {
+                        valid_unit_ids.iter().any(|&y| unit.matches_id(y)) &&
+                            !unit.is_constructing_building() &&
+                            unsafe { check_dat_requirements(game, reqs, unit, 0) }
+                    });
+                if let Some(unit) = unit {
+                    start_unit_building(game, unit, unit_id, &cost)?;
+                    unit.issue_order_ground(order::BUILDING_MORPH, unit.position());
+                    return Ok(());
+                }
+            }
+        }
+    }
+    Err(())
 }
 
 fn is_gas_building(unit_id: UnitId) -> bool {
@@ -227,4 +274,45 @@ unsafe fn can_satisfy_dat_request(
         .filter(|&x| match_requirements.iter().all(|r| r.matches(x)))
         .next()
         .is_some()
+}
+
+fn start_unit_building(game: Game, unit: Unit, unit_id: UnitId, cost: &Cost) -> Result<(), ()> {
+    let slot = match unit.empty_build_slot() {
+        Some(s) => s as usize,
+        None => return Err(()),
+    };
+    if !unit.is_completed() {
+        return Err(());
+    }
+    let player = unit.player();
+    if !has_resources(game, player, cost) {
+        return Err(());
+    }
+    unsafe {
+        (*unit.0).build_queue[slot] = unit_id.0;
+    }
+    game.reduce_minerals(player, cost.minerals);
+    game.reduce_gas(player, cost.gas);
+    Ok(())
+}
+
+fn parent_unit_ids_for_request(
+    reqs: *const u16,
+    upgrade_level: u8,
+    out: &mut SmallVec<[UnitId; 4]>,
+) {
+    out.clear();
+    let mut dat_reqs: SmallVec<_> = SmallVec::new();
+    let mut read = unsafe { ReadDatReqs::new(reqs, upgrade_level) };
+    loop {
+        read.next_dat_requirements(&mut dat_reqs);
+        if dat_reqs.is_empty() {
+            break;
+        }
+        for req in dat_reqs.iter() {
+            if let DatReq::CurrentUnitIs(unit) = req {
+                out.push(*unit);
+            }
+        }
+    }
 }

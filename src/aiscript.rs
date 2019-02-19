@@ -369,8 +369,12 @@ impl Town {
         }
     }
 
-    pub unsafe fn has_building(&mut self, unit: Unit) -> bool {
-        ListIter((*self.0).buildings).any(|x| (*x).parent == unit.0)
+    pub fn has_building(self, unit: Unit) -> bool {
+        unsafe { self.buildings().any(|x| (*x).parent == unit.0) }
+    }
+
+    pub fn buildings(self) -> impl Iterator<Item = *mut bw::BuildingAi> {
+        unsafe { ListIter((*self.0).buildings) }
     }
 }
 
@@ -1796,7 +1800,7 @@ pub unsafe extern fn unit_avail(script: *mut bw::AiScript) {
                     WriteModifier::Set => avail_modifier,
                     WriteModifier::Randomize => globals.rng.synced_rand(0..2) as u8,
                 };
-                game.set_unit_availability(player, unit, new_value);
+                game.set_unit_availability(player, unit, new_value != 0);
             }
         }
     };
