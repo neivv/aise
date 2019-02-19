@@ -2,7 +2,7 @@
 #![allow(non_camel_case_types)]
 
 use std::ptr::{null, null_mut};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
 
 use bw_dat::{OrderId, TechId, UnitId, UpgradeId};
 
@@ -12,10 +12,8 @@ pub mod structs;
 
 pub use self::structs::*;
 
-pub static IS_1161: AtomicBool = AtomicBool::new(false);
-
 pub fn is_scr() -> bool {
-    IS_1161.load(Ordering::Acquire) == false
+    crate::IS_1161.load(Ordering::Acquire) == false
 }
 
 pub fn player_ai(player: u32) -> *mut PlayerAiData {

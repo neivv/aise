@@ -287,8 +287,6 @@ pub extern fn Initialize() {
             }
         };
         samase_shim::on_win_main(f);
-
-        bw::IS_1161.store(true, std::sync::atomic::Ordering::Release);
     }
 }
 
