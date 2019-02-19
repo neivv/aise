@@ -356,6 +356,8 @@ unsafe extern fn step_order_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_v
     }
 
     let unit = unit::Unit(u as *mut bw::Unit);
+    let prev_order = unit.order();
+    let mut temp_ai = None;
     match unit.order() {
         order::id::DIE => {
             let mut globals = Globals::get("step order hook (die)");
@@ -374,7 +376,71 @@ unsafe extern fn step_order_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_v
                 }
             }
         }
+        order::id::ZERG_BIRTH => {
+            // See below for unit morph.
+            // Make ai temporarily null so bw doesn't try to use it if it's not building.
+            let ai = (*unit.0).ai as *mut bw::BuildingAi;
+            if ai != null_mut() && (*ai).ai_type != 3 && (*ai).ai_type != 2 {
+                temp_ai = Some(ai as *mut c_void);
+                (*unit.0).ai = null_mut();
+            }
+        }
         _ => (),
     }
     orig(u);
+    match prev_order {
+        order::id::UNIT_MORPH => {
+            // Fix a bw bug where an unit will keep the egg's building ai for a few frames
+            // after being born. If it dies during those frames, bw doesn't remove its ai
+            // correctly since it isn't a building anymore.
+            // Should be fine to add guard/military now, even though blizzard doesn't do that?
+            let should_have_building_ai = |unit: Unit| {
+                use bw_dat::unit as id;
+                match unit.id() {
+                    id::LARVA | id::OVERLORD | id::EGG => true,
+                    id::VESPENE_GEYSER => false,
+                    x => x.is_building(),
+                }
+            };
+            if !should_have_building_ai(unit) {
+                if let Some(building_ai) = unit.building_ai() {
+                    let pos = (*unit.0).current_build_slot as usize;
+                    let value = (*building_ai).train_queue_values[pos];
+                    let ty = (*building_ai).train_queue_types[pos];
+
+                    let town = (*building_ai).town;
+                    let first_free = &mut (*(*town).free_buildings).first_free;
+                    list::ListEntry::move_to(building_ai, &mut (*town).buildings, first_free);
+                    (*unit.0).ai = null_mut();
+
+                    match ty {
+                        // Military
+                        1 => ai::add_military_ai(unit, value as *mut bw::AiRegion, false),
+                        // Guard
+                        2 => {
+                            let guard = value as *mut bw::GuardAi;
+                            // Should ideally be caught in frame_hook fix for guard ais, but
+                            // this is to not regress over bw.
+                            // Cocoons/lurker eggs shouldn't have building ai and not reach here.
+                            if (*guard).parent.is_null() {
+                                (*guard).parent = unit.0;
+                                (*guard).home = (*guard).other_home;
+                                (*unit.0).ai = guard as *mut c_void;
+                            } else {
+                                let region = ai::ai_region(unit.player(), unit.position())
+                                    .expect("Unit out of bounds??");
+                                ai::add_military_ai(unit, region, false);
+                            }
+                        }
+                        // New guard
+                        _ => ai::add_guard_ai(unit),
+                    }
+                }
+            }
+        }
+        _ => (),
+    }
+    if let Some(ai) = temp_ai {
+        (*unit.0).ai = ai;
+    }
 }

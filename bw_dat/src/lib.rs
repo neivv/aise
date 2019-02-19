@@ -93,6 +93,7 @@ pub mod unit {
     pub const EGG: UnitId = UnitId(0x24);
     pub const ZERGLING: UnitId = UnitId(0x25);
     pub const HYDRALISK: UnitId = UnitId(0x26);
+    pub const OVERLORD: UnitId = UnitId(0x2a);
     pub const MUTALISK: UnitId = UnitId(0x2b);
     pub const GUARDIAN: UnitId = UnitId(0x2c);
     pub const SCOURGE: UnitId = UnitId(0x2f);
@@ -168,9 +169,9 @@ pub mod order {
     pub const RALLY_UNIT: OrderId = OrderId(0x27);
     pub const RALLY_POS: OrderId = OrderId(0x28);
     pub const ZERG_BIRTH: OrderId = OrderId(0x29);
-    pub const BUILD_NYDUS_EXIT: OrderId = OrderId(0x2e);
     pub const UNIT_MORPH: OrderId = OrderId(0x2a);
     pub const BUILDING_MORPH: OrderId = OrderId(0x2b);
+    pub const BUILD_NYDUS_EXIT: OrderId = OrderId(0x2e);
     pub const CARRIER_ATTACK: OrderId = OrderId(0x35);
     pub const CARRIER_ATTACK_OBSCURED: OrderId = OrderId(0x36);
     pub const CARRIER_ATTACK_UNIT: OrderId = OrderId(0x38);
@@ -204,6 +205,7 @@ pub mod order {
     pub const COMPUTER_AI: OrderId = OrderId(0x9c);
     pub const AI_ATTACK_MOVE: OrderId = OrderId(0x9d);
     pub const REVEAL_TRAP: OrderId = OrderId(0xab);
+    pub const MEDIC_MOVE: OrderId = OrderId(0xb1);
     pub const DARK_ARCHON_MELD: OrderId = OrderId(0xb7);
 }
 
@@ -254,6 +256,10 @@ impl UnitId {
 
     pub fn flags(&self) -> u32 {
         self.get(22)
+    }
+
+    pub fn ai_flags(&self) -> u8 {
+        self.get(15) as u8
     }
 
     pub fn is_building(&self) -> bool {

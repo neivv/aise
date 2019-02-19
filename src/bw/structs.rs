@@ -1,7 +1,7 @@
 use libc::c_void;
 
 #[repr(C, packed)]
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct AiScript {
     pub next: *mut AiScript,
     pub prev: *mut AiScript,
@@ -26,14 +26,14 @@ pub struct TownReq {
 
 #[repr(C, packed)]
 pub struct AiTown {
-    pub next: *mut AiTown,           // 0x0
-    pub prev: *mut AiTown,           // 0x4
-    pub free_workers: *mut c_void,   // 0x8
-    pub workers: *mut WorkerAi,      // 0xc
-    pub free_buildings: *mut c_void, // 0x10
-    pub buildings: *mut BuildingAi,  // 0x14
-    pub player: u8,                  // 0x18
-    pub inited: u8,                  // 0x19
+    pub next: *mut AiTown,                    // 0x0
+    pub prev: *mut AiTown,                    // 0x4
+    pub free_workers: *mut c_void,            // 0x8
+    pub workers: *mut WorkerAi,               // 0xc
+    pub free_buildings: *mut BuildingAiArray, // 0x10
+    pub buildings: *mut BuildingAi,           // 0x14
+    pub player: u8,                           // 0x18
+    pub inited: u8,                           // 0x19
     pub worker_count: u8,
     pub worker_limit: u8,
     pub resource_area: u8,
@@ -77,6 +77,12 @@ pub struct BuildingAi {
     pub parent: *mut Unit, // 0x10
     pub town: *mut AiTown,
     pub train_queue_values: [*mut c_void; 0x5],
+}
+
+#[repr(C, packed)]
+pub struct BuildingAiArray {
+    pub ais: [BuildingAi; 1000],
+    pub first_free: *mut BuildingAi,
 }
 
 #[repr(C, packed)]
@@ -128,7 +134,32 @@ pub struct AiRegion {
     pub enemy_ground_strength: u16,
     pub air_target: *mut Unit,
     pub ground_target: *mut Unit,
-    pub dc24: [u8; 0x10],
+    pub slowest_military: *mut Unit,
+    pub dc28: [u8; 0x4],
+    pub military: MilitaryAiList,
+}
+
+#[repr(C, packed)]
+pub struct MilitaryAiList {
+    pub array: *mut MilitaryAiArray,
+    pub first: *mut MilitaryAi,
+}
+
+#[repr(C, packed)]
+pub struct MilitaryAiArray {
+    pub ais: [MilitaryAi; 1000],
+    pub first_free: *mut MilitaryAi,
+}
+
+#[repr(C, packed)]
+pub struct MilitaryAi {
+    pub next: *mut MilitaryAi,
+    pub prev: *mut MilitaryAi,
+    pub ai_type: u8,
+    pub unk9: u8,
+    pub unka: u16,
+    pub parent: *mut Unit,
+    pub region: *mut AiRegion,
 }
 
 #[repr(C, packed)]
@@ -438,6 +469,8 @@ mod test {
         assert_eq!(mem::size_of::<WorkerAi>(), 0x18);
         assert_eq!(mem::size_of::<GuardAi>(), 0x20);
         assert_eq!(mem::size_of::<GuardAiArray>(), 0x7d04);
+        assert_eq!(mem::size_of::<MilitaryAi>(), 0x14);
+        assert_eq!(mem::size_of::<MilitaryAiArray>(), 0x4e24);
         assert_eq!(mem::size_of::<PlayerAiData>(), 0x4e8);
         assert_eq!(mem::size_of::<Game>(), 0x102f0);
         assert_eq!(mem::size_of::<Unit>(), 0x150);

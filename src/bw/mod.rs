@@ -109,8 +109,8 @@ pub fn guard_ais(player: u8) -> *mut GuardAi {
     }
 }
 
-pub fn guard_array() -> *mut GuardAi {
-    unsafe { (*(*samase::guard_ais()).array).ais.as_mut_ptr() }
+pub fn guard_array() -> *mut GuardAiArray {
+    unsafe { (*samase::guard_ais()).array }
 }
 
 pub fn change_ai_region_state(region: *mut AiRegion, state: u32) {

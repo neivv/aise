@@ -3,11 +3,11 @@ use std::ptr::null_mut;
 
 use libc::c_void;
 
-use bw_dat::{order, unit, TechId, UnitId, UpgradeId};
+use bw_dat::{order, unit, OrderId, TechId, UnitId, UpgradeId};
 
 use bw;
 use game::Game;
-use list::ListIter;
+use list::{ListEntry, ListIter};
 use unit::{active_units, Unit};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -350,7 +350,7 @@ impl GuardState {
 }
 
 pub unsafe fn update_guard_needs(game: Game, guards: &mut GuardState) {
-    let guard_array = bw::guard_array();
+    let guard_array = (*bw::guard_array()).ais.as_mut_ptr();
     let seconds = (*game.0).elapsed_seconds;
     for player in 0..8 {
         let ai = PlayerAi::get(player);
@@ -456,4 +456,116 @@ unsafe fn is_building_safe(building: Unit, regions: *mut bw::AiRegion) -> bool {
         (*region).ground_target.is_null() &&
         (*region).air_target.is_null() &&
         (*region).flags & 0x20 == 0
+}
+
+unsafe fn get_matching_guard_ai(unit: Unit) -> Option<*mut bw::GuardAi> {
+    let mut guard = bw::guard_ais(unit.player());
+    while guard != null_mut() {
+        if (*guard).parent.is_null() {
+            if UnitId((*guard).unit_id) == unit.id() && (*guard).other_home == unit.position() {
+                return Some(guard);
+            }
+        }
+        guard = (*guard).next;
+    }
+    let array = bw::guard_array();
+    if (*array).first_free.is_null() {
+        None
+    } else {
+        let ai = (*array).first_free;
+        assert!(unit.player() < 8);
+        let dest = crate::samase::guard_ais().offset(unit.player() as isize);
+        ListEntry::move_to(ai, &mut (*array).first_free, &mut (*dest).first);
+        Some(ai)
+    }
+}
+
+/// Uses an existing needed or creates a new guard ai for the unit.
+/// Usually likely creates since there isn't one at precisely where the unit stands.
+pub unsafe fn add_guard_ai(unit: Unit) {
+    assert!((*unit.0).ai.is_null());
+    // Ai flag for "don't become guard"
+    if unit.id().ai_flags() & 0x2 != 0 {
+        return;
+    }
+    assert!(!unit.id().is_building());
+    if let Some(ai) = get_matching_guard_ai(unit) {
+        (*ai).parent = unit.0;
+        (*ai).unit_id = unit.id().0;
+        (*ai).home = unit.position();
+        (*ai).other_home = unit.position();
+        (*ai).times_died = 0;
+        (*unit.0).ai = ai as *mut c_void;
+    } else {
+        warn!("Guard ai limit");
+    }
+}
+
+/// NOTE: Differs from bw function in that it doesn't immediatly do one frame step.
+/// If this is called somewhere else than just zerg birth order, it should be done afterwards.
+pub unsafe fn add_military_ai(unit: Unit, region: *mut bw::AiRegion, always_this_region: bool) {
+    assert!((*unit.0).ai.is_null());
+    let region = if !always_this_region && (*region).state == 3 {
+        ai_region(unit.player(), unit.position()).expect("Unit out of bounds??")
+    } else {
+        region
+    };
+
+    let array = (*region).military.array;
+    let ai = (*array).first_free;
+    if ai.is_null() {
+        warn!("Military ai limit");
+        return;
+    }
+    ListEntry::move_to(ai, &mut (*array).first_free, &mut (*region).military.first);
+    (*ai).ai_type = 4; // Unnecessary?
+    (*ai).parent = unit.0;
+    (*ai).region = region;
+    (*unit.0).ai = ai as *mut c_void;
+    if unit.is_air() {
+        (*region).needed_air_strength = (*region).needed_air_strength.saturating_add(1); // Why?
+    }
+    match (*region).state {
+        1 | 2 | 8 | 9 => update_slowest_unit_in_region(region),
+        _ => (),
+    }
+}
+
+unsafe fn update_slowest_unit_in_region(region: *mut bw::AiRegion) {
+    if !PlayerAi::get((*region).player).is_campaign() {
+        return;
+    }
+    let mut slowest_ground = None;
+    let mut slowest_air = None;
+    let mut ground_speed = u32::max_value();
+    let mut air_speed = u32::max_value();
+
+    if let Some(unit) = Unit::from_ptr((*region).slowest_military) {
+        if unit.is_air() {
+            slowest_air = Some(unit);
+            air_speed = (*unit.0).flingy_top_speed;
+        } else {
+            slowest_ground = Some(unit);
+            ground_speed = (*unit.0).flingy_top_speed;
+        }
+    }
+    for ai in ListIter((*region).military.first) {
+        let unit = Unit::from_ptr((*ai).parent).expect("Parentless military ai");
+        let speed = (*unit.0).flingy_top_speed;
+        if unit.is_air() {
+            if speed < air_speed {
+                air_speed = speed;
+                slowest_air = Some(unit);
+            }
+        } else {
+            if speed < ground_speed {
+                ground_speed = speed;
+                slowest_ground = Some(unit);
+            }
+        }
+    }
+    (*region).slowest_military = slowest_ground
+        .or(slowest_air)
+        .map(|x| x.0)
+        .unwrap_or(null_mut());
 }

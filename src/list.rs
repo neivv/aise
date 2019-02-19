@@ -5,7 +5,6 @@ pub trait ListEntry: Sized {
     unsafe fn prev(*mut Self) -> *mut *mut Self;
 
     // Remove cfg filters if these happen to be needed
-    #[cfg(test)]
     unsafe fn remove(value: *mut Self, list_head: *mut *mut Self) {
         let next = ListEntry::next(value);
         let prev = ListEntry::prev(value);
@@ -22,7 +21,6 @@ pub trait ListEntry: Sized {
         }
     }
 
-    #[cfg(test)]
     unsafe fn add(value: *mut Self, list_head: *mut *mut Self) {
         let next = *list_head;
         if !next.is_null() {
@@ -33,7 +31,6 @@ pub trait ListEntry: Sized {
         *ListEntry::prev(value) = std::ptr::null_mut();
     }
 
-    #[cfg(test)]
     unsafe fn move_to(value: *mut Self, old: *mut *mut Self, new: *mut *mut Self) {
         ListEntry::remove(value, old);
         ListEntry::add(value, new);
@@ -41,6 +38,16 @@ pub trait ListEntry: Sized {
 }
 
 impl ListEntry for bw::AiTown {
+    unsafe fn next(x: *mut Self) -> *mut *mut Self {
+        &mut (*x).next
+    }
+
+    unsafe fn prev(x: *mut Self) -> *mut *mut Self {
+        &mut (*x).prev
+    }
+}
+
+impl ListEntry for bw::GuardAi {
     unsafe fn next(x: *mut Self) -> *mut *mut Self {
         &mut (*x).next
     }
@@ -61,6 +68,16 @@ impl ListEntry for bw::WorkerAi {
 }
 
 impl ListEntry for bw::BuildingAi {
+    unsafe fn next(x: *mut Self) -> *mut *mut Self {
+        &mut (*x).next
+    }
+
+    unsafe fn prev(x: *mut Self) -> *mut *mut Self {
+        &mut (*x).prev
+    }
+}
+
+impl ListEntry for bw::MilitaryAi {
     unsafe fn next(x: *mut Self) -> *mut *mut Self {
         &mut (*x).next
     }
