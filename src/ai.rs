@@ -164,6 +164,21 @@ impl PlayerAi {
         }
     }
 
+    /// spent_money is true when the ai actually built something, false on failures
+    pub fn remove_resource_need(&self, cost: &Cost, spent_money: bool) {
+        unsafe {
+            (*self.0).mineral_need = (*self.0).mineral_need.saturating_sub(cost.minerals);
+            (*self.0).gas_need = (*self.0).gas_need.saturating_sub(cost.supply);
+            (*self.0).supply_need = (*self.0).supply_need.saturating_sub(cost.supply);
+            if spent_money {
+                (*self.0).minerals_available =
+                    (*self.0).minerals_available.saturating_sub(cost.minerals);
+                (*self.0).gas_available = (*self.0).gas_available.saturating_sub(cost.gas);
+                (*self.0).supply_available = (*self.0).supply_available.saturating_sub(cost.supply);
+            }
+        }
+    }
+
     pub fn pop_request(&self) {
         let requests;
         let new_count;
@@ -262,6 +277,14 @@ pub struct Cost {
     pub gas: u32,
     pub supply: u32,
     pub races: RaceFlags,
+}
+
+pub fn request_cost(request: &bw::AiSpendingRequest) -> Cost {
+    match request.ty {
+        5 => upgrade_cost(UpgradeId(request.id)),
+        6 => tech_cost(TechId(request.id)),
+        _ => unit_cost(UnitId(request.id)),
+    }
 }
 
 pub fn unit_cost(unit: UnitId) -> Cost {

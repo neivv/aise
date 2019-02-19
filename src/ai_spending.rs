@@ -19,8 +19,8 @@ pub unsafe fn frame_hook(ai_mode: &[AiMode; 8]) {
         let player_ai = PlayerAi::get(player);
         while let Some(request) = player_ai.first_request() {
             let can = can_satisfy_request(game, player, &request, ai_mode);
+            let mut handled = false;
             if can {
-                let mut handled = false;
                 // Handle building morphs since preplaced colonies don't check for requests
                 // (Since their order switches to idle because they don't have a town on frame 0)
                 // Could handle other requests as well, but no need at the moment.
@@ -31,6 +31,8 @@ pub unsafe fn frame_hook(ai_mode: &[AiMode; 8]) {
                     break;
                 }
             }
+            let cost = ai::request_cost(&request);
+            player_ai.remove_resource_need(&cost, handled);
             player_ai.pop_request()
         }
     }
