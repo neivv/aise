@@ -13,8 +13,6 @@ use swap_retain::SwapRetain;
 use unit::{self, Unit};
 use unit_search::UnitSearch;
 
-pub const IDLE_ORDERS_DISABLED: AtomicBool = ATOMIC_BOOL_INIT;
-
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct IdleOrders {
     orders: Vec<(Arc<IdleOrder>, IdleOrderState)>,
@@ -141,6 +139,10 @@ impl IdleOrders {
         });
         // Decloak units that are far enough from target.
         returning_cloaked.swap_retain(|ret| {
+            // No accessing inside dropships, so keep the unit as is
+            if ret.unit.is_hidden() {
+                return true;
+            }
             if !ret.unit.is_invisible() {
                 return false;
             }
@@ -542,9 +544,6 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
         }
     };
     if crate::feature_disabled("idle_orders") {
-        return;
-    }
-    if IDLE_ORDERS_DISABLED.load(Ordering::Acquire) == true {
         return;
     }
     if order.0 >= 254 {

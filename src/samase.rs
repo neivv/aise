@@ -332,9 +332,11 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
         }
         let result = ((*api).hook_step_order)(::step_order_hook);
         if result == 0 {
-            use std::sync::atomic::Ordering;
-            ((*api).warn_unsupported_feature)(b"Ai script idle_orders\0".as_ptr());
-            ::idle_orders::IDLE_ORDERS_DISABLED.store(true, Ordering::Release);
+            fatal("Couldn't hook step_order");
+        }
+        let result = ((*api).hook_step_order_hidden)(::step_order_hidden_hook);
+        if result == 0 {
+            fatal("Couldn't hook soi");
         }
     }
     UNITS_DAT.init(((*api).dat)(0).map(|x| mem::transmute(x)), "units.dat");

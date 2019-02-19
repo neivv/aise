@@ -541,6 +541,12 @@ impl Globals {
     pub fn get(caller: &'static str) -> MutexGuard<'static, Globals> {
         GLOBALS.lock(caller)
     }
+
+    pub fn unit_removed(&mut self, unit: Unit) {
+        self.idle_orders.unit_removed(unit);
+        self.bunker_states.unit_removed(unit);
+        self.lift_lands.unit_removed(unit);
+    }
 }
 
 pub fn save_state(caller: &'static str) -> MutexGuard<'static, Option<SaveState>> {

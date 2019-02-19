@@ -361,9 +361,7 @@ unsafe extern fn step_order_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_v
     match unit.order() {
         order::id::DIE => {
             let mut globals = Globals::get("step order hook (die)");
-            globals.idle_orders.unit_removed(unit);
-            globals.bunker_states.unit_removed(unit);
-            globals.lift_lands.unit_removed(unit);
+            globals.unit_removed(unit);
         }
         order::id::COMPUTER_AI => {
             if let Some(_) = unit.building_ai() {
@@ -443,4 +441,16 @@ unsafe extern fn step_order_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_v
     if let Some(ai) = temp_ai {
         (*unit.0).ai = ai;
     }
+}
+
+unsafe extern fn step_order_hidden_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_void)) {
+    let unit = unit::Unit(u as *mut bw::Unit);
+    match unit.order() {
+        order::id::DIE => {
+            let mut globals = Globals::get("step order hidden hook (die)");
+            globals.unit_removed(unit);
+        }
+        _ => (),
+    }
+    orig(u);
 }

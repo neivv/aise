@@ -361,6 +361,10 @@ impl Unit {
         // Technically should also check datreqs, oh well
         self.is_completed() && !self.is_disabled()
     }
+
+    pub fn is_hidden(&self) -> bool {
+        unsafe { (*(*self.0).sprite).flags & 0x20 != 0 }
+    }
 }
 
 pub struct Orders<'a> {
