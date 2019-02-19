@@ -325,12 +325,31 @@ unsafe extern fn frame_hook() {
                     if let Some(parent) = Unit::from_ptr((*ai).parent) {
                         if parent != unit {
                             // Guard ai share bug, remove the ai from queue
-                            debug!("Guard AI share for unit at {:?}", unit.position());
+                            debug!(
+                                "Guard AI share for unit 0x{:x} at {:?}",
+                                unit.id().0,
+                                unit.position()
+                            );
                             *val = null_mut();
                             *ty = 0;
                         }
                     }
                 }
+            }
+        }
+        if let Some(ai) = unit.guard_ai() {
+            // Guard ai share bug, just make this a military then.
+            // Should happen for cocoons/lurker eggs, but do it for any just-in-case
+            if (*ai).parent != unit.0 {
+                debug!(
+                    "Guard AI share for unit 0x{:x} at {:?}",
+                    unit.id().0,
+                    unit.position()
+                );
+                (*unit.0).ai = null_mut();
+                let region =
+                    ai::ai_region(unit.player(), unit.position()).expect("Unit out of bounds??");
+                ai::add_military_ai(unit, region, true);
             }
         }
     }

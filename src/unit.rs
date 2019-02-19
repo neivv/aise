@@ -276,6 +276,17 @@ impl Unit {
         }
     }
 
+    pub fn guard_ai(&self) -> Option<*mut bw::GuardAi> {
+        unsafe {
+            let ai = (*self.0).ai as *mut bw::GuardAi;
+            if ai != null_mut() && (*ai).ai_type == 1 {
+                Some(ai)
+            } else {
+                None
+            }
+        }
+    }
+
     pub fn matches_id(&self, other: UnitId) -> bool {
         let id = self.id();
         match other {
