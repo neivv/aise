@@ -622,7 +622,7 @@ pub fn has_resources(game: Game, player: u8, cost: &Cost) -> bool {
         (RaceFlags::PROTOSS, Race::Protoss),
     ];
     for &(flag, race) in RACES {
-        if cost.races.contains(flag) && game.supply_free(player, race) < cost.supply {
+        if cost.races.intersects(flag) && game.supply_free(player, race) < cost.supply {
             return false;
         }
     }
