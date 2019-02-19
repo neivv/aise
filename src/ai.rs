@@ -91,36 +91,37 @@ impl PlayerAi {
             SpendingRequest::Military(unit, region) => (1, unit.0, region as *mut c_void),
             SpendingRequest::Guard(unit, ai) => (2, unit.0, ai as *mut c_void),
         };
-        let raw_req = bw::AiSpendingRequest {
+        self.push_request(bw::AiSpendingRequest {
             priority,
             ty,
             id,
             val,
-        };
-        {
-            let requests = unsafe { &mut (*self.0).requests[..] };
-            let mut pos = unsafe {
-                if usize::from((*self.0).request_count) < requests.len() {
-                    (*self.0).request_count += 1;
-                }
-                isize::from((*self.0).request_count) - 1
-            };
-            let mut prev = pos;
-            requests[pos as usize] = raw_req;
-            pos = (pos - 1) / 2;
-            while prev > 0 {
-                if requests[prev as usize].priority <= requests[pos as usize].priority {
-                    break;
-                }
-                requests.swap(prev as usize, pos as usize);
-                prev = pos;
-                pos = (pos - 1) / 2;
-            }
-        }
+        });
         if let Some((prereq, count)) = self.prerequisite_unit(req, game) {
             for _ in 0..count {
                 self.add_spending_request_inner(&prereq, priority, game);
             }
+        }
+    }
+
+    fn push_request(&self, req: bw::AiSpendingRequest) {
+        let requests = unsafe { &mut (*self.0).requests[..] };
+        let mut pos = unsafe {
+            if usize::from((*self.0).request_count) < requests.len() {
+                (*self.0).request_count += 1;
+            }
+            isize::from((*self.0).request_count) - 1
+        };
+        let mut prev = pos;
+        requests[pos as usize] = req;
+        pos = (pos - 1) >> 1;
+        while prev > 0 {
+            if requests[prev as usize].priority <= requests[pos as usize].priority {
+                break;
+            }
+            requests.swap(prev as usize, pos as usize);
+            prev = pos;
+            pos = (pos - 1) >> 1;
         }
     }
 
@@ -174,7 +175,7 @@ impl PlayerAi {
                 return;
             }
         }
-        requests[0] = requests[1];
+        requests[0] = requests[new_count];
         let mut prev = 0;
         let mut pos = 1;
         while pos <= new_count - 1 {
@@ -188,8 +189,8 @@ impl PlayerAi {
                 break;
             }
             requests.swap(prev, index);
-            prev = pos;
-            pos = pos * 2 + 1;
+            prev = index;
+            pos = (index << 1) + 1;
         }
     }
 }
@@ -627,4 +628,35 @@ pub fn has_resources(game: Game, player: u8, cost: &Cost) -> bool {
         }
     }
     game.minerals(player) >= cost.minerals && game.gas(player) >= cost.gas
+}
+
+#[test]
+fn push_pop_requests() {
+    use std::mem;
+
+    let mut ai_data: bw::PlayerAiData = unsafe { mem::zeroed() };
+    let inputs = vec![1, 3, 6, 8, 8, 5, 2, 7, 2, 6, 3, 9, 24, 1, 3, 2, 10];
+    for i in 1..inputs.len() {
+        let mut inputs: Vec<_> = (&inputs[..i]).into();
+        let player_ai = PlayerAi(&mut ai_data, 0);
+        for &val in &inputs {
+            player_ai.push_request(bw::AiSpendingRequest {
+                priority: val,
+                ty: 0,
+                id: 0,
+                val: null_mut(),
+            });
+        }
+        while !inputs.is_empty() {
+            let first = player_ai.first_request().unwrap();
+            player_ai.pop_request();
+            assert_eq!(first.priority, inputs.iter().cloned().max().unwrap());
+            let pos = inputs
+                .iter()
+                .cloned()
+                .position(|x| x == first.priority)
+                .unwrap();
+            inputs.remove(pos);
+        }
+    }
 }
