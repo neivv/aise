@@ -2146,12 +2146,6 @@ pub unsafe fn clean_unsatisfiable_requests(ai_mode: &[AiMode; 8]) {
             if can {
                 requests[out_pos] = requests[in_pos];
                 out_pos += 1;
-            } else {
-                let req = requests[in_pos];
-                debug!(
-                    "Player {} can't satisfy request {:x}/{:x}",
-                    player, req.ty, req.id
-                );
             }
             in_pos += 1;
         }
