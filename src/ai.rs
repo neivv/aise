@@ -175,6 +175,7 @@ impl PlayerAi {
             }
         }
         requests[0] = requests[1];
+        let mut prev = 0;
         let mut pos = 1;
         while pos <= new_count - 1 {
             let index =
@@ -183,10 +184,11 @@ impl PlayerAi {
                 } else {
                     pos + 1
                 };
-            if requests[pos].priority >= requests[index].priority {
+            if requests[prev].priority >= requests[index].priority {
                 break;
             }
-            requests.swap(pos, index);
+            requests.swap(prev, index);
+            prev = pos;
             pos = pos * 2 + 1;
         }
     }
