@@ -249,7 +249,7 @@ fn feature_disabled(name: &str) -> bool {
 }
 
 #[cfg(not(debug_assertions))]
-fn feature_disabled(name: &str) -> bool {
+fn feature_disabled(_name: &str) -> bool {
     false
 }
 
