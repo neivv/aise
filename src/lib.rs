@@ -71,7 +71,7 @@ mod unit_search;
 mod windows;
 
 use std::ptr::null_mut;
-use std::sync::atomic::{AtomicBool, Ordering, ATOMIC_BOOL_INIT};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use libc::c_void;
 
@@ -174,7 +174,7 @@ fn init() {
     }));
 }
 
-static IS_1161: AtomicBool = ATOMIC_BOOL_INIT;
+static IS_1161: AtomicBool = AtomicBool::new(false);
 
 #[cfg(debug_assertions)]
 fn feature_disabled(name: &str) -> bool {
@@ -365,7 +365,7 @@ unsafe extern fn frame_hook_after() {
 // For hooking the point after frame's ai step but before any unit orders.
 // Not in global struct for performance concern of locking its mutex thousand+
 // extra times a frame.
-static FIRST_STEP_ORDER_OF_FRAME: AtomicBool = ATOMIC_BOOL_INIT;
+static FIRST_STEP_ORDER_OF_FRAME: AtomicBool = AtomicBool::new(false);
 
 unsafe extern fn step_order_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_void)) {
     if FIRST_STEP_ORDER_OF_FRAME.load(Ordering::Relaxed) {

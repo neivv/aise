@@ -1,5 +1,4 @@
 use std::ptr::null_mut;
-use std::sync::atomic::{AtomicBool, Ordering, ATOMIC_BOOL_INIT};
 use std::sync::Arc;
 
 use bw_dat::{self, order, OrderId, UnitId};

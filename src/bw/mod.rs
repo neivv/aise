@@ -2,7 +2,7 @@
 #![allow(non_camel_case_types)]
 
 use std::ptr::{null, null_mut};
-use std::sync::atomic::{AtomicBool, Ordering, ATOMIC_BOOL_INIT};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use bw_dat::{OrderId, TechId, UnitId, UpgradeId};
 
@@ -12,7 +12,7 @@ pub mod structs;
 
 pub use self::structs::*;
 
-pub static IS_1161: AtomicBool = ATOMIC_BOOL_INIT;
+pub static IS_1161: AtomicBool = AtomicBool::new(false);
 
 pub fn is_scr() -> bool {
     IS_1161.load(Ordering::Acquire) == false

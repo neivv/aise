@@ -5,7 +5,7 @@ use std::mem;
 use std::path::{Component, Path, PathBuf};
 use std::ptr::null_mut;
 use std::slice;
-use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use bincode;
@@ -52,7 +52,7 @@ pub fn clear_load_mapping() {}
 lazy_static! {
     static ref CACHED_UNIT_SEARCH: Mutex<Option<Arc<UnitSearch>>> = Mutex::new(None);
 }
-static CACHED_UNIT_SEARCH_FRAME: AtomicUsize = ATOMIC_USIZE_INIT;
+static CACHED_UNIT_SEARCH_FRAME: AtomicUsize = AtomicUsize::new(0);
 
 pub fn invalidate_cached_unit_search() {
     CACHED_UNIT_SEARCH_FRAME.store(!0, Ordering::Relaxed);

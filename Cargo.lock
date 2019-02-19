@@ -923,7 +923,7 @@ dependencies = [
 [[package]]
 name = "whack"
 version = "0.2.0"
-source = "git+https://github.com/neivv/whack/#c83e3a92259647ce96b61ff5738f43acb308fe6c"
+source = "git+https://github.com/neivv/whack/#5d228ef31e9982d2c516d5b9a52076df629b852b"
 dependencies = [
  "byteorder 1.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "lde 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
