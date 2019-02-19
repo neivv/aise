@@ -151,6 +151,43 @@ impl PlayerAi {
             Some((new_req, needed))
         }
     }
+
+    // Should probs return SpendingRequest instead
+    pub fn first_request(&self) -> Option<bw::AiSpendingRequest> {
+        unsafe {
+            if (*self.0).request_count == 0 {
+                None
+            } else {
+                Some((*self.0).requests[0])
+            }
+        }
+    }
+
+    pub fn pop_request(&self) {
+        let requests;
+        let new_count;
+        unsafe {
+            requests = &mut ((*self.0).requests)[..(*self.0).request_count as usize];
+            (*self.0).request_count -= 1;
+            new_count = (*self.0).request_count as usize;
+        }
+        requests[0] = requests[1];
+        let mut pos = 0;
+        while pos < new_count - 1 {
+            let next = pos * 2 + 1;
+            let index =
+                if next + 1 >= new_count || requests[next].priority > requests[next + 1].priority {
+                    next
+                } else {
+                    next + 1
+                };
+            if requests[pos].priority >= requests[index].priority {
+                break;
+            }
+            requests.swap(pos, index);
+            pos = next * 2 + 1;
+        }
+    }
 }
 
 pub fn count_units(player: u8, unit_id: UnitId, game: Game) -> u32 {
@@ -568,4 +605,9 @@ unsafe fn update_slowest_unit_in_region(region: *mut bw::AiRegion) {
         .or(slowest_air)
         .map(|x| x.0)
         .unwrap_or(null_mut());
+}
+
+pub fn has_resources(game: Game, player: u8, cost: &Cost) -> bool {
+    // TODO supply
+    game.minerals(player) >= cost.minerals && game.gas(player) >= cost.gas
 }

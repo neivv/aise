@@ -54,6 +54,7 @@ pub mod samase;
 mod gl;
 
 mod ai;
+mod ai_spending;
 mod aiscript;
 mod block_alloc;
 mod bw;
@@ -371,7 +372,7 @@ unsafe extern fn step_order_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_v
     if FIRST_STEP_ORDER_OF_FRAME.load(Ordering::Relaxed) {
         FIRST_STEP_ORDER_OF_FRAME.store(false, Ordering::Relaxed);
         let globals = Globals::get("step order hook (start)");
-        aiscript::clean_unsatisfiable_requests(&globals.ai_mode);
+        ai_spending::frame_hook(&globals.ai_mode);
     }
 
     let unit = unit::Unit(u as *mut bw::Unit);
