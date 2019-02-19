@@ -3,7 +3,7 @@ use std::ptr::null_mut;
 
 use libc::c_void;
 
-use bw_dat::{order, unit, OrderId, TechId, UnitId, UpgradeId};
+use bw_dat::{order, unit, TechId, UnitId, UpgradeId};
 
 use bw;
 use game::Game;
