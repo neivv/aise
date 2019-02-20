@@ -1,3 +1,4 @@
+mod ai_scripts;
 mod bw_render;
 mod text;
 mod ui;
@@ -28,24 +29,33 @@ use winapi::um::winuser::{
 };
 
 use crate::bw;
+use crate::globals::Globals;
 
-whack_hooks!(stdcall, 0x00400000,
-    0x004E05B0 => create_window();
-    0x0041CA00 => redraw_screen();
+#[allow(bad_style)]
+mod bw_ext {
+    use libc::c_void;
+    use winapi::um::winuser::MSG;
 
-    0x00410244 => SDrawUpdatePalette(u32, u32, *const u32, u32);
-    !0 => TranslateAcceleratorA(*mut c_void, *mut c_void, *const MSG) -> u32;
-);
+    use crate::bw;
 
-whack_hooks!(stdcall, 0x15000000,
-    0x15034CD0 => SDrawLockSurface(u32, *const bw::Rect32, *mut *mut u8, *mut u32, u32) -> u32;
-    0x15034740 => SDrawUnlockSurface(u32, *mut u8, u32, u32) -> u32;
-    0x15034C20 => SDrawRealizePalette();
-);
+    whack_hooks!(stdcall, 0x00400000,
+        0x004E05B0 => create_window();
+        0x0041CA00 => redraw_screen();
 
-whack_vars!(init_sc_vars, 0x00400000,
-    0x0051BFB0 => bw_window: *mut c_void;
-);
+        0x00410244 => SDrawUpdatePalette(u32, u32, *const u32, u32);
+        !0 => TranslateAcceleratorA(*mut c_void, *mut c_void, *const MSG) -> u32;
+    );
+
+    whack_hooks!(stdcall, 0x15000000,
+        0x15034CD0 => SDrawLockSurface(u32, *const bw::Rect32, *mut *mut u8, *mut u32, u32) -> u32;
+        0x15034740 => SDrawUnlockSurface(u32, *mut u8, u32, u32) -> u32;
+        0x15034C20 => SDrawRealizePalette();
+    );
+
+    whack_vars!(init_sc_vars, 0x00400000,
+        0x0051BFB0 => bw_window: *mut c_void;
+    );
+}
 
 thread_local! {
     static CONTEXT: RefCell<Option<Rc<GlState>>> = RefCell::new(None);
@@ -58,6 +68,7 @@ struct GlState {
 
 struct DrawState {
     bw_render: bw_render::BwRender,
+    ai_scripts: ai_scripts::AiScripts,
     ui: ui::Ui,
     draw_skips: u32,
 }
@@ -65,9 +76,10 @@ struct DrawState {
 impl DrawState {
     fn new(context: &Rc<Context>) -> DrawState {
         let mut ui = ui::Ui::new(context);
-        ui.page("test");
+        ui.page("ai_scripts");
         DrawState {
             bw_render: bw_render::BwRender::new(context),
+            ai_scripts: ai_scripts::AiScripts::new(),
             draw_skips: 7100, // Bw redraws screen a lot during loading, skip those
             ui,
         }
@@ -78,6 +90,7 @@ static OPENGL32_DLL: AtomicUsize = AtomicUsize::new(0);
 static OLD_WINDOW_PROC: AtomicUsize = AtomicUsize::new(0);
 
 pub unsafe fn init_hooks(patcher: &mut whack::ActivePatcher) {
+    use self::bw_ext::*;
     let mut exe = patcher.patch_exe(0x00400000);
     init_sc_vars(&mut exe);
 
@@ -110,9 +123,10 @@ unsafe fn string_from_u8_ptr(ptr: *const u8) -> std::borrow::Cow<'static, str> {
 }
 
 fn create_window_hook(orig: &Fn()) {
+    use self::bw_ext::*;
     orig();
     unsafe {
-        let context = match create_wgl_context(*bw_window) {
+        let context = match create_wgl_context(*bw_ext::bw_window) {
             Ok(o) => o,
             Err(e) => {
                 error!("Couldn't create WGL context: {}", e);
@@ -220,7 +234,10 @@ fn handle_msg(msg: u32, wparam: usize, _lparam: isize) -> UiInput {
                     .and_then(|s| s.chars().next())
             };
             if let Some(c) = chara {
-                state.ui.input_char(c)
+                let mut input_borrow = ui::InputBorrow {
+                    ai_scripts: &mut state.ai_scripts,
+                };
+                state.ui.input_char(c, &mut input_borrow)
             } else {
                 UiInput::NotHandled
             }
@@ -555,5 +572,24 @@ impl Program {
             *self = compile_program(facade, &self.vertex_filename, &self.fragment_filename);
         }
         &self.program
+    }
+}
+
+pub fn new_frame(globals: &Globals) {
+    CONTEXT.with(|x| {
+        let s = x.borrow();
+        if let Some(ref s) = *s {
+            let mut state = s.state.borrow_mut();
+            new_frame_inner(&mut state, globals);
+        }
+    });
+}
+
+fn new_frame_inner(state: &mut DrawState, _globals: &Globals) {
+    let page_name = state.ui.current_page();
+    let page = state.ui.page(page_name);
+    match page_name {
+        "ai_scripts" => state.ai_scripts.draw_page(page),
+        _ => panic!("Unknown page {}", page_name),
     }
 }

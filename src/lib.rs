@@ -352,6 +352,10 @@ unsafe extern fn frame_hook() {
             }
         }
     }
+
+    #[cfg(feature = "opengl")]
+    gl::new_frame(&globals);
+
     FIRST_STEP_ORDER_OF_FRAME.store(true, Ordering::Relaxed);
 }
 

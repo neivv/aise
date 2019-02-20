@@ -30,11 +30,51 @@ pub struct Ui {
     input_buffer: String,
 }
 
+// Since cannot borrow the entire State as Ui is also part of it
+pub struct InputBorrow<'a> {
+    pub ai_scripts: &'a mut super::ai_scripts::AiScripts,
+}
+
 pub struct Page {
     name: &'static str,
     title: String,
     scroll: Scroll,
+    current_indent: u32,
     lines: Vec<String>,
+}
+
+impl Page {
+    pub fn clear(&mut self) {
+        self.lines.clear();
+    }
+
+    pub fn push<S: Into<String>>(&mut self, val: S) {
+        self.lines.push(format!(
+            "{}{}",
+            " ".repeat(self.current_indent as usize),
+            val.into()
+        ));
+    }
+
+    pub fn indent<'a>(&'a mut self, amt: u32) -> Indent<'a> {
+        let old = self.current_indent;
+        self.current_indent += amt;
+        Indent(self, old)
+    }
+}
+
+pub struct Indent<'a>(&'a mut Page, u32);
+
+impl<'a> Indent<'a> {
+    pub fn page(&mut self) -> &mut Page {
+        self.0
+    }
+}
+
+impl<'a> Drop for Indent<'a> {
+    fn drop(&mut self) {
+        self.0.current_indent = self.1;
+    }
 }
 
 #[derive(Default)]
@@ -205,6 +245,7 @@ impl Ui {
                     title: name.into(),
                     scroll: Default::default(),
                     lines: Vec::new(),
+                    current_indent: 0,
                 });
                 self.pages.last_mut().unwrap()
             }
@@ -322,11 +363,11 @@ impl Ui {
         }
     }
 
-    pub fn input_char(&mut self, value: char) -> UiInput {
+    pub fn input_char(&mut self, value: char, state: &mut InputBorrow) -> UiInput {
         if !self.shown {
             return UiInput::NotHandled;
         }
-        if self.page_specific_input(value) == UiInput::Handled {
+        if self.page_specific_input(value, state) == UiInput::Handled {
             return UiInput::Handled;
         }
         match value {
@@ -338,8 +379,9 @@ impl Ui {
         UiInput::Handled
     }
 
-    fn page_specific_input(&mut self, _value: char) -> UiInput {
+    fn page_specific_input(&mut self, value: char, state: &mut InputBorrow) -> UiInput {
         match self.current_page() {
+            "ai_scripts" => state.ai_scripts.input(value),
             _ => UiInput::NotHandled,
         }
     }

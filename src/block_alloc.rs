@@ -56,6 +56,7 @@ impl<T> BlockAllocSet<T> {
         Default::default()
     }
 
+    /// Note: Returns true for dangling pointers that are inside blocks as well.
     pub fn contains(&self, object: *mut T) -> bool {
         self.blocks.iter().any(|x| x.contains(object))
     }
