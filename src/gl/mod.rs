@@ -544,7 +544,14 @@ fn compile_program<F: Facade>(
             fragment_filename: "".into(),
             fragment_path: "".into(),
             fragment_time: SystemTime::UNIX_EPOCH,
-            program: result.unwrap(),
+            program: result.unwrap_or_else(|e| {
+                error!("Vertex {}", vertex_default);
+                error!("Fragment {}", fragment_default);
+                panic!(
+                    "Couldn't compile {} / {}: {}",
+                    vertex_filename, fragment_filename, e,
+                );
+            }),
         };
     }
 

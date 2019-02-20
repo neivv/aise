@@ -14,7 +14,7 @@ mat3 conversion = mat3(
 
 void main() {
     vec3 texcoord = conversion * vec3(pos, 1.0);
-    uint pal_id = texture(image, texcoord.xy).x;
+    float pal_id = float(texture(image, texcoord.xy).x);
     vec4 pixel_color = texture(palette, pal_id * (1.0 / 256.0) + (0.5 / 256.0));
     color = vec4(pixel_color.xyz, 1.0);
 }
