@@ -458,6 +458,21 @@ unsafe extern fn step_order_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_v
     }
     if let Some(ai) = temp_ai {
         (*unit.0).ai = ai;
+        // Add ai for dual birthed units
+        if unit.id().flags() & 0x400 != 0 {
+            // Bw inserts shown units at second pos for some reason..
+            if let Some(other) = unit::active_units().nth(1) {
+                // This gets actually checked several times since the birth order lasts a few
+                // frames, but it should be fine.
+                if other.id() == unit.id() && (*other.0).ai.is_null() {
+                    if other.player() == unit.player() {
+                        let region = ai::ai_region(other.player(), other.position())
+                            .expect("Unit out of bounds??");
+                        ai::add_military_ai(other, region, false);
+                    }
+                }
+            }
+        }
     }
 }
 
