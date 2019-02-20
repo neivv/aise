@@ -39,9 +39,13 @@ thread_local = "0.3.5"
 cgmath = { version = "0.16", optional = true }
 euclid = { version = "0.19", optional = true }
 fnv = { version = "1.0.6", optional = true }
-font-kit = { version = "0.1", optional = true }
 glium = { version = "0.22", optional = true, default-features = false }
 gl = { version = "0.10", optional = true }
+
+[dependencies.font-kit]
+git = "https://github.com/pcwalton/font-kit"
+rev = "7e6a5599bd7f2b1a0166ce868e72a76086f317cb"
+optional = true
 
 [dependencies.rand]
 version = "0.5"
