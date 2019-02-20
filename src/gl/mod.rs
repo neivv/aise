@@ -1,3 +1,15 @@
+macro_rules! compile_program {
+    ($facade:expr, $vertex:expr, $fragment:expr) => {
+        ::gl::compile_program(
+            $facade,
+            $vertex,
+            include_str!(concat!("shaders/", $vertex)),
+            $fragment,
+            include_str!(concat!("shaders/", $fragment)),
+        )
+    };
+}
+
 mod ai_scripts;
 mod bw_render;
 mod text;
@@ -518,8 +530,24 @@ fn modified_time(path: &Path) -> SystemTime {
 fn compile_program<F: Facade>(
     facade: &F,
     vertex_filename: &str,
+    vertex_default: &'static str,
     fragment_filename: &str,
+    fragment_default: &'static str,
 ) -> Program {
+    // Use hardcoded shaders on other pcs
+    if !std::path::Path::new(env!("CARGO_MANIFEST_DIR")).exists() {
+        let result = glium::Program::from_source(facade, &vertex_default, &fragment_default, None);
+        return Program {
+            vertex_filename: "".into(),
+            vertex_path: "".into(),
+            vertex_time: SystemTime::UNIX_EPOCH,
+            fragment_filename: "".into(),
+            fragment_path: "".into(),
+            fragment_time: SystemTime::UNIX_EPOCH,
+            program: result.unwrap(),
+        };
+    }
+
     let vertex_path = shader_path(vertex_filename);
     let fragment_path = shader_path(fragment_filename);
     loop {
@@ -562,6 +590,10 @@ struct Program {
 
 impl Program {
     pub fn glium_program<F: Facade>(&mut self, facade: &F) -> &glium::Program {
+        if self.vertex_filename.is_empty() {
+            // Hardcoded program
+            return &self.program;
+        }
         let changed = self.vertex_time != modified_time(&self.vertex_path) ||
             self.fragment_time != modified_time(&self.fragment_path);
         if changed {
@@ -569,7 +601,13 @@ impl Program {
                 "Reloading shaders {} {}",
                 self.vertex_filename, self.fragment_filename
             );
-            *self = compile_program(facade, &self.vertex_filename, &self.fragment_filename);
+            *self = compile_program(
+                facade,
+                &self.vertex_filename,
+                "",
+                &self.fragment_filename,
+                "",
+            );
         }
         &self.program
     }

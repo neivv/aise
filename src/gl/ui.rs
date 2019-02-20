@@ -10,7 +10,7 @@ use glium::uniforms::{MagnifySamplerFilter, MinifySamplerFilter};
 use glium::{implement_vertex, uniform, IndexBuffer, Surface, VertexBuffer};
 
 use super::text::Atlas;
-use super::{compile_program, vertex2d, Program, UiInput, Vertex2d};
+use super::{vertex2d, Program, UiInput, Vertex2d};
 
 struct Rect {
     left: f32,
@@ -181,7 +181,7 @@ fn load_font<F: Facade>(facade: &F) -> Option<FontData> {
         debug!("Loaded font {}", font.full_name());
     }
     let atlas = Atlas::new(facade, fonts, 11.0);
-    let program = compile_program(facade, "font.vert", "font.frag");
+    let program = compile_program!(facade, "font.vert", "font.frag");
     Some(FontData {
         atlas,
         vertices: VertexBuffer::empty(facade, 0).unwrap(),
@@ -199,7 +199,7 @@ struct FontData {
 
 impl Ui {
     pub fn new<F: Facade>(facade: &F) -> Ui {
-        let bg_program = compile_program(facade, "passthrough.vert", "ui_background.frag");
+        let bg_program = compile_program!(facade, "passthrough.vert", "ui_background.frag");
         let area = Rect {
             left: 0.01 / (4.0 / 3.0),
             top: 0.01,

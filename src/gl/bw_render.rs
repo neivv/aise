@@ -10,7 +10,7 @@ use glium::texture::{
 use glium::uniforms::{MagnifySamplerFilter, MinifySamplerFilter};
 use glium::{uniform, Surface, VertexBuffer};
 
-use super::{compile_program, vertex2d, Program, Vertex2d};
+use super::{vertex2d, Program, Vertex2d};
 
 // Renders the 640x480 indexed image, so that we can render on top of it.
 pub struct BwRender {
@@ -25,7 +25,7 @@ pub struct BwRender {
 
 impl BwRender {
     pub fn new<F: Facade>(facade: &F) -> BwRender {
-        let program = compile_program(facade, "passthrough.vert", "bw_render.frag");
+        let program = compile_program!(facade, "passthrough.vert", "bw_render.frag");
         let image = UnsignedTexture2d::empty(facade, 640, 480).unwrap();
         let palette_texture = SrgbTexture1d::empty(facade, 256).unwrap();
 
