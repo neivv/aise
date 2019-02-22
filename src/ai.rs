@@ -279,9 +279,9 @@ pub struct Cost {
     pub races: RaceFlags,
 }
 
-pub fn request_cost(request: &bw::AiSpendingRequest) -> Cost {
+pub fn request_cost(request: &bw::AiSpendingRequest, upgrade_level: u8) -> Cost {
     match request.ty {
-        5 => upgrade_cost(UpgradeId(request.id)),
+        5 => upgrade_cost(UpgradeId(request.id), upgrade_level),
         6 => tech_cost(TechId(request.id)),
         _ => unit_cost(UnitId(request.id)),
     }
@@ -297,10 +297,18 @@ pub fn unit_cost(unit: UnitId) -> Cost {
     }
 }
 
-pub fn upgrade_cost(upgrade: UpgradeId) -> Cost {
+pub fn upgrade_cost(upgrade: UpgradeId, level: u8) -> Cost {
     Cost {
-        minerals: upgrade.mineral_cost(),
-        gas: upgrade.gas_cost(),
+        minerals: upgrade.mineral_cost().saturating_add(
+            (level as u32)
+                .saturating_sub(1)
+                .saturating_mul(upgrade.mineral_factor()),
+        ),
+        gas: upgrade.gas_cost().saturating_add(
+            (level as u32)
+                .saturating_sub(1)
+                .saturating_mul(upgrade.gas_factor()),
+        ),
         supply: 0,
         races: RaceFlags::empty(),
     }

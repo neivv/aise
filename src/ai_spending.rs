@@ -31,7 +31,13 @@ pub unsafe fn frame_hook(ai_mode: &[AiMode; 8]) {
                     break;
                 }
             }
-            let cost = ai::request_cost(&request);
+            let level = if request.ty == 5 {
+                game.upgrade_level(player as u8, UpgradeId(request.id))
+                    .saturating_add(1)
+            } else {
+                0
+            };
+            let cost = ai::request_cost(&request, level);
             player_ai.remove_resource_need(&cost, handled);
             player_ai.pop_request()
         }
@@ -124,18 +130,26 @@ pub unsafe fn can_satisfy_request(
         }
         5 => {
             let upgrade_id = UpgradeId(request.id);
-            if !wait_resources && !has_resources(game, player, &ai::upgrade_cost(upgrade_id)) {
-                return Err(RequestSatisfyError::Resources);
+            let level = game.upgrade_level(player as u8, upgrade_id) + 1;
+            if game.upgrade_max_level(player, upgrade_id) < level {
+                return Err(RequestSatisfyError::NotAvailable);
+            }
+            if !wait_resources {
+                if !has_resources(game, player, &ai::upgrade_cost(upgrade_id, level)) {
+                    return Err(RequestSatisfyError::Resources);
+                }
             }
             let mut reqs = match bw::upgrade_dat_requirements(upgrade_id) {
                 Some(s) => s,
                 None => return Ok(()),
             };
-            let level = game.upgrade_level(player as u8, upgrade_id);
             can_satisfy_dat_request(game, player, reqs, level).map_err(RequestSatisfyError::DatReq)
         }
         6 => {
             let tech_id = TechId(request.id);
+            if !game.tech_available(player, tech_id) {
+                return Err(RequestSatisfyError::NotAvailable);
+            }
             if !wait_resources && !has_resources(game, player, &ai::tech_cost(tech_id)) {
                 return Err(RequestSatisfyError::Resources);
             }

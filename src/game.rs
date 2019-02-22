@@ -79,6 +79,18 @@ impl Game {
         }
     }
 
+    pub fn upgrade_max_level(self, player: u8, upgrade: UpgradeId) -> u8 {
+        unsafe {
+            let upgrade = upgrade.0;
+            assert!(player < 0xc);
+            if upgrade >= 0x2e {
+                (*self.0).upgrade_limit_bw[player as usize][upgrade as usize - 0x2e]
+            } else {
+                (*self.0).upgrade_limit_sc[player as usize][upgrade as usize]
+            }
+        }
+    }
+
     pub fn set_upgrade_level(self, player: u8, upgrade: UpgradeId, level: u8) {
         unsafe {
             let upgrade = upgrade.0;

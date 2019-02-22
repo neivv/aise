@@ -220,7 +220,13 @@ unsafe fn request_line(
         };
         page.push(msg);
     } else {
-        if !ai::has_resources(game, player, &ai::request_cost(&request)) {
+        let upgrade_level = if request.ty == 5 {
+            game.upgrade_level(player, UpgradeId(request.id))
+                .saturating_add(1)
+        } else {
+            0
+        };
+        if !ai::has_resources(game, player, &ai::request_cost(&request, upgrade_level)) {
             page.push("Not enough resources/supply");
         }
     }
