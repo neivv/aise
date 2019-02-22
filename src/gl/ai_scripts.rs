@@ -1,3 +1,5 @@
+use std::mem;
+
 use bw_dat::{TechId, UnitId, UpgradeId};
 
 use crate::bw;
@@ -37,14 +39,21 @@ impl AiScripts {
             Some(&s) => s,
             None => return,
         };
+        let town_array = bw::town_array_start();
         unsafe {
+            let town = (*script).town;
+            let town_id = match town.is_null() {
+                true => 0,
+                false => (town as usize - town_array as usize) / mem::size_of::<bw::AiTown>(),
+            };
             page.push(format!(
-                "Script #{}/{}: {:p} player {:x} town {:p}, pos ({}, {})",
+                "Script #{}/{}: {:p} player {:x} town id {:x} ({:p}), pos ({}, {})",
                 self.pos + 1,
                 self.script_order.len(),
                 script,
                 (*script).player,
-                (*script).town,
+                town_id,
+                town,
                 (*script).center.x,
                 (*script).center.y,
             ));
