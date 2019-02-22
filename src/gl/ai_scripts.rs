@@ -144,8 +144,12 @@ enum Command {
     Call(Pos),
     Return,
     Stop,
+    Wait_Force(u8, UnitId),
     Do_Morph(u8, UnitId),
     Train(u8, UnitId),
+    Wait_Train(u8, UnitId),
+    MultiRun(Pos),
+    Start_Campaign,
 }
 
 impl Iterator for ParseScript {
@@ -193,13 +197,17 @@ impl Iterator for ParseScript {
                 Stop
             }
             0x30 => Random_Jump(parse.read_u8(), Pos(parse.read_u16().into())),
+            0x38 => Start_Campaign,
+            0x3e => Wait_Force(parse.read_u8(), UnitId(parse.read_u16())),
             0x40 => Call(Pos(parse.read_u16().into())),
             0x41 => {
                 self.ok = false;
                 Return
             }
             0x46 => Do_Morph(parse.read_u8(), UnitId(parse.read_u16())),
+            0x48 => MultiRun(Pos(parse.read_u16().into())),
             0x4c => Train(parse.read_u8(), UnitId(parse.read_u16())),
+            0x4e => Wait_Train(parse.read_u8(), UnitId(parse.read_u16())),
             unk => {
                 self.ok = false;
                 Unknown(unk)
@@ -277,8 +285,12 @@ impl Command {
             Random_Jump(chance, pos) => write!(out, "random_jump {} {}", chance, pos.fmt()),
             Return => write!(out, "return"),
             Stop => write!(out, "stop"),
+            Start_Campaign => write!(out, "start_campaign"),
+            Wait_Force(amt, unit) => write!(out, "wait_force {} {}", amt, unit.fmt()),
             Do_Morph(amt, unit) => write!(out, "do_morph {} {}", amt, unit.fmt()),
             Train(amt, unit) => write!(out, "train {} {}", amt, unit.fmt()),
+            Wait_Train(amt, unit) => write!(out, "wait_train {} {}", amt, unit.fmt()),
+            MultiRun(pos) => write!(out, "multirun {}", pos.fmt()),
         }
         .unwrap();
         out
