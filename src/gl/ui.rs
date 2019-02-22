@@ -33,6 +33,7 @@ pub struct Ui {
 // Since cannot borrow the entire State as Ui is also part of it
 pub struct InputBorrow<'a> {
     pub ai_scripts: &'a mut super::ai_scripts::AiScripts,
+    pub ai_requests: &'a mut super::ai_requests::AiRequests,
 }
 
 pub struct Page {
@@ -197,6 +198,21 @@ struct FontData {
     program: Program,
 }
 
+pub struct Modifiers {
+    pub ctrl: bool,
+}
+
+impl Modifiers {
+    fn new() -> Modifiers {
+        use winapi::um::winuser::{GetKeyState, VK_CONTROL};
+        unsafe {
+            Modifiers {
+                ctrl: GetKeyState(VK_CONTROL) as u32 & 0x8000 != 0,
+            }
+        }
+    }
+}
+
 impl Ui {
     pub fn new<F: Facade>(facade: &F) -> Ui {
         let bg_program = compile_program!(facade, "passthrough.vert", "ui_background.frag");
@@ -354,12 +370,35 @@ impl Ui {
         if !self.shown {
             return UiInput::NotHandled;
         }
-        match key {
-            VK_BACK => {
-                self.input_buffer.pop();
-                UiInput::Handled
+        let modifiers = Modifiers::new();
+        if modifiers.ctrl {
+            match key as u8 {
+                b'Q' => {
+                    if self.active_page == 0 {
+                        self.active_page = self.pages.len() - 1;
+                    } else {
+                        self.active_page -= 1;
+                    }
+                    UiInput::Handled
+                }
+                b'W' => {
+                    if self.active_page == self.pages.len() - 1 {
+                        self.active_page = 0;
+                    } else {
+                        self.active_page += 1;
+                    }
+                    UiInput::Handled
+                }
+                _ => UiInput::NotHandled,
             }
-            _ => UiInput::NotHandled,
+        } else {
+            match key {
+                VK_BACK => {
+                    self.input_buffer.pop();
+                    UiInput::Handled
+                }
+                _ => UiInput::NotHandled,
+            }
         }
     }
 
@@ -382,6 +421,8 @@ impl Ui {
     fn page_specific_input(&mut self, value: char, state: &mut InputBorrow) -> UiInput {
         match self.current_page() {
             "ai_scripts" => state.ai_scripts.input(value),
+            "ai_military_requests" => state.ai_requests.military.input(value),
+            "ai_town_requests" => state.ai_requests.towns.input(value),
             _ => UiInput::NotHandled,
         }
     }

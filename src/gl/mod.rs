@@ -10,6 +10,7 @@ macro_rules! compile_program {
     };
 }
 
+mod ai_requests;
 mod ai_scripts;
 mod bw_render;
 mod text;
@@ -67,6 +68,10 @@ mod bw_ext {
     whack_vars!(init_sc_vars, 0x00400000,
         0x0051BFB0 => bw_window: *mut c_void;
     );
+
+    whack_funcs!(init_sc_funcs, 0x00400000,
+        0x004C36F0 => get_stat_txt_string(@ecx u32) -> *const u8;
+    );
 }
 
 thread_local! {
@@ -81,6 +86,7 @@ struct GlState {
 struct DrawState {
     bw_render: bw_render::BwRender,
     ai_scripts: ai_scripts::AiScripts,
+    ai_requests: ai_requests::AiRequests,
     ui: ui::Ui,
     draw_skips: u32,
 }
@@ -89,9 +95,12 @@ impl DrawState {
     fn new(context: &Rc<Context>) -> DrawState {
         let mut ui = ui::Ui::new(context);
         ui.page("ai_scripts");
+        ui.page("ai_military_requests");
+        ui.page("ai_town_requests");
         DrawState {
             bw_render: bw_render::BwRender::new(context),
             ai_scripts: ai_scripts::AiScripts::new(),
+            ai_requests: ai_requests::AiRequests::new(),
             draw_skips: 7100, // Bw redraws screen a lot during loading, skip those
             ui,
         }
@@ -105,6 +114,7 @@ pub unsafe fn init_hooks(patcher: &mut whack::ActivePatcher) {
     use self::bw_ext::*;
     let mut exe = patcher.patch_exe(0x00400000);
     init_sc_vars(&mut exe);
+    init_sc_funcs(&mut exe);
 
     exe.hook_opt(create_window, create_window_hook);
     exe.hook_opt(redraw_screen, redraw_screen_hook);
@@ -248,6 +258,7 @@ fn handle_msg(msg: u32, wparam: usize, _lparam: isize) -> UiInput {
             if let Some(c) = chara {
                 let mut input_borrow = ui::InputBorrow {
                     ai_scripts: &mut state.ai_scripts,
+                    ai_requests: &mut state.ai_requests,
                 };
                 state.ui.input_char(c, &mut input_borrow)
             } else {
@@ -630,11 +641,13 @@ pub fn new_frame(globals: &Globals) {
     });
 }
 
-fn new_frame_inner(state: &mut DrawState, _globals: &Globals) {
+fn new_frame_inner(state: &mut DrawState, globals: &Globals) {
     let page_name = state.ui.current_page();
     let page = state.ui.page(page_name);
     match page_name {
         "ai_scripts" => state.ai_scripts.draw_page(page),
+        "ai_military_requests" => state.ai_requests.military.draw_page(page, globals),
+        "ai_town_requests" => state.ai_requests.towns.draw_page(page, globals),
         _ => panic!("Unknown page {}", page_name),
     }
 }

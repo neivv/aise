@@ -18,7 +18,7 @@ pub unsafe fn frame_hook(ai_mode: &[AiMode; 8]) {
         let ai_mode = &ai_mode[player as usize];
         let player_ai = PlayerAi::get(player);
         while let Some(request) = player_ai.first_request() {
-            let can = can_satisfy_request(game, player, &request, ai_mode);
+            let can = can_satisfy_request(game, player, &request, ai_mode).is_ok();
             let mut handled = false;
             if can {
                 // Handle building morphs since preplaced colonies don't check for requests
@@ -84,16 +84,19 @@ fn is_gas_building(unit_id: UnitId) -> bool {
     }
 }
 
-unsafe fn can_satisfy_request(
+pub unsafe fn can_satisfy_request(
     game: Game,
     player: u8,
     request: &bw::AiSpendingRequest,
     ai_mode: &AiMode,
-) -> bool {
+) -> Result<(), RequestSatisfyError> {
     let wait_resources = ai_mode.wait_for_resources;
     match request.ty {
         1 | 2 | 3 | 4 => {
             let unit_id = UnitId(request.id);
+            if !game.unit_available(player, unit_id) {
+                return Err(RequestSatisfyError::NotAvailable);
+            }
             if request.ty == 3 && !ai_mode.build_gas && is_gas_building(unit_id) {
                 let town = request.val as *mut bw::AiTown;
                 let existing_gas_buildings = ListIter((*town).buildings)
@@ -107,43 +110,67 @@ unsafe fn can_satisfy_request(
                     .map(|x| ((x.flags_and_count & 0xf8) >> 3) as usize)
                     .sum();
                 if existing_gas_buildings >= explicitly_requested_buildings {
-                    return false;
+                    return Err(RequestSatisfyError::BuildLimit);
                 }
             }
             if !wait_resources && !has_resources(game, player, &ai::unit_cost(unit_id)) {
-                return false;
+                return Err(RequestSatisfyError::Resources);
             }
             let reqs = match bw::unit_dat_requirements(unit_id) {
                 Some(s) => s,
-                None => return true,
+                None => return Ok(()),
             };
-            can_satisfy_dat_request(game, player, reqs, 0)
+            can_satisfy_dat_request(game, player, reqs, 0).map_err(RequestSatisfyError::DatReq)
         }
         5 => {
             let upgrade_id = UpgradeId(request.id);
             if !wait_resources && !has_resources(game, player, &ai::upgrade_cost(upgrade_id)) {
-                return false;
+                return Err(RequestSatisfyError::Resources);
             }
             let mut reqs = match bw::upgrade_dat_requirements(upgrade_id) {
                 Some(s) => s,
-                None => return true,
+                None => return Ok(()),
             };
             let level = game.upgrade_level(player as u8, upgrade_id);
-            can_satisfy_dat_request(game, player, reqs, level)
+            can_satisfy_dat_request(game, player, reqs, level).map_err(RequestSatisfyError::DatReq)
         }
         6 => {
             let tech_id = TechId(request.id);
             if !wait_resources && !has_resources(game, player, &ai::tech_cost(tech_id)) {
-                return false;
+                return Err(RequestSatisfyError::Resources);
             }
             let mut reqs = match bw::tech_research_dat_requirements(tech_id) {
                 Some(s) => s,
-                None => return true,
+                None => return Ok(()),
             };
-            can_satisfy_dat_request(game, player, reqs, 0)
+            can_satisfy_dat_request(game, player, reqs, 0).map_err(RequestSatisfyError::DatReq)
         }
-        _ => true,
+        _ => Ok(()),
     }
+}
+
+pub enum RequestSatisfyError {
+    Resources,
+    /// UMS disabled unit
+    NotAvailable,
+    /// define_max limit
+    BuildLimit,
+    /// One set of ors that couldn't be satisfied
+    /// (Doesn't show rest if many)
+    DatReq(Vec<DatReqSatisfyError>),
+}
+
+#[derive(Copy, Clone)]
+pub enum DatReqSatisfyError {
+    /// This doesn't differentiate between current unit is/owns unit,
+    /// but let's assume that the user can figure things out from the error.
+    NeedUnit(UnitId),
+    NeedTech(TechId),
+    NeedAddonless,
+    NeedEmptySilo,
+    NeedHangarSpace,
+    /// Datreq is "always disabled/blank"
+    Disabled,
 }
 
 enum MatchRequirement {
@@ -190,7 +217,7 @@ unsafe fn can_satisfy_dat_request(
     player: u8,
     reqs: *const u16,
     upgrade_level: u8,
-) -> bool {
+) -> Result<(), Vec<DatReqSatisfyError>> {
     fn match_req(dat_req: &DatReq) -> Option<MatchRequirement> {
         match *dat_req {
             DatReq::HasHangarSpace => Some(MatchRequirement::HasHangarSpace),
@@ -202,7 +229,7 @@ unsafe fn can_satisfy_dat_request(
         }
     }
 
-    let mut match_requirements: SmallVec<[MatchRequirement; 8]> = SmallVec::new();
+    let mut match_requirements: SmallVec<[(MatchRequirement, SmallVec<_>); 8]> = SmallVec::new();
     let mut dat_reqs: SmallVec<_> = SmallVec::new();
     let mut read = ReadDatReqs::new(reqs, upgrade_level);
     loop {
@@ -210,10 +237,13 @@ unsafe fn can_satisfy_dat_request(
         if dat_reqs.is_empty() {
             break;
         }
+        let mut errors: SmallVec<[DatReqSatisfyError; 4]> = SmallVec::new();
         let pass = dat_reqs.iter().any(|req| {
             match *req {
-                DatReq::Disabled => false,
-                DatReq::Blank => false,
+                DatReq::Disabled | DatReq::Blank => {
+                    errors.push(DatReqSatisfyError::Disabled);
+                    false
+                }
                 DatReq::BwOnly => true, // w/e
                 DatReq::IsTransport => true,
                 DatReq::IsNotBusy => true,
@@ -237,10 +267,27 @@ unsafe fn can_satisfy_dat_request(
                 DatReq::HasSpiderMinesOnly => true,
                 DatReq::CanHoldPositionOnly => true,
                 DatReq::AllowOnHallucinations => true,
-                DatReq::TechOnly(tech) => game.tech_researched(player, tech),
-                DatReq::TechResearched(tech) => game.tech_researched(player, tech),
-                DatReq::HasUnit(unit) => game.unit_count(player, unit) != 0,
-                DatReq::Unit(unit) => game.completed_count(player, unit) != 0,
+                DatReq::TechOnly(tech) | DatReq::TechResearched(tech) => {
+                    let pass = game.tech_researched(player, tech);
+                    if !pass {
+                        errors.push(DatReqSatisfyError::NeedTech(tech));
+                    }
+                    pass
+                }
+                DatReq::HasUnit(unit) => {
+                    let pass = game.unit_count(player, unit) != 0;
+                    if !pass {
+                        errors.push(DatReqSatisfyError::NeedUnit(unit));
+                    }
+                    pass
+                }
+                DatReq::Unit(unit) => {
+                    let pass = game.completed_count(player, unit) != 0;
+                    if !pass {
+                        errors.push(DatReqSatisfyError::NeedUnit(unit));
+                    }
+                    pass
+                }
                 DatReq::Unknown(id) => {
                     warn!("Unknown req ty {:x}", id);
                     true
@@ -257,25 +304,61 @@ unsafe fn can_satisfy_dat_request(
             // Can (and should) skip adding match reqs if already passed
             let match_req_count = dat_reqs.iter().filter(|x| match_req(x).is_some()).count();
             match match_req_count {
-                0 => return false,
+                0 => {
+                    assert!(!errors.is_empty());
+                    return Err(errors.into_iter().collect());
+                }
                 1 => {
                     if let Some(req) = dat_reqs.iter().filter_map(|x| match_req(x)).next() {
-                        match_requirements.push(req);
+                        match_requirements.push((req, errors));
                     }
                 }
                 _ => {
                     let reqs = dat_reqs.iter().filter_map(|x| match_req(x)).collect();
-                    match_requirements.push(MatchRequirement::Or(reqs));
+                    match_requirements.push((MatchRequirement::Or(reqs), errors));
                 }
             };
         };
     }
-    unit::active_units()
+    let ok = unit::active_units()
         .filter(|x| x.player() == player && x.is_completed())
         .filter(|&x| !is_busy(x))
-        .filter(|&x| match_requirements.iter().all(|r| r.matches(x)))
+        .filter(|&x| match_requirements.iter().all(|r| r.0.matches(x)))
         .next()
-        .is_some()
+        .is_some();
+    if ok {
+        Ok(())
+    } else {
+        let errors = match match_requirements.into_iter().next() {
+            Some(s) => {
+                fn match_req_to_error(req: &MatchRequirement, out: &mut Vec<DatReqSatisfyError>) {
+                    let err = match req {
+                        MatchRequirement::Unit(unit) | MatchRequirement::Addon(unit) => {
+                            DatReqSatisfyError::NeedUnit(*unit)
+                        }
+                        MatchRequirement::HasHangarSpace => DatReqSatisfyError::NeedHangarSpace,
+                        MatchRequirement::HasNoNuke => DatReqSatisfyError::NeedEmptySilo,
+                        MatchRequirement::HasNoAddon => DatReqSatisfyError::NeedAddonless,
+                        MatchRequirement::Or(list) => {
+                            for err in list {
+                                match_req_to_error(err, out);
+                            }
+                            return;
+                        }
+                    };
+                    out.push(err);
+                }
+                let mut errors = Vec::with_capacity(4);
+                match_req_to_error(&s.0, &mut errors);
+                errors.extend(s.1);
+                errors
+            }
+            // No real requirements, so any nonbusy unit would be fine..
+            // Yet the player doesn't have any.
+            None => vec![DatReqSatisfyError::NeedUnit(bw_dat::unit::ANY_UNIT)],
+        };
+        Err(errors)
+    }
 }
 
 fn start_unit_building(game: Game, unit: Unit, unit_id: UnitId, cost: &Cost) -> Result<(), ()> {

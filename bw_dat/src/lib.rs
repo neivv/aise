@@ -126,6 +126,14 @@ pub mod unit {
     pub const COMMAND_CENTER: UnitId = UnitId(0x6a);
     pub const NUCLEAR_SILO: UnitId = UnitId(0x6c);
     pub const REFINERY: UnitId = UnitId(0x6e);
+    pub const HATCHERY: UnitId = UnitId(0x83);
+    pub const LAIR: UnitId = UnitId(0x84);
+    pub const HIVE: UnitId = UnitId(0x85);
+    pub const GREATER_SPIRE: UnitId = UnitId(0x89);
+    pub const SPIRE: UnitId = UnitId(0x8d);
+    pub const CREEP_COLONY: UnitId = UnitId(0x8f);
+    pub const SPORE_COLONY: UnitId = UnitId(0x90);
+    pub const SUNKEN_COLONY: UnitId = UnitId(0x92);
     pub const EXTRACTOR: UnitId = UnitId(0x95);
     pub const PYLON: UnitId = UnitId(0x9c);
     pub const ASSIMILATOR: UnitId = UnitId(0x9d);
@@ -484,6 +492,10 @@ impl TechId {
 
     pub fn icon(&self) -> u32 {
         self.get(6)
+    }
+
+    pub fn label(&self) -> u32 {
+        self.get(7)
     }
 }
 
