@@ -2,7 +2,7 @@ use std::mem;
 
 use libc::c_void;
 
-use bw_dat::{TechId, UnitId, UpgradeId};
+use bw_dat::{tech, unit, upgrade, TechId, UnitId, UpgradeId};
 
 use crate::ai::{self, PlayerAi};
 use crate::ai_spending::{DatReqSatisfyError, RequestSatisfyError};
@@ -117,6 +117,9 @@ unsafe fn military_line(
     player: u8,
     unit_id: UnitId,
 ) {
+    if unit_id.0 >= unit::NONE.0 {
+        return;
+    }
     page.push(unit_name(unit_id));
 
     let mut indent = page.indent(2);
@@ -138,11 +141,24 @@ unsafe fn town_request_line(
     req: &TownRequest,
 ) {
     match req.ty {
-        RequestType::Unit(u) => page.push(format!("{} {}", req.count, unit_name(u))),
+        RequestType::Unit(u) => {
+            if u.0 >= unit::NONE.0 {
+                return;
+            }
+            page.push(format!("{} {}", req.count, unit_name(u)));
+        }
         RequestType::Upgrade(u) => {
+            if u.0 >= upgrade::NONE.0 {
+                return;
+            }
             page.push(format!("{} level {}", upgrade_name(u), req.count));
         }
-        RequestType::Tech(u) => page.push(format!("{}", tech_name(u))),
+        RequestType::Tech(u) => {
+            if u.0 >= tech::NONE.0 {
+                return;
+            }
+            page.push(format!("{}", tech_name(u)));
+        }
     }
     let mut indent = page.indent(2);
     let page = indent.page();
