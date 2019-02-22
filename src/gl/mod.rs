@@ -16,7 +16,7 @@ mod bw_render;
 mod text;
 mod ui;
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::io;
 use std::mem;
 use std::path::{Path, PathBuf};
@@ -76,6 +76,7 @@ mod bw_ext {
 
 thread_local! {
     static CONTEXT: RefCell<Option<Rc<GlState>>> = RefCell::new(None);
+    static CONTEXT_BORROWED: Cell<bool> = Cell::new(false);
 }
 
 struct GlState {
@@ -122,21 +123,16 @@ pub unsafe fn init_hooks(patcher: &mut whack::ActivePatcher) {
 
 fn redraw_screen_hook(orig: &Fn()) {
     orig();
-    let state = match CONTEXT.with(|x| x.borrow().clone()) {
-        Some(s) => s,
-        None => return,
-    };
-    let context = &state.context;
-    let mut state = state.state.borrow_mut();
-    let state = &mut *state;
-    if state.draw_skips != 0 {
-        state.draw_skips -= 1;
-        return;
-    }
-    let mut frame_buffer = glium::framebuffer::DefaultFramebuffer::back_left(context);
-    state.bw_render.draw(context, &mut frame_buffer);
-    state.ui.draw(context, &mut frame_buffer);
-    context.swap_buffers().unwrap();
+    with_ctx_state_facade(|state, context| {
+        if state.draw_skips != 0 {
+            state.draw_skips -= 1;
+            return;
+        }
+        let mut frame_buffer = glium::framebuffer::DefaultFramebuffer::back_left(context);
+        state.bw_render.draw(context, &mut frame_buffer);
+        state.ui.draw(context, &mut frame_buffer);
+        context.swap_buffers().unwrap();
+    });
 }
 
 unsafe fn string_from_u8_ptr(ptr: *const u8) -> std::borrow::Cow<'static, str> {
@@ -219,11 +215,36 @@ pub enum UiInput {
     NotHandled,
 }
 
+fn with_ctx_state_facade<F, R>(func: F) -> Option<R>
+where
+    F: FnOnce(&mut DrawState, &Rc<Context>) -> R,
+{
+    if CONTEXT_BORROWED.with(|x| x.get()) {
+        return None;
+    }
+    CONTEXT_BORROWED.with(|x| x.set(true));
+    let result = CONTEXT.with(|x| {
+        let s = x.borrow();
+        if let Some(ref s) = *s {
+            let mut state = s.state.borrow_mut();
+            Some(func(&mut state, &s.context))
+        } else {
+            None
+        }
+    });
+    CONTEXT_BORROWED.with(|x| x.set(false));
+    result
+}
+
 fn with_ctx_state<F, R>(func: F) -> Option<R>
 where
     F: FnOnce(&mut DrawState) -> R,
 {
-    CONTEXT.with(|x| {
+    if CONTEXT_BORROWED.with(|x| x.get()) {
+        return None;
+    }
+    CONTEXT_BORROWED.with(|x| x.set(true));
+    let result = CONTEXT.with(|x| {
         let s = x.borrow();
         if let Some(ref s) = *s {
             let mut state = s.state.borrow_mut();
@@ -231,7 +252,9 @@ where
         } else {
             None
         }
-    })
+    });
+    CONTEXT_BORROWED.with(|x| x.set(false));
+    result
 }
 
 fn handle_msg(msg: u32, wparam: usize, _lparam: isize) -> UiInput {
@@ -307,13 +330,9 @@ unsafe extern "system" fn window_proc(
 }
 
 fn update_palette_hook(start: u32, count: u32, colors: *const u32, _: u32) {
-    CONTEXT.with(|x| {
-        let s = x.borrow();
-        if let Some(ref s) = *s {
-            let mut state = s.state.borrow_mut();
-            let slice = unsafe { std::slice::from_raw_parts(colors, count as usize) };
-            state.bw_render.update_palette(&s.context, start, slice);
-        }
+    with_ctx_state_facade(|state, facade| {
+        let slice = unsafe { std::slice::from_raw_parts(colors, count as usize) };
+        state.bw_render.update_palette(facade, start, slice);
     });
 }
 
@@ -632,12 +651,8 @@ impl Program {
 }
 
 pub fn new_frame(globals: &Globals) {
-    CONTEXT.with(|x| {
-        let s = x.borrow();
-        if let Some(ref s) = *s {
-            let mut state = s.state.borrow_mut();
-            new_frame_inner(&mut state, globals);
-        }
+    with_ctx_state(|state| {
+        new_frame_inner(state, globals);
     });
 }
 
