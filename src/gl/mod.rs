@@ -41,6 +41,8 @@ use winapi::um::winuser::{
     CallWindowProcW, GetClientRect, GetDC, ReleaseDC, SetWindowLongPtrW, MSG,
 };
 
+use bw_dat::{TechId, UnitId, UpgradeId};
+
 use crate::bw;
 use crate::globals::Globals;
 
@@ -664,5 +666,29 @@ fn new_frame_inner(state: &mut DrawState, globals: &Globals) {
         "ai_military_requests" => state.ai_requests.military.draw_page(page, globals),
         "ai_town_requests" => state.ai_requests.towns.draw_page(page, globals),
         _ => panic!("Unknown page {}", page_name),
+    }
+}
+
+fn unit_name(unit_id: UnitId) -> String {
+    stat_txt_string(unit_id.0 as u32 + 1)
+}
+
+fn tech_name(tech_id: TechId) -> String {
+    stat_txt_string(tech_id.label())
+}
+
+fn upgrade_name(upgrade_id: UpgradeId) -> String {
+    stat_txt_string(upgrade_id.label())
+}
+
+fn stat_txt_string(id: u32) -> String {
+    unsafe {
+        let name = bw_ext::get_stat_txt_string(id);
+        if name.is_null() {
+            return "(None)".into();
+        }
+        let len = (0..).position(|x| *name.add(x) == 0).unwrap();
+        let name = std::slice::from_raw_parts(name, len);
+        format!("{}", String::from_utf8_lossy(name))
     }
 }

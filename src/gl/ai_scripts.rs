@@ -6,7 +6,7 @@ use crate::bw;
 use crate::list::{ListEntry, ListIter};
 
 use super::ui::Page;
-use super::UiInput;
+use super::{tech_name, unit_name, upgrade_name, UiInput};
 
 pub struct AiScripts {
     pos: usize,
@@ -244,19 +244,19 @@ impl AiDebugFormat for Priority {
 
 impl AiDebugFormat for UnitId {
     fn fmt(&self) -> String {
-        format!("Unit_{}", self.0)
+        format!("{}", unit_name(*self))
     }
 }
 
 impl AiDebugFormat for TechId {
     fn fmt(&self) -> String {
-        format!("Tech_{}", self.0)
+        format!("{}", tech_name(*self))
     }
 }
 
 impl AiDebugFormat for UpgradeId {
     fn fmt(&self) -> String {
-        format!("Upgrade_{}", self.0)
+        format!("{}", upgrade_name(*self))
     }
 }
 

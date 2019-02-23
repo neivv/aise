@@ -14,7 +14,7 @@ use crate::list::ListIter;
 use crate::unit::{active_units, Unit};
 
 use super::ui::Page;
-use super::{bw_ext, UiInput};
+use super::{tech_name, unit_name, upgrade_name, UiInput};
 
 pub struct MilitaryRequests {
     player: u8,
@@ -83,30 +83,6 @@ impl MilitaryRequests {
                 }
             }
         }
-    }
-}
-
-fn unit_name(unit_id: UnitId) -> String {
-    stat_txt_string(unit_id.0 as u32 + 1)
-}
-
-fn tech_name(tech_id: TechId) -> String {
-    stat_txt_string(tech_id.label())
-}
-
-fn upgrade_name(upgrade_id: UpgradeId) -> String {
-    stat_txt_string(upgrade_id.label())
-}
-
-fn stat_txt_string(id: u32) -> String {
-    unsafe {
-        let name = bw_ext::get_stat_txt_string(id);
-        if name.is_null() {
-            return "(None)".into();
-        }
-        let len = (0..).position(|x| *name.add(x) == 0).unwrap();
-        let name = std::slice::from_raw_parts(name, len);
-        format!("{}", String::from_utf8_lossy(name))
     }
 }
 
