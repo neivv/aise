@@ -28,12 +28,17 @@ pub struct Ui {
     active_page: usize,
     font_data: Option<FontData>,
     input_buffer: String,
+    // Char is an id so the page asking for text knows what originally caused it
+    text_input_request_active: Option<(String, char)>,
+    // Message shown in place of input buffer
+    message: Option<String>,
 }
 
 // Since cannot borrow the entire State as Ui is also part of it
 pub struct InputBorrow<'a> {
     pub ai_scripts: &'a mut super::ai_scripts::AiScripts,
     pub ai_requests: &'a mut super::ai_requests::AiRequests,
+    pub ai_build_view: &'a mut super::ai_build_view::AiBuildView,
 }
 
 pub struct Page {
@@ -45,6 +50,18 @@ pub struct Page {
 }
 
 impl Page {
+    fn area(&self) -> Rect {
+        match self.name {
+            "ai_build_view" => Rect {
+                left: 0.01 / (4.0 / 3.0),
+                top: 0.01,
+                right: 0.60,
+                bottom: 0.25,
+            },
+            _ => UI_DEFAULT_AREA,
+        }
+    }
+
     pub fn clear(&mut self) {
         self.lines.clear();
     }
@@ -213,15 +230,16 @@ impl Modifiers {
     }
 }
 
+const UI_DEFAULT_AREA: Rect = Rect {
+    left: 0.01 / (4.0 / 3.0),
+    top: 0.01,
+    right: 0.75,
+    bottom: 0.99,
+};
+
 impl Ui {
     pub fn new<F: Facade>(facade: &F) -> Ui {
         let bg_program = compile_program!(facade, "passthrough.vert", "ui_background.frag");
-        let area = Rect {
-            left: 0.01 / (4.0 / 3.0),
-            top: 0.01,
-            right: 0.75,
-            bottom: 0.99,
-        };
         let square = vec![
             vertex2d(-1.0, 1.0),
             vertex2d(1.0, 1.0),
@@ -235,17 +253,23 @@ impl Ui {
         let font_data = load_font(facade);
         Ui {
             shown: false,
-            area,
+            area: UI_DEFAULT_AREA,
             bg_program,
             bg_vertices,
             pages: Vec::new(),
             active_page: 0,
             font_data,
             input_buffer: String::new(),
+            text_input_request_active: None,
+            message: None,
         }
     }
 
-    pub fn current_page(&self) -> &'static str {
+    pub fn current_page(&mut self) -> &mut Page {
+        &mut self.pages[self.active_page]
+    }
+
+    pub fn current_page_name(&self) -> &'static str {
         self.pages
             .get(self.active_page)
             .map(|x| x.name)
@@ -360,13 +384,21 @@ impl Ui {
         let scroll_pos_str = format!("{}/{}", line_end_pos, page.lines.len());
         text_draw.line((right - 60.0, top + 20.0), &scroll_pos_str);
 
-        text_draw.line((x, bottom - 5.0), &self.input_buffer);
+        let bottom_line_pos = (x, bottom - 5.0);
+        if let Some(ref message) = self.message {
+            text_draw.line(bottom_line_pos, &message);
+        } else if let Some((ref prefix, _)) = self.text_input_request_active {
+            let msg = format!("{}: {}", prefix, self.input_buffer);
+            text_draw.line(bottom_line_pos, &msg);
+        } else {
+            text_draw.line(bottom_line_pos, &self.input_buffer);
+        }
 
         text_draw.render(facade, surface);
     }
 
-    pub fn input_key(&mut self, key: i32) -> UiInput {
-        use winapi::um::winuser::VK_BACK;
+    pub fn input_key(&mut self, key: i32, state: &mut InputBorrow) -> UiInput {
+        use winapi::um::winuser::{VK_BACK, VK_ESCAPE, VK_RETURN};
         if !self.shown {
             return UiInput::NotHandled;
         }
@@ -379,6 +411,7 @@ impl Ui {
                     } else {
                         self.active_page -= 1;
                     }
+                    self.area = self.current_page().area();
                     UiInput::Handled
                 }
                 b'W' => {
@@ -387,6 +420,7 @@ impl Ui {
                     } else {
                         self.active_page += 1;
                     }
+                    self.area = self.current_page().area();
                     UiInput::Handled
                 }
                 _ => UiInput::NotHandled,
@@ -397,6 +431,27 @@ impl Ui {
                     self.input_buffer.pop();
                     UiInput::Handled
                 }
+                VK_ESCAPE => {
+                    self.input_buffer.clear();
+                    self.text_input_request_active = None;
+                    self.message = None;
+                    UiInput::Handled
+                }
+                VK_RETURN => {
+                    if let Some((_, id)) = self.text_input_request_active.take() {
+                        {
+                            let message = &self.input_buffer;
+                            self.message = match self.current_page_name() {
+                                "ai_build_view" => state.ai_build_view.input_end(id, message),
+                                _ => None,
+                            };
+                        }
+                        self.input_buffer.clear();
+                        UiInput::Handled
+                    } else {
+                        UiInput::NotHandled
+                    }
+                }
                 _ => UiInput::NotHandled,
             }
         }
@@ -405,6 +460,11 @@ impl Ui {
     pub fn input_char(&mut self, value: char, state: &mut InputBorrow) -> UiInput {
         if !self.shown {
             return UiInput::NotHandled;
+        }
+        self.message = None;
+        if self.text_input_request_active.is_some() {
+            self.input_buffer.push(value);
+            return UiInput::Handled;
         }
         if self.page_specific_input(value, state) == UiInput::Handled {
             return UiInput::Handled;
@@ -419,12 +479,18 @@ impl Ui {
     }
 
     fn page_specific_input(&mut self, value: char, state: &mut InputBorrow) -> UiInput {
-        match self.current_page() {
+        match self.current_page_name() {
             "ai_scripts" => state.ai_scripts.input(value),
             "ai_military_requests" => state.ai_requests.military.input(value),
             "ai_town_requests" => state.ai_requests.towns.input(value),
+            "ai_build_view" => state.ai_build_view.input(value, self),
             _ => UiInput::NotHandled,
         }
+    }
+
+    pub fn request_input<S: Into<String>>(&mut self, id: char, message: S) {
+        self.input_buffer.clear();
+        self.text_input_request_active = Some((message.into(), id));
     }
 }
 

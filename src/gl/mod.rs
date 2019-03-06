@@ -10,9 +10,12 @@ macro_rules! compile_program {
     };
 }
 
+mod ai_build_view;
 mod ai_requests;
 mod ai_scripts;
 mod bw_render;
+mod draw_shapes;
+mod gl_common;
 mod support;
 mod text;
 mod ui;
@@ -70,10 +73,13 @@ mod bw_ext {
 
     whack_vars!(init_sc_vars, 0x00400000,
         0x0051BFB0 => bw_window: *mut c_void;
+        0x0062848C => screen_x: u32;
+        0x006284A8 => screen_y: u32;
     );
 
     whack_funcs!(init_sc_funcs, 0x00400000,
         0x004C36F0 => get_stat_txt_string(@ecx u32) -> *const u8;
+        0x004D1140 => is_outside_game_screen(@ecx u32, @eax u32) -> u32;
     );
 }
 
@@ -91,6 +97,8 @@ struct DrawState {
     bw_render: bw_render::BwRender,
     ai_scripts: ai_scripts::AiScripts,
     ai_requests: ai_requests::AiRequests,
+    ai_build_view: ai_build_view::AiBuildView,
+    gl_common: gl_common::GlCommon,
     ui: ui::Ui,
     draw_skips: u32,
 }
@@ -101,10 +109,13 @@ impl DrawState {
         ui.page("ai_scripts");
         ui.page("ai_military_requests");
         ui.page("ai_town_requests");
+        ui.page("ai_build_view");
         DrawState {
             bw_render: bw_render::BwRender::new(context),
             ai_scripts: ai_scripts::AiScripts::new(),
             ai_requests: ai_requests::AiRequests::new(),
+            ai_build_view: ai_build_view::AiBuildView::new(context),
+            gl_common: gl_common::GlCommon::new(),
             draw_skips: 7100, // Bw redraws screen a lot during loading, skip those
             ui,
         }
@@ -133,6 +144,18 @@ fn redraw_screen_hook(orig: &Fn()) {
         }
         let mut frame_buffer = glium::framebuffer::DefaultFramebuffer::back_left(context);
         state.bw_render.draw(context, &mut frame_buffer);
+        {
+            match state.ui.current_page_name() {
+                "ai_build_view" => {
+                    state.ai_build_view.draw_overlay(
+                        context,
+                        &mut frame_buffer,
+                        &mut state.gl_common,
+                    );
+                }
+                _ => (),
+            }
+        }
         state.ui.draw(context, &mut frame_buffer);
         context.swap_buffers().unwrap();
     });
@@ -263,35 +286,38 @@ where
 fn handle_msg(msg: u32, wparam: usize, _lparam: isize) -> UiInput {
     use winapi::um::winuser::{VK_F1, WM_CHAR, WM_KEYDOWN};
 
-    with_ctx_state(|state| match msg {
-        WM_KEYDOWN => {
-            let key = wparam as i32;
-            if key == VK_F1 {
-                state.ui.toggle_shown();
-                UiInput::Handled
-            } else {
-                state.ui.input_key(key)
+    with_ctx_state(|state| {
+        let mut input_borrow = ui::InputBorrow {
+            ai_scripts: &mut state.ai_scripts,
+            ai_requests: &mut state.ai_requests,
+            ai_build_view: &mut state.ai_build_view,
+        };
+        match msg {
+            WM_KEYDOWN => {
+                let key = wparam as i32;
+                if key == VK_F1 {
+                    state.ui.toggle_shown();
+                    UiInput::Handled
+                } else {
+                    state.ui.input_key(key, &mut input_borrow)
+                }
             }
-        }
-        WM_CHAR => {
-            let chara = if wparam < 0x80 {
-                Some(wparam as u8 as char)
-            } else {
-                String::from_utf16(&[wparam as u16])
-                    .ok()
-                    .and_then(|s| s.chars().next())
-            };
-            if let Some(c) = chara {
-                let mut input_borrow = ui::InputBorrow {
-                    ai_scripts: &mut state.ai_scripts,
-                    ai_requests: &mut state.ai_requests,
+            WM_CHAR => {
+                let chara = if wparam < 0x80 {
+                    Some(wparam as u8 as char)
+                } else {
+                    String::from_utf16(&[wparam as u16])
+                        .ok()
+                        .and_then(|s| s.chars().next())
                 };
-                state.ui.input_char(c, &mut input_borrow)
-            } else {
-                UiInput::NotHandled
+                if let Some(c) = chara {
+                    state.ui.input_char(c, &mut input_borrow)
+                } else {
+                    UiInput::NotHandled
+                }
             }
+            _ => UiInput::NotHandled,
         }
-        _ => UiInput::NotHandled,
     })
     .unwrap_or_else(|| UiInput::NotHandled)
 }
@@ -653,6 +679,12 @@ impl Program {
     }
 }
 
+pub fn game_init() {
+    with_ctx_state(|state| {
+        state.gl_common.game_init();
+    });
+}
+
 pub fn new_frame(globals: &Globals) {
     with_ctx_state(|state| {
         new_frame_inner(state, globals);
@@ -660,12 +692,13 @@ pub fn new_frame(globals: &Globals) {
 }
 
 fn new_frame_inner(state: &mut DrawState, globals: &Globals) {
-    let page_name = state.ui.current_page();
+    let page_name = state.ui.current_page_name();
     let page = state.ui.page(page_name);
     match page_name {
         "ai_scripts" => state.ai_scripts.draw_page(page),
         "ai_military_requests" => state.ai_requests.military.draw_page(page, globals),
         "ai_town_requests" => state.ai_requests.towns.draw_page(page, globals),
+        "ai_build_view" => state.ai_build_view.draw_page(page),
         _ => panic!("Unknown page {}", page_name),
     }
 }
@@ -691,5 +724,18 @@ fn stat_txt_string(id: u32) -> String {
         let len = (0..).position(|x| *name.add(x) == 0).unwrap();
         let name = std::slice::from_raw_parts(name, len);
         format!("{}", String::from_utf8_lossy(name))
+    }
+}
+
+fn screen_rect() -> bw::Rect {
+    unsafe {
+        let left = *bw_ext::screen_x;
+        let top = *bw_ext::screen_y;
+        bw::Rect {
+            left: left as i16,
+            top: top as i16,
+            right: left as i16 + 640,
+            bottom: top as i16 + 480,
+        }
     }
 }

@@ -556,6 +556,9 @@ pub fn save_state(caller: &'static str) -> MutexGuard<'static, Option<SaveState>
 pub unsafe extern fn init_game() {
     aiscript::invalidate_cached_unit_search();
     *Globals::get("init") = Globals::new();
+
+    #[cfg(feature = "opengl")]
+    crate::gl::game_init();
 }
 
 pub unsafe extern fn wrap_save(
