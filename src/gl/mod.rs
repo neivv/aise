@@ -13,6 +13,7 @@ macro_rules! compile_program {
 mod ai_requests;
 mod ai_scripts;
 mod bw_render;
+mod support;
 mod text;
 mod ui;
 

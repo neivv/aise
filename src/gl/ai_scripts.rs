@@ -3,14 +3,14 @@ use std::mem;
 use bw_dat::{TechId, UnitId, UpgradeId};
 
 use crate::bw;
-use crate::list::{ListEntry, ListIter};
+use crate::list::ListEntry;
 
+use super::support::UiList;
 use super::ui::Page;
 use super::{tech_name, unit_name, upgrade_name, UiInput};
 
 pub struct AiScripts {
-    pos: usize,
-    script_order: Vec<*mut bw::AiScript>,
+    scripts: UiList<*mut bw::AiScript>,
 }
 
 // Move to main code if it needs
@@ -27,15 +27,14 @@ impl ListEntry for bw::AiScript {
 impl AiScripts {
     pub fn new() -> AiScripts {
         AiScripts {
-            pos: 0,
-            script_order: Vec::new(),
+            scripts: UiList::new(),
         }
     }
 
     pub fn draw_page(&mut self, page: &mut Page) {
         page.clear();
-        self.update_script_order();
-        let script = match self.script_order.get(self.pos) {
+        self.scripts.update();
+        let script = match self.scripts.current() {
             Some(&s) => s,
             None => return,
         };
@@ -48,8 +47,8 @@ impl AiScripts {
             };
             page.push(format!(
                 "Script #{}/{}: {:p} player {:x} town id {:x} ({:p}), pos ({}, {})",
-                self.pos + 1,
-                self.script_order.len(),
+                self.scripts.current_pos(),
+                self.scripts.len(),
                 script,
                 (*script).player,
                 town_id,
@@ -69,41 +68,14 @@ impl AiScripts {
         }
     }
 
-    fn update_script_order(&mut self) {
-        unsafe {
-            let mut new_scripts = ListIter(bw::first_ai_script()).collect::<Vec<_>>();
-            new_scripts.sort_by_key(|&s| ((*s).player, (*s).town as usize, s as usize));
-            while self.pos > 0 {
-                let old_script = match self.script_order.get(self.pos).cloned() {
-                    Some(s) => s,
-                    None => {
-                        self.script_order = new_scripts;
-                        self.pos = 0;
-                        return;
-                    }
-                };
-                if let Some(pos) = new_scripts.iter().cloned().position(|x| x == old_script) {
-                    self.script_order = new_scripts;
-                    self.pos = pos;
-                    return;
-                }
-                self.pos -= 1;
-            }
-            self.script_order = new_scripts;
-        }
-    }
-
     pub fn input(&mut self, value: char) -> UiInput {
         match value {
             'q' => {
-                self.pos = self.pos.saturating_sub(1);
+                self.scripts.page_back(1);
                 UiInput::Handled
             }
             'w' => {
-                self.pos = self
-                    .pos
-                    .saturating_add(1)
-                    .min(self.script_order.len().saturating_sub(1));
+                self.scripts.page_forward(1);
                 UiInput::Handled
             }
             _ => UiInput::NotHandled,

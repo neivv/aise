@@ -13,6 +13,7 @@ use crate::globals::Globals;
 use crate::list::ListIter;
 use crate::unit::{active_units, Unit};
 
+use super::support::UiList;
 use super::ui::Page;
 use super::{tech_name, unit_name, upgrade_name, UiInput};
 
@@ -287,8 +288,7 @@ fn is_request_satisfied(game: Game, town: Town, req: &TownRequest) -> bool {
 }
 
 pub struct TownRequests {
-    pos: usize,
-    town_order: Vec<*mut bw::AiTown>,
+    towns: UiList<*mut bw::AiTown>,
 }
 
 struct TownRequest {
@@ -307,8 +307,8 @@ enum RequestType {
 impl TownRequests {
     pub fn draw_page(&mut self, page: &mut Page, globals: &Globals) {
         page.clear();
-        self.update_town_order();
-        let town = match self.town_order.get(self.pos) {
+        self.towns.update();
+        let town = match self.towns.current() {
             Some(&s) => s,
             None => return,
         };
@@ -319,8 +319,8 @@ impl TownRequests {
             let town_id = (town as usize - town_array as usize) / mem::size_of::<bw::AiTown>();
             page.push(format!(
                 "Town #{}/{} id {:x}: {:p} player {:x} pos ({}, {})",
-                self.pos + 1,
-                self.town_order.len(),
+                self.towns.current_pos() + 1,
+                self.towns.len(),
                 town_id,
                 town,
                 (*town).player,
@@ -357,43 +357,14 @@ impl TownRequests {
         }
     }
 
-    fn update_town_order(&mut self) {
-        unsafe {
-            let mut new_towns = (0..8)
-                .flat_map(|i| ListIter(bw::first_active_ai_town(i)))
-                .collect::<Vec<_>>();
-            new_towns.sort_by_key(|&s| ((*s).player, s as usize));
-            while self.pos > 0 {
-                let old_town = match self.town_order.get(self.pos).cloned() {
-                    Some(s) => s,
-                    None => {
-                        self.town_order = new_towns;
-                        self.pos = 0;
-                        return;
-                    }
-                };
-                if let Some(pos) = new_towns.iter().cloned().position(|x| x == old_town) {
-                    self.town_order = new_towns;
-                    self.pos = pos;
-                    return;
-                }
-                self.pos -= 1;
-            }
-            self.town_order = new_towns;
-        }
-    }
-
     pub fn input(&mut self, value: char) -> UiInput {
         match value {
             'q' => {
-                self.pos = self.pos.saturating_sub(1);
+                self.towns.page_back(1);
                 UiInput::Handled
             }
             'w' => {
-                self.pos = self
-                    .pos
-                    .saturating_add(1)
-                    .min(self.town_order.len().saturating_sub(1));
+                self.towns.page_forward(1);
                 UiInput::Handled
             }
             _ => UiInput::NotHandled,
@@ -413,8 +384,7 @@ impl AiRequests {
                 player: 0,
             },
             towns: TownRequests {
-                pos: 0,
-                town_order: Vec::new(),
+                towns: UiList::new(),
             },
         }
     }
