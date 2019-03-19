@@ -5,7 +5,7 @@ use cgmath::{vec4, Matrix4};
 use glium::backend::Facade;
 use glium::{uniform, Surface};
 
-use bw_dat::UnitId;
+use bw_dat::{unit, UnitId};
 
 use crate::aiscript::Town;
 use crate::bw;
@@ -70,14 +70,12 @@ impl AiBuildView {
         }
         let tile_flags = MapTileFlags::new(game);
         let search = unsafe { UnitSearch::from_bw() };
-        self.build_info = Some(TownBuildInfo::new(
-            game,
-            &search,
-            &tile_flags,
-            Town(town),
-            self.unit_id,
-            0x40,
-        ));
+        let mut build_info =
+            TownBuildInfo::new(game, &search, &tile_flags, Town(town), self.unit_id, 0x40);
+        if self.unit_id.require_psi() {
+            build_info.add_unpowered_tiles();
+        }
+        self.build_info = Some(build_info);
     }
 
     pub fn input(&mut self, value: char, ui: &mut Ui) -> UiInput {
@@ -156,7 +154,7 @@ impl AiBuildView {
         for y_tile in top_tile..(top_tile + height) {
             let tiles = build_info.iter_slice(left_tile, y_tile, width);
             for (x_tile, status) in (left_tile..).zip(tiles) {
-                if status != BuildStatus::OK {
+                if status.intersects(BuildStatus::NOT_OK) {
                     let rect = draw_shapes::Rect {
                         left: x_tile as f32 * 32.0,
                         top: y_tile as f32 * 32.0,
@@ -172,6 +170,8 @@ impl AiBuildView {
                         (0.8, 0.1, 0.0, 0.4)
                     } else if status.intersects(creep_flags) {
                         (0.8, 0.0, 0.4, 0.4)
+                    } else if status.intersects(BuildStatus::NEED_POWER) {
+                        (0.6, 0.2, 0.4, 0.2)
                     } else if status.intersects(BuildStatus::MINERAL_LINE) {
                         (0.0, 0.2, 0.5, 0.3)
                     } else {
@@ -232,23 +232,30 @@ struct TownBuildInfo {
     width: u16,
     height: u16,
     tiles: Vec<BuildStatus>,
+    unit_id: UnitId,
 }
 
 bitflags! {
     #[derive(Deserialize, Serialize)]
     struct BuildStatus: u16 {
-        const OK = 0x0;
+        // HAS_POWER is ok
+        const NOT_OK = 0x7fff;
         const UNBUILDABLE = 0x1;
         const BUILDING_EXISTS = 0x2;
         const OTHER_UNIT = 0x4;
         const NEAR_PRODUCTION = 0x8;
         const MINERAL_LINE = 0x10;
         const BLOCKS_ADDON = 0x20;
+        // Debug display only, HAS_POWER is the meaningful one
         const NEED_POWER = 0x40;
         const NEED_CREEP = 0x80;
         const HAS_CREEP = 0x100;
         const RESOURCES_BLOCKING = 0x200;
         const CREEP_DISAPPEARING = 0x400;
+        // Inversely a required flag due to pylons only checking only building's center
+        // point (rounded to a tile) for whether there is power.
+        // This flag is is set if a building with its top left tile placed here has power.
+        const HAS_POWER = 0x8000;
     }
 }
 
@@ -261,6 +268,7 @@ impl TownBuildInfo {
         unit_id: UnitId,
         radius_tiles: u16,
     ) -> TownBuildInfo {
+        let player = unsafe { (*town.0).player };
         let center_x = unsafe { (*town.0).position.x / 32 }.max(0) as u16;
         let center_y = unsafe { (*town.0).position.y / 32 }.max(0) as u16;
         let left = center_x.saturating_sub(radius_tiles);
@@ -273,18 +281,76 @@ impl TownBuildInfo {
             .min(game.map_height_tiles());
         let width = right - left;
         let height = bottom - top;
-        let tiles = vec![BuildStatus::OK; (width as usize) * (height as usize)];
+        let tiles = vec![BuildStatus::empty(); (width as usize) * (height as usize)];
         let mut info = TownBuildInfo {
             topleft_tile: (left, top),
             width,
             height,
             tiles,
+            unit_id,
         };
-        info.check_tile_flags(tile_flags, unit_id);
+        info.check_tile_flags(tile_flags);
         if let Some(main_building) = Unit::from_ptr(unsafe { (*town.0).main_building }) {
             info.add_mineral_line(search, main_building);
         }
+        if unit_id.require_psi() {
+            info.add_powered_tiles(search, player);
+        }
         info
+    }
+
+    fn add_powered_tiles(&mut self, search: &UnitSearch, player: u8) {
+        assert!(PYLON_X_RAD & 0x1f == 0);
+        assert!(PYLON_Y_RAD & 0x1f == 0);
+        let placement = self.unit_id.placement();
+        let placement_box_center_x = placement.width / 2;
+        let placement_box_center_y = placement.height / 2;
+        let ctx = PylonPowerContext {
+            tile_offset_x: placement_box_center_x / 32,
+            tile_offset_y: placement_box_center_y / 32,
+            center_offset_in_tile_x: placement_box_center_x & 0x1f,
+            center_offset_in_tile_y: placement_box_center_y & 0x1f,
+        };
+
+        let mut area = self.area();
+        area.left = area.left.saturating_sub(PYLON_X_RAD).max(0);
+        area.right = area.right.saturating_add(PYLON_X_RAD);
+        area.top = area.top.saturating_sub(PYLON_Y_RAD).max(0);
+        area.bottom = area.bottom.saturating_add(PYLON_Y_RAD);
+        let pylons = search
+            .search_iter(&area)
+            .filter(|x| x.id() == unit::PYLON && x.player() == player && x.is_completed());
+        for pylon in pylons {
+            ctx.add_pylon(pylon.position(), self);
+        }
+    }
+
+    fn add_unpowered_tiles(&mut self) {
+        let placement = self.unit_id.placement();
+        let width_tiles = (placement.width / 32).max(1);
+        let height_tiles = (placement.height / 32).max(1);
+        // Since the powered tiles only mark the topleft, and only that is actually relevant,
+        // the "unpowered" means "always unpowered, regardless of topleft position".
+        // A tile is always unpowered if there is no powered topleft tile anywhere in range
+        // (tile_x - width_tiles + 1)..=(tile_x), ((same for y))
+        for tile_y in (self.topleft_tile.1..).take(self.height as usize) {
+            for tile_x in (self.topleft_tile.0..).take(self.width as usize) {
+                let powered = ((tile_y.saturating_sub(height_tiles - 1))..=(tile_y)).any(|y| {
+                    ((tile_x.saturating_sub(width_tiles - 1))..=(tile_x)).any(|x| {
+                        if let Some(tile) = self.get_tile_mut(x, y) {
+                            tile.intersects(BuildStatus::HAS_POWER)
+                        } else {
+                            false
+                        }
+                    })
+                });
+                if !powered {
+                    if let Some(tile) = self.get_tile_mut(tile_x, tile_y) {
+                        *tile |= BuildStatus::NEED_POWER;
+                    }
+                }
+            }
+        }
     }
 
     /// Returns the area which build info has been calculated for (Rect unit is a pixel)
@@ -297,13 +363,13 @@ impl TownBuildInfo {
         }
     }
 
-    fn check_tile_flags(&mut self, tile_flags: &MapTileFlags, unit_id: UnitId) {
+    fn check_tile_flags(&mut self, tile_flags: &MapTileFlags) {
         let left = self.topleft_tile.0;
         let top = self.topleft_tile.1;
         let mut out_pos = 0;
 
-        let zerg = unit_id.races().intersects(bw_dat::RaceFlags::ZERG);
-        let require_creep = unit_id.require_creep();
+        let zerg = self.unit_id.races().intersects(bw_dat::RaceFlags::ZERG);
+        let require_creep = self.unit_id.require_creep();
         let forbid_creep = !require_creep && !zerg;
 
         for y in top..(top + self.height) {
@@ -419,7 +485,6 @@ fn point_direction(from: bw::Point, to: bw::Point) -> u8 {
     let x = to.x as f32 - from.x as f32;
     let y = from.y as f32 - to.y as f32; // Math y axis goes up
     let rad = y.atan2(x);
-    println!("atan({}/{}) = {}", y, x, rad);
     ((rad * 128.0 / PI) * -1.0 + 128.0 + 192.0) as u16 as u8
 }
 
@@ -647,6 +712,88 @@ fn draw_line<L: LineDraw>(cb: &mut L, a: (u32, u32), b: (u32, u32)) {
     }
 }
 
+// Technically these should be parsed from a grp but who changes that ever..
+// Also the algorithm below breaks if these are not divisible by 32
+const PYLON_X_RAD: i16 = 256;
+const PYLON_Y_RAD: i16 = 160;
+
+// 16 * 12 tiles, not that x/y are radius so they represent only 8/6 tile distances
+#[cfg_attr(rustfmt, rustfmt_skip)]
+static PYLON_MASK: &[u8] = &[
+    0, 0, 0, 0,  0, 1, 1, 1,  1, 1, 1, 0,  0, 0, 0, 0,
+    0, 0, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 0, 0,
+    0, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 0,
+    1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,
+    1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,
+    1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,
+    1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,
+    0, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 0,
+    0, 0, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 0, 0,
+    0, 0, 0, 0,  0, 1, 1, 1,  1, 1, 1, 0,  0, 0, 0, 0,
+];
+
+struct PylonPowerContext {
+    // How many full tiles the unit's center will be from topleft tile
+    tile_offset_x: u16,
+    tile_offset_y: u16,
+    // How many pixels the unit's center will be from center tile's topleft corner
+    center_offset_in_tile_x: u16,
+    center_offset_in_tile_y: u16,
+}
+
+impl PylonPowerContext {
+    fn add_pylon(&self, unit_pos: bw::Point, info: &mut TownBuildInfo) {
+        // This area contains units which would be at most powered by the pylon.
+        // -1 because bw checks that abs(pylon_x - unit_x) < PYLON_X_RAD
+        let area = bw::Rect {
+            left: unit_pos.x.saturating_sub(PYLON_X_RAD - 1).max(0),
+            top: unit_pos.y.saturating_sub(PYLON_Y_RAD - 1).max(0),
+            right: unit_pos.x.saturating_add(PYLON_X_RAD),
+            bottom: unit_pos.y.saturating_add(PYLON_Y_RAD),
+        };
+        // Since the unit's center will always be N pixels from tile's topleft position,
+        // start from the next possible center pixel from the topleft corner of area.
+        // (This is since the area's topleft pos may be in a different tile than next
+        // possible center pixel)
+        // It'll move by 31 pixels at most, but because of the -1 left/top above,
+        // a 31-pixel move means that the top row/column of the pylon mask gets skipped over.
+        let x_move = (self.center_offset_in_tile_x + 32 - (area.left as u16 & 0x1f)) & 0x1f;
+        let y_move = (self.center_offset_in_tile_y + 32 - (area.top as u16 & 0x1f)) & 0x1f;
+        let x_start = area.left + x_move as i16;
+        let y_start = area.top + y_move as i16;
+        // + 31 here and below is to round up when dividing
+        let mask_left_skip = PYLON_X_RAD / 32 - (unit_pos.x - x_start + 31) / 32;
+        let mask_top_skip = PYLON_Y_RAD / 32 - (unit_pos.y - y_start + 31) / 32;
+        // Now just check which tiles are powered. The topleft tile gets marked, so subtract
+        // placement box tile offset from a powered tile x/y to get the topleft tile.
+        let mask_lines = PYLON_MASK
+            .chunks_exact(PYLON_X_RAD as usize / 32 * 2)
+            .skip(mask_top_skip as usize)
+            .enumerate()
+            .take((area.bottom - y_start + 31) as usize / 32);
+        for (y_tile, mask_line) in mask_lines {
+            let y_tile = y_tile as u16;
+            let mask_values = mask_line
+                .iter()
+                .skip(mask_left_skip as usize)
+                .enumerate()
+                .take((area.right - x_start + 31) as usize / 32);
+            for (x_tile, &mask_value) in mask_values {
+                let x_tile = x_tile as u16;
+                if mask_value != 0 {
+                    let x_tile = (x_start as u16 / 32 + x_tile).checked_sub(self.tile_offset_x);
+                    let y_tile = (y_start as u16 / 32 + y_tile).checked_sub(self.tile_offset_y);
+                    if let (Some(x_tile), Some(y_tile)) = (x_tile, y_tile) {
+                        if let Some(status) = info.get_tile_mut(x_tile, y_tile) {
+                            *status |= BuildStatus::HAS_POWER;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -812,5 +959,256 @@ mod test {
                 (170, 189),
             ],
         );
+    }
+
+    fn check_pylon(ctx: &PylonPowerContext, expected: &[u8], x: i16, y: i16) {
+        let rad_x = 10;
+        let rad_y = 6;
+
+        let left = (x as u16 / 32).saturating_sub(rad_x);
+        let top = (y as u16 / 32).saturating_sub(rad_y);
+        let right = (x as u16 / 32) + rad_x;
+        let bottom = (y as u16 / 32) + rad_y;
+        let width = right - left;
+        let height = bottom - top;
+        let mut info = TownBuildInfo {
+            topleft_tile: (left, top),
+            width,
+            height,
+            tiles: vec![BuildStatus::empty(); width as usize * height as usize],
+            unit_id: unit::NONE,
+        };
+        ctx.add_pylon(
+            bw::Point {
+                x,
+                y,
+            },
+            &mut info,
+        );
+        let result = info
+            .tiles
+            .iter()
+            .map(|&x| match x != BuildStatus::empty() {
+                true => 1,
+                false => 0,
+            })
+            .collect::<Vec<u8>>();
+        assert_eq!(result.len(), expected.len());
+
+        if result != expected {
+            use std::fmt::Write;
+
+            let format_array = |msg: &mut String, arr: &[u8]| {
+                let lines = arr.chunks_exact(width as usize);
+                for (i, line) in lines.enumerate() {
+                    for subline in line.chunks(5) {
+                        for c in subline {
+                            write!(msg, "{}, ", c).unwrap();
+                        }
+                        write!(msg, " ").unwrap();
+                    }
+                    writeln!(msg).unwrap();
+                    if i as u16 == height - rad_y - 1 {
+                        writeln!(msg).unwrap();
+                    }
+                }
+            };
+            let mut msg = String::new();
+            writeln!(msg, "\nPYLON CHECK FAILED:").unwrap();
+            writeln!(msg, "EXPECTED:").unwrap();
+            format_array(&mut msg, expected);
+            writeln!(msg).unwrap();
+            writeln!(msg, "GOT:").unwrap();
+            format_array(&mut msg, &result);
+            panic!(msg);
+        }
+    }
+
+    #[test]
+    fn pylon_power_gateway() {
+        let ctx = PylonPowerContext {
+            tile_offset_x: 2,
+            tile_offset_y: 1,
+            center_offset_in_tile_x: 0,
+            center_offset_in_tile_y: 16,
+        };
+        #[cfg_attr(rustfmt, rustfmt_skip)]
+        let result = &[
+            0, 0, 0, 0, 0,  1, 1, 1, 1, 1,  1, 0, 0, 0, 0,  0, 0, 0, 0, 0,
+            0, 0, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 0,  0, 0, 0, 0, 0,
+            0, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 1,  0, 0, 0, 0, 0,
+            0, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 0, 0, 0, 0,
+            0, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 0, 0, 0, 0,
+            0, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 0, 0, 0, 0,
+
+            0, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 0, 0, 0, 0,
+            0, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 1,  0, 0, 0, 0, 0,
+            0, 0, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 0,  0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0,  1, 1, 1, 1, 1,  1, 0, 0, 0, 0,  0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0,
+        ];
+        check_pylon(&ctx, result, 1024, 1024);
+    }
+
+    #[test]
+    fn pylon_power_cybernetics_core() {
+        let ctx = PylonPowerContext {
+            tile_offset_x: 1,
+            tile_offset_y: 1,
+            center_offset_in_tile_x: 16,
+            center_offset_in_tile_y: 0,
+        };
+        #[cfg_attr(rustfmt, rustfmt_skip)]
+        let result = &[
+            0, 0, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0,
+            0, 0, 0, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 1,  0, 0, 0, 0, 0,
+            0, 0, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 0, 0, 0, 0,
+            0, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 0, 0, 0,
+            0, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 0, 0, 0,
+            0, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 0, 0, 0,
+
+            0, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 0, 0, 0,
+            0, 0, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 0, 0, 0, 0,
+            0, 0, 0, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 1,  0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0,  0, 1, 1, 1, 1,  1, 1, 0, 0, 0,  0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0,
+        ];
+        check_pylon(&ctx, result, 1024, 1024);
+    }
+
+    #[test]
+    fn pylon_power_cannon() {
+        let ctx = PylonPowerContext {
+            tile_offset_x: 1,
+            tile_offset_y: 1,
+            center_offset_in_tile_x: 0,
+            center_offset_in_tile_y: 0,
+        };
+        #[cfg_attr(rustfmt, rustfmt_skip)]
+        let result = &[
+            0, 0, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0,
+            0, 0, 0, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 1,  0, 0, 0, 0, 0,
+            0, 0, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 0, 0, 0, 0,
+            0, 0, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 0, 0, 0,
+            0, 0, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 0, 0, 0,
+            0, 0, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 0, 0, 0,
+
+            0, 0, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 0, 0, 0,
+            0, 0, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 0, 0, 0, 0,
+            0, 0, 0, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 1,  0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0,  0, 1, 1, 1, 1,  1, 1, 0, 0, 0,  0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0,
+        ];
+        check_pylon(&ctx, result, 1024, 1024);
+    }
+
+    #[test]
+    fn pylon_topleft() {
+        // (gateway)
+        let ctx = PylonPowerContext {
+            tile_offset_x: 2,
+            tile_offset_y: 1,
+            center_offset_in_tile_x: 0,
+            center_offset_in_tile_y: 16,
+        };
+        #[cfg_attr(rustfmt, rustfmt_skip)]
+        let result = &[
+             1, 1, 1,  1, 1, 1, 1, 1,  1, 0, 0, 0, 0,
+             1, 1, 1,  1, 1, 1, 1, 1,  1, 0, 0, 0, 0,
+             1, 1, 1,  1, 1, 1, 1, 1,  1, 0, 0, 0, 0,
+
+             1, 1, 1,  1, 1, 1, 1, 1,  1, 0, 0, 0, 0,
+             1, 1, 1,  1, 1, 1, 1, 1,  0, 0, 0, 0, 0,
+             1, 1, 1,  1, 1, 1, 1, 0,  0, 0, 0, 0, 0,
+             1, 1, 1,  1, 0, 0, 0, 0,  0, 0, 0, 0, 0,
+             0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0,
+             0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0,
+        ];
+        check_pylon(&ctx, result, 96, 96);
+    }
+
+    #[test]
+    fn pylon_horizontal_misalign() {
+        // (gateway)
+        let ctx = PylonPowerContext {
+            tile_offset_x: 2,
+            tile_offset_y: 1,
+            center_offset_in_tile_x: 0,
+            center_offset_in_tile_y: 16,
+        };
+        #[cfg_attr(rustfmt, rustfmt_skip)]
+        let result = &[
+           0, 0, 0, 0, 0,  0, 1, 1, 1, 1,  1, 1, 0, 0, 0,  0, 0, 0, 0, 0,
+           0, 0, 0, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 1,  0, 0, 0, 0, 0,
+           0, 0, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 0, 0, 0, 0,
+           0, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 0, 0, 0,
+           0, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 0, 0, 0,
+           0, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 0, 0, 0,
+
+           0, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 0, 0, 0,
+           0, 0, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 0, 0, 0, 0,
+           0, 0, 0, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 1,  0, 0, 0, 0, 0,
+           0, 0, 0, 0, 0,  0, 1, 1, 1, 1,  1, 1, 0, 0, 0,  0, 0, 0, 0, 0,
+           0, 0, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0,
+           0, 0, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0,
+        ];
+        check_pylon(&ctx, result, 1023, 1024);
+    }
+
+    #[test]
+    fn pylon_vertical_misalign1() {
+        let ctx = PylonPowerContext {
+            tile_offset_x: 2,
+            tile_offset_y: 1,
+            center_offset_in_tile_x: 0,
+            center_offset_in_tile_y: 16,
+        };
+        #[cfg_attr(rustfmt, rustfmt_skip)]
+        let result = &[
+            0, 0, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0,
+            0, 0, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 0,  0, 0, 0, 0, 0,
+            0, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 1,  0, 0, 0, 0, 0,
+            0, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 0, 0, 0, 0,
+            0, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 0, 0, 0, 0,
+            0, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 0, 0, 0, 0,
+
+            0, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 0, 0, 0, 0,
+            0, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 1,  0, 0, 0, 0, 0,
+            0, 0, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 0,  0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0,  1, 1, 1, 1, 1,  1, 0, 0, 0, 0,  0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0,
+        ];
+        check_pylon(&ctx, result, 1024, 1024 - 16);
+    }
+
+    #[test]
+    fn pylon_vertical_misalign2() {
+        let ctx = PylonPowerContext {
+            tile_offset_x: 2,
+            tile_offset_y: 1,
+            center_offset_in_tile_x: 0,
+            center_offset_in_tile_y: 16,
+        };
+        #[cfg_attr(rustfmt, rustfmt_skip)]
+        let result = &[
+            0, 0, 0, 0, 0,  1, 1, 1, 1, 1,  1, 0, 0, 0, 0,  0, 0, 0, 0, 0,
+            0, 0, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 0,  0, 0, 0, 0, 0,
+            0, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 1,  0, 0, 0, 0, 0,
+            0, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 0, 0, 0, 0,
+            0, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 0, 0, 0, 0,
+            0, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 0, 0, 0, 0,
+
+            0, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 0, 0, 0, 0,
+            0, 1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 1,  0, 0, 0, 0, 0,
+            0, 0, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1, 0,  0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0,  1, 1, 1, 1, 1,  1, 0, 0, 0, 0,  0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0,
+        ];
+        check_pylon(&ctx, result, 1024, 1024 - 17);
     }
 }
