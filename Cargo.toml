@@ -8,6 +8,7 @@ name = "aise"
 crate-type = ["cdylib"]
 
 [profile.dev]
+opt-level = 1
 panic = "abort"
 
 [profile.release]
