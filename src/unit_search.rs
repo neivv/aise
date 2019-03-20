@@ -42,7 +42,7 @@ impl UnitSearch {
     pub fn search_iter<'s>(&'s self, rect: &Rect) -> SearchIter<'s> {
         let start = lower_bound(
             &self.values,
-            (rect.left as u16).saturating_sub(self.max_width),
+            rect.left.saturating_sub(self.max_width as i16).max(0) as u16,
         );
         let end = lower_bound(&self.values, rect.right as u16);
         SearchIter {
