@@ -109,13 +109,7 @@ impl<'s> Iterator for SearchIter<'s> {
 }
 
 fn lower_bound(slice: &[(Unit, Rect)], val: u16) -> usize {
-    use std::cmp::Ordering;
-    slice
-        .binary_search_by(|a| match (a.1.left as u16) < val {
-            true => Ordering::Less,
-            false => Ordering::Greater,
-        })
-        .unwrap_err()
+    crate::lower_bound_by_key(slice, val, |x| x.1.left as u16)
 }
 
 impl Rect {

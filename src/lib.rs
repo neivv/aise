@@ -9,6 +9,7 @@ extern crate byteorder;
 extern crate chrono;
 extern crate directories;
 extern crate fern;
+extern crate fxhash;
 #[macro_use]
 extern crate lazy_static;
 extern crate libc;
@@ -491,4 +492,14 @@ unsafe extern fn step_order_hidden_hook(u: *mut c_void, orig: unsafe extern fn(*
         _ => (),
     }
     orig(u);
+}
+
+fn lower_bound_by_key<T, C: Ord, F: Fn(&T) -> C>(slice: &[T], val: C, key: F) -> usize {
+    use std::cmp::Ordering;
+    slice
+        .binary_search_by(|a| match key(a) < val {
+            true => Ordering::Less,
+            false => Ordering::Greater,
+        })
+        .unwrap_err()
 }

@@ -366,6 +366,10 @@ impl UnitId {
     pub fn rclick_action(&self) -> u8 {
         self.get(28) as u8
     }
+
+    pub fn sight_range(&self) -> u32 {
+        self.get(24)
+    }
 }
 
 #[derive(Eq, PartialEq, Copy, Clone)]
@@ -408,6 +412,10 @@ impl WeaponId {
 
     pub fn label(&self) -> u32 {
         self.get(0)
+    }
+
+    pub fn max_range(&self) -> u32 {
+        self.get(5)
     }
 }
 

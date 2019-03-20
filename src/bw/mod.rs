@@ -173,6 +173,36 @@ pub fn distance(a: Point, b: Point) -> u32 {
     }
 }
 
+pub fn rect_distance(a: &Rect, b: &Rect) -> u32 {
+    let horizontal_overlap = a.left < b.right && a.right > b.left;
+    let vertical_overlap = a.top < b.bottom && a.bottom > b.top;
+    let x_diff = match horizontal_overlap {
+        true => 0,
+        false => match a.left < b.left {
+            true => b.left - a.right,
+            false => a.left - b.right,
+        },
+    };
+    let y_diff = match vertical_overlap {
+        true => 0,
+        false => match a.top < b.top {
+            true => b.top - a.bottom,
+            false => a.top - b.bottom,
+        },
+    };
+
+    distance(
+        Point {
+            x: 0,
+            y: 0,
+        },
+        Point {
+            x: x_diff,
+            y: y_diff,
+        },
+    )
+}
+
 pub fn town_array_start() -> *mut AiTown {
     let ptr = samase::active_towns();
     if ptr.is_null() {

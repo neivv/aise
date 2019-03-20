@@ -1,6 +1,8 @@
 use std::ptr::null_mut;
 use std::sync::Arc;
 
+use fxhash::FxHashMap;
+
 use bw_dat::{self, order, OrderId, UnitId};
 
 use aiscript::{PlayerMatch, Position, ReadModifierType, ScriptData, UnitMatch};
@@ -9,7 +11,7 @@ use game::Game;
 use globals::Globals;
 use rng::Rng;
 use swap_retain::SwapRetain;
-use unit::{self, Unit};
+use unit::{self, HashableUnit, Unit};
 use unit_search::UnitSearch;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -43,6 +45,7 @@ impl IdleOrders {
         let deathrattles = &self.deathrattles;
         let ongoing = &mut self.ongoing;
         let returning_cloaked = &mut self.returning_cloaked;
+        let mut cache = InCombatCache::new();
         // Handle ongoing orders.
         // Return home if finished, cloak if a cloaker, panic if health gets low.
         // Yes, it may consider an order ongoing even if the unit is targeting the
@@ -68,9 +71,10 @@ impl IdleOrders {
 
                 if o.user.health() < o.panic_health {
                     for decl in deathrattles {
-                        let ctx = decl.target_validation_context(game, units, Some(o.user));
+                        let mut ctx =
+                            decl.target_validation_context(game, units, &mut cache, Some(o.user));
                         if decl.unit_valid(o.user, &[], CheckTargetingFlags::Yes, &ctx) {
-                            let panic_target = find_target(o.user, &decl, &[], &ctx);
+                            let panic_target = find_target(o.user, &decl, &[], &mut ctx);
                             if let Some((target, distance)) = panic_target {
                                 if distance < decl.radius as u32 {
                                     let (target, pos) = target_pos(&target, decl);
@@ -107,9 +111,13 @@ impl IdleOrders {
                                 units,
                             );
                             if !flags_valid || target.is_invincible() {
-                                let ctx =
-                                    o.decl.target_validation_context(game, units, Some(o.user));
-                                new_target = find_target(o.user, &o.decl, &[], &ctx);
+                                let mut ctx = o.decl.target_validation_context(
+                                    game,
+                                    units,
+                                    &mut cache,
+                                    Some(o.user),
+                                );
+                                new_target = find_target(o.user, &o.decl, &[], &mut ctx);
                                 // Drop the order unless new target is Some and good distance.
                                 retain = false;
                             }
@@ -157,7 +165,7 @@ impl IdleOrders {
         // Start new idle orders, if any can be started.
         for &mut (ref decl, ref mut state) in self.orders.iter_mut().rev() {
             if state.next_frame <= current_frame {
-                let pair = find_user_target_pair(&decl, &ongoing, game, units);
+                let pair = find_user_target_pair(&decl, &ongoing, game, units, &mut cache);
                 if let Some((user, target)) = pair {
                     let (order_target, pos) = target_pos(&target, &decl);
                     let home = match user.order() {
@@ -655,6 +663,7 @@ impl IdleOrder {
         &self,
         game: Game,
         units: &'a UnitSearch,
+        cache: &'a mut InCombatCache,
         current_unit: Option<Unit>,
     ) -> IdleOrderTargetContext<'a> {
         let mut result = IdleOrderTargetContext {
@@ -662,6 +671,7 @@ impl IdleOrder {
             game,
             current_unit,
             units,
+            cache,
         };
 
         let accept_enemies = self.target_flags.simple & 0x1 == 0;
@@ -686,7 +696,7 @@ impl IdleOrder {
         unit: Unit,
         ongoing: &[OngoingOrder],
         check_targeting: CheckTargetingFlags,
-        ctx: &IdleOrderTargetContext,
+        ctx: &mut IdleOrderTargetContext,
     ) -> bool {
         let accept_unseen = self.target_flags.simple & 0x8 != 0;
         let accept_invisible = self.target_flags.simple & 0x10 != 0;
@@ -730,14 +740,7 @@ impl IdleOrder {
             }
         }
         if in_combat {
-            let ok = unit
-                .target()
-                .map(|x| {
-                    let targeting_enemy = !ctx.game.allied(player as u8, x.player());
-                    targeting_enemy && unit.order().is_attack_order()
-                })
-                .unwrap_or(false);
-            if !ok {
+            if !ctx.cache.is_in_combat(unit, ctx.game) {
                 return false;
             }
         }
@@ -755,6 +758,7 @@ struct IdleOrderTargetContext<'a> {
     acceptable_players: [bool; 12],
     game: Game,
     units: &'a UnitSearch,
+    cache: &'a mut InCombatCache,
     current_unit: Option<Unit>,
 }
 
@@ -778,11 +782,12 @@ fn find_user_target_pair(
     ongoing: &[OngoingOrder],
     game: Game,
     units: &UnitSearch,
+    cache: &mut InCombatCache,
 ) -> Option<(Unit, Unit)> {
     fn find_normal(
         decl: &IdleOrder,
         ongoing: &[OngoingOrder],
-        ctx: &IdleOrderTargetContext,
+        ctx: &mut IdleOrderTargetContext,
     ) -> Option<(Unit, Unit, u32)> {
         let unit = unit::active_units()
             .find(|&u| decl.unit_valid(u, ongoing, CheckTargetingFlags::Yes, ctx))?;
@@ -810,13 +815,15 @@ fn find_user_target_pair(
     fn both_targeting_each_other(
         decl: &IdleOrder,
         ongoing: &[OngoingOrder],
-        ctx: &IdleOrderTargetContext,
+        ctx: &mut IdleOrderTargetContext,
     ) -> Option<(Unit, Unit, u32)> {
         unit::active_units()
             .filter_map(|x| x.target().map(|target| (x, target)))
             .filter(|&(user, target)| target.target() == Some(user))
-            .filter(|&(_, target)| decl.target_valid(target, ongoing, CheckTargetingFlags::No, ctx))
-            .filter(|&(u, _)| decl.unit_valid(u, ongoing, CheckTargetingFlags::No, ctx))
+            .filter(|&(user, target)| {
+                decl.target_valid(target, ongoing, CheckTargetingFlags::No, ctx) &&
+                    decl.unit_valid(user, ongoing, CheckTargetingFlags::No, ctx)
+            })
             .map(|(user, tgt)| (user, tgt, bw::distance(user.position(), tgt.position())))
             .min_by_key(|x| x.2)
             .filter(|x| x.2 < decl.radius as u32)
@@ -825,12 +832,14 @@ fn find_user_target_pair(
     fn target_targeting_user(
         decl: &IdleOrder,
         ongoing: &[OngoingOrder],
-        ctx: &IdleOrderTargetContext,
+        ctx: &mut IdleOrderTargetContext,
     ) -> Option<(Unit, Unit, u32)> {
         unit::active_units()
             .filter_map(|x| x.target().map(|user| (user, x)))
-            .filter(|&(_, target)| decl.target_valid(target, ongoing, CheckTargetingFlags::No, ctx))
-            .filter(|&(u, _)| decl.unit_valid(u, ongoing, CheckTargetingFlags::Yes, ctx))
+            .filter(|&(user, target)| {
+                decl.target_valid(target, ongoing, CheckTargetingFlags::No, ctx) &&
+                    decl.unit_valid(user, ongoing, CheckTargetingFlags::Yes, ctx)
+            })
             .map(|(user, tgt)| (user, tgt, bw::distance(user.position(), tgt.position())))
             .min_by_key(|x| x.2)
             .filter(|x| x.2 < decl.radius as u32)
@@ -839,14 +848,14 @@ fn find_user_target_pair(
     fn user_targeting_target(
         decl: &IdleOrder,
         ongoing: &[OngoingOrder],
-        ctx: &IdleOrderTargetContext,
+        ctx: &mut IdleOrderTargetContext,
     ) -> Option<(Unit, Unit, u32)> {
         unit::active_units()
             .filter_map(|x| x.target().map(|target| (x, target)))
-            .filter(|&(_, target)| {
-                decl.target_valid(target, ongoing, CheckTargetingFlags::Yes, ctx)
+            .filter(|&(user, target)| {
+                decl.target_valid(target, ongoing, CheckTargetingFlags::Yes, ctx) &&
+                    decl.unit_valid(user, ongoing, CheckTargetingFlags::No, ctx)
             })
-            .filter(|&(u, _)| decl.unit_valid(u, ongoing, CheckTargetingFlags::No, ctx))
             .map(|(user, tgt)| (user, tgt, bw::distance(user.position(), tgt.position())))
             .min_by_key(|x| x.2)
             .filter(|x| x.2 < decl.radius as u32)
@@ -874,18 +883,21 @@ fn find_user_target_pair(
         .contains(TargetingFlags::CURRENT_UNIT);
     let target_normal = decl.target_flags.targeting_filter != TargetingFlags::CURRENT_UNIT;
 
-    let ctx = decl.target_validation_context(game, units, None);
+    let mut ctx = decl.target_validation_context(game, units, cache, None);
     if self_current_unit && target_current_unit {
-        update_best(&mut best, both_targeting_each_other(decl, ongoing, &ctx));
+        update_best(
+            &mut best,
+            both_targeting_each_other(decl, ongoing, &mut ctx),
+        );
     }
     if self_current_unit && target_normal {
-        update_best(&mut best, user_targeting_target(decl, ongoing, &ctx));
+        update_best(&mut best, user_targeting_target(decl, ongoing, &mut ctx));
     }
     if target_current_unit && self_normal {
-        update_best(&mut best, target_targeting_user(decl, ongoing, &ctx));
+        update_best(&mut best, target_targeting_user(decl, ongoing, &mut ctx));
     }
     if self_normal && target_normal {
-        update_best(&mut best, find_normal(decl, ongoing, &ctx));
+        update_best(&mut best, find_normal(decl, ongoing, &mut ctx));
     }
     best.map(|x| (x.0, x.1))
 }
@@ -894,7 +906,7 @@ fn find_target(
     user: Unit,
     decl: &IdleOrder,
     ongoing: &[OngoingOrder],
-    ctx: &IdleOrderTargetContext,
+    ctx: &mut IdleOrderTargetContext,
 ) -> Option<(Unit, u32)> {
     ctx.units.find_nearest(user.position(), |unit| {
         if unit == user {
@@ -1055,5 +1067,87 @@ impl IdleOrderFlags {
                 }
             })
         }
+    }
+}
+
+/// Since in_combat checks "is this unit being targeted by anyone", it requires going through
+/// all units in game, so cache and sort the targeting information to make multiple checks
+/// in a frame faster.
+struct InCombatCache {
+    inner: Option<InCombatCacheInited>,
+}
+
+struct InCombatCacheInited {
+    // target, targeter, sorted by target, filtered to only have targeting in_combat cares
+    // about.
+    targeting_units: Vec<(Unit, Unit)>,
+    results: FxHashMap<HashableUnit, bool>,
+}
+
+impl InCombatCache {
+    pub fn new() -> InCombatCache {
+        InCombatCache {
+            inner: None,
+        }
+    }
+
+    fn get_inner(&mut self, game: Game) -> &mut InCombatCacheInited {
+        self.inner.get_or_insert_with(|| {
+            // Also include hidden_units for bunkers
+            let mut targeting_units = unit::active_units()
+                .chain(unit::hidden_units())
+                .filter_map(|targeter| {
+                    targeter
+                        .target()
+                        .filter(|x| x.player() < 8 && targeter.player() < 8)
+                        .filter(|x| !game.allied(targeter.player(), x.player()))
+                        .map(|target| (target, targeter))
+                })
+                .collect::<Vec<_>>();
+            targeting_units.sort_unstable_by_key(|x| (x.0).0 as usize);
+            InCombatCacheInited {
+                targeting_units,
+                results: FxHashMap::with_capacity_and_hasher(32, Default::default()),
+            }
+        })
+    }
+
+    pub fn is_in_combat(&mut self, unit: Unit, game: Game) -> bool {
+        // Check that either the unit has recently attacked, or an enemy is within attack
+        // range, targeting the unit.
+        let recently_attacked =
+            unsafe { (*unit.0).ground_cooldown > 0 || (*unit.0).air_cooldown > 0 };
+        if recently_attacked {
+            // Workers need actual non-neutral targets so that they aren't in combat
+            // from mining cooldown.
+            let is_mining = unit.id().is_worker() &&
+                unit.target().map(|x| x.player() == 11).unwrap_or(true);
+            if !is_mining {
+                return true;
+            }
+        }
+        let inner = self.get_inner(game);
+        let entry = inner.results.entry(HashableUnit(unit));
+        let targeting_units = &inner.targeting_units;
+        *entry.or_insert_with(|| {
+            let first = crate::lower_bound_by_key(targeting_units, unit.0, |x| (x.0).0);
+            let mut units = targeting_units
+                .iter()
+                .skip(first)
+                .take_while(|x| x.0 == unit);
+            let own_area = unit.collision_rect();
+            let in_range = units.any(|&(_, enemy)| {
+                let weapon = if unit.is_air() {
+                    enemy.id().air_weapon()
+                } else {
+                    enemy.id().ground_weapon()
+                };
+                let range = weapon
+                    .map(|x| x.max_range())
+                    .unwrap_or_else(|| enemy.id().sight_range() * 32);
+                bw::rect_distance(&own_area, &enemy.collision_rect()) <= range
+            });
+            in_range
+        })
     }
 }
