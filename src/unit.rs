@@ -1,9 +1,9 @@
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::ptr::null_mut;
 
 use byteorder::{ReadBytesExt, LE};
+use fxhash::FxHashMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use bw;
@@ -111,8 +111,10 @@ impl Iterator for SaveIdMapping {
 }
 
 ome2_thread_local! {
-    SAVE_ID_MAP: RefCell<HashMap<HashableUnit, u32>> = save_mapping(RefCell::new(HashMap::new()));
-    LOAD_ID_MAP: RefCell<HashMap<u32, Unit>> = load_mapping(RefCell::new(HashMap::new()));
+    SAVE_ID_MAP: RefCell<FxHashMap<HashableUnit, u32>> =
+        save_mapping(RefCell::new(FxHashMap::default()));
+    LOAD_ID_MAP: RefCell<FxHashMap<u32, Unit>> =
+        load_mapping(RefCell::new(FxHashMap::default()));
 }
 
 pub fn init_save_mapping() {

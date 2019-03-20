@@ -1,10 +1,10 @@
 use std::borrow::Cow;
 use std::rc::Rc;
 
-use fnv::FnvHashMap;
 use font_kit::canvas::{self, Canvas, RasterizationOptions};
 use font_kit::font::Font;
 use font_kit::hinting::HintingOptions;
+use fxhash::FxHashMap;
 use glium::backend::Facade;
 use glium::texture::{ClientFormat, RawImage2d, Texture2d};
 
@@ -22,7 +22,7 @@ pub struct BufferCoord {
 struct BufferCoordMap {
     // FIXME: Should store glyph ids so chars with equal glyphs don't waste memory
     ascii: Vec<Option<BufferCoord>>,
-    other: FnvHashMap<char, BufferCoord>,
+    other: FxHashMap<char, BufferCoord>,
 }
 
 impl BufferCoordMap {

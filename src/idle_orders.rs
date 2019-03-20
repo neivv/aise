@@ -1120,8 +1120,8 @@ impl InCombatCache {
         if recently_attacked {
             // Workers need actual non-neutral targets so that they aren't in combat
             // from mining cooldown.
-            let is_mining = unit.id().is_worker() &&
-                unit.target().map(|x| x.player() == 11).unwrap_or(true);
+            let is_mining =
+                unit.id().is_worker() && unit.target().map(|x| x.player() == 11).unwrap_or(true);
             if !is_mining {
                 return true;
             }
