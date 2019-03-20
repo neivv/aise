@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use fxhash::FxHashMap;
 
-use bw_dat::{self, order, OrderId, UnitId};
+use bw_dat::{self, order, OrderId, UnitId, WeaponId};
 
 use aiscript::{PlayerMatch, Position, ReadModifierType, ScriptData, UnitMatch};
 use bw;
@@ -1115,14 +1115,36 @@ impl InCombatCache {
     pub fn is_in_combat(&mut self, unit: Unit, game: Game) -> bool {
         // Check that either the unit has recently attacked, or an enemy is within attack
         // range, targeting the unit.
-        let recently_attacked =
-            unsafe { (*unit.0).ground_cooldown > 0 || (*unit.0).air_cooldown > 0 };
-        if recently_attacked {
-            // Workers need actual non-neutral targets so that they aren't in combat
-            // from mining cooldown.
-            let is_mining =
-                unit.id().is_worker() && unit.target().map(|x| x.player() == 11).unwrap_or(true);
-            if !is_mining {
+        fn weapon_to_target(attacker: Unit, target: Unit) -> Option<WeaponId> {
+            if target.is_air() {
+                attacker.id().air_weapon()
+            } else {
+                attacker.id().ground_weapon()
+            }
+        }
+
+        fn has_cooldown_active(unit: Unit) -> bool {
+            unsafe { (*unit.0).ground_cooldown > 0 || (*unit.0).air_cooldown > 0 }
+        }
+
+        fn is_unit_in_combat(unit: Unit, target: Unit) -> bool {
+            if !has_cooldown_active(unit) {
+                return false;
+            }
+            if let Some(weapon) = weapon_to_target(unit, target) {
+                let range = weapon.max_range();
+                let own_area = unit.collision_rect();
+                bw::rect_distance(&own_area, &target.collision_rect()) <= range
+            } else {
+                false
+            }
+        }
+
+        let target = unit
+            .target()
+            .filter(|x| !game.allied(unit.player(), x.player()));
+        if let Some(target) = target {
+            if is_unit_in_combat(unit, target) {
                 return true;
             }
         }
@@ -1135,18 +1157,7 @@ impl InCombatCache {
                 .iter()
                 .skip(first)
                 .take_while(|x| x.0 == unit);
-            let own_area = unit.collision_rect();
-            let in_range = units.any(|&(_, enemy)| {
-                let weapon = if unit.is_air() {
-                    enemy.id().air_weapon()
-                } else {
-                    enemy.id().ground_weapon()
-                };
-                let range = weapon
-                    .map(|x| x.max_range())
-                    .unwrap_or_else(|| enemy.id().sight_range() * 32);
-                bw::rect_distance(&own_area, &enemy.collision_rect()) <= range
-            });
+            let in_range = units.any(|&(_, enemy)| is_unit_in_combat(enemy, unit));
             in_range
         })
     }
