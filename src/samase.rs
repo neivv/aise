@@ -105,6 +105,11 @@ pub fn guard_ais() -> *mut bw::GuardAiList {
     unsafe { GUARD_AIS.0.map(|x| x()).unwrap_or(null_mut()) }
 }
 
+static mut PATHING: GlobalFunc<fn() -> *mut bw::Pathing> = GlobalFunc(None);
+pub fn pathing() -> *mut bw::Pathing {
+    unsafe { PATHING.0.map(|x| x()).unwrap_or(null_mut()) }
+}
+
 static mut PLAYER_AI_TOWNS: GlobalFunc<fn() -> *mut bw::AiTownList> = GlobalFunc(None);
 pub fn active_towns() -> *mut bw::AiTownList {
     unsafe { PLAYER_AI_TOWNS.0.map(|x| x()).unwrap_or(null_mut()) }
@@ -311,6 +316,7 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
         ((*api).first_guard_ai)().map(|x| mem::transmute(x)),
         "guard ais",
     );
+    PATHING.init(((*api).pathing)().map(|x| mem::transmute(x)), "pathing");
     match ((*api).issue_order)() {
         None => ((*api).warn_unsupported_feature)(b"Ai script issue_order\0".as_ptr()),
         Some(s) => ISSUE_ORDER.0 = Some(mem::transmute(s)),

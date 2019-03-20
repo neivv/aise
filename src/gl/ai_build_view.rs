@@ -17,7 +17,7 @@ use super::draw_shapes::{self, DrawShapes};
 use super::gl_common::GlCommon;
 use super::support::UiList;
 use super::ui::{Page, Ui};
-use super::{bw_ext, screen_rect, unit_name, Program, UiInput};
+use super::{screen_rect, unit_name, Program, UiInput};
 
 pub struct AiBuildView {
     towns: UiList<*mut bw::AiTown>,
@@ -545,7 +545,7 @@ impl bw::Rect {
 fn unit_region_group(unit: Unit) -> u16 {
     unsafe {
         let region = bw::get_region(unit.position()).unwrap_or(0);
-        let pathing = *bw_ext::pathing;
+        let pathing = bw::pathing();
         (*pathing).regions[region as usize].group
     }
 }

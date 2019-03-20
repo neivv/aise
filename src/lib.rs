@@ -296,6 +296,7 @@ unsafe extern fn frame_hook() {
     let globals = &mut *globals;
     let game = game::Game::get();
     aiscript::claim_bw_allocated_scripts(globals);
+    ai::update_region_safety(&mut globals.region_safety_pos, game, &search);
     aiscript::attack_timeouts_frame_hook(globals, game);
     globals.idle_orders.step_frame(&mut globals.rng, &search);
     aiscript::under_attack_frame_hook(globals);

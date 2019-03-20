@@ -456,6 +456,23 @@ pub struct Unit {
     pub _dc138: [u8; 0x18],
 }
 
+#[repr(C, packed)]
+pub struct Pathing {
+    pub region_count: u16,
+    pub _dc2: [u8; 0x449fa],
+    pub regions: [Region; 5000],
+    pub _dc92bfc: [u8; 0x4e24],
+}
+
+#[repr(C, packed)]
+pub struct Region {
+    pub unk: u16,
+    pub group: u16,
+    pub _dc4: [u8; 0x14],
+    pub area: Rect,
+    pub _dc20: [u8; 0x20],
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -475,5 +492,7 @@ mod test {
         assert_eq!(mem::size_of::<Game>(), 0x102f0);
         assert_eq!(mem::size_of::<Unit>(), 0x150);
         assert_eq!(mem::size_of::<Sprite>(), 0x24);
+        assert_eq!(mem::size_of::<Pathing>(), 0x97a20);
+        assert_eq!(mem::size_of::<Region>(), 0x40);
     }
 }

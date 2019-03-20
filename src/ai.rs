@@ -5,10 +5,12 @@ use libc::c_void;
 
 use bw_dat::{order, unit, RaceFlags, TechId, UnitId, UpgradeId};
 
-use bw;
-use game::{Game, Race};
-use list::{ListEntry, ListIter};
-use unit::{active_units, Unit};
+use crate::bw;
+use crate::game::{Game, Race};
+use crate::globals::RegionIdCycle;
+use crate::list::{ListEntry, ListIter};
+use crate::unit::{active_units, Unit};
+use crate::unit_search::UnitSearch;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PlayerAi(pub *mut bw::PlayerAiData, pub u8);
@@ -659,6 +661,44 @@ pub fn has_resources(game: Game, player: u8, cost: &Cost) -> bool {
         }
     }
     game.minerals(player) >= cost.minerals && game.gas(player) >= cost.gas
+}
+
+pub unsafe fn update_region_safety(
+    region_pos: &mut RegionIdCycle,
+    game: Game,
+    search: &UnitSearch,
+) {
+    let pathing = bw::pathing();
+    if !region_pos.is_inited() {
+        region_pos.init((*pathing).region_count);
+    }
+    for (player, id_iter) in region_pos.cycle_all() {
+        let regions = bw::ai_regions(player.into());
+        if regions != null_mut() {
+            for region_id in id_iter {
+                let region = regions.add(region_id as usize);
+                if (*region).flags & 0x20 != 0 {
+                    // Region was marked as dangerous, check if there actually are any enemies
+                    // nearby
+                    let mut area = (*pathing).regions[region_id as usize].area;
+                    let radius = 32 * 12;
+                    area.left = area.left.saturating_sub(radius);
+                    area.top = area.top.saturating_sub(radius);
+                    area.right = area.right.saturating_add(radius);
+                    area.bottom = area.bottom.saturating_add(radius);
+                    let has_enemies = search
+                        .search_iter(&area)
+                        .any(|unit| !game.allied(unit.player(), player));
+                    if !has_enemies {
+                        (*region).flags &= !0x20;
+                    }
+
+                    // Leave rest of the regions of this player for later frames
+                    break;
+                }
+            }
+        }
+    }
 }
 
 #[test]

@@ -24,6 +24,10 @@ pub fn ai_regions(player: u32) -> *mut AiRegion {
     samase::ai_regions(player)
 }
 
+pub fn pathing() -> *mut Pathing {
+    samase::pathing()
+}
+
 pub fn get_region(pos: Point) -> Option<u16> {
     let Point {
         x,

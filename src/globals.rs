@@ -483,6 +483,58 @@ impl BunkerCondition {
     }
 }
 
+/// Cycles through region ids, so each player do one heavy region-specific check per frame
+/// to distribute load.
+#[derive(Default, Serialize, Deserialize)]
+pub struct RegionIdCycle {
+    pos: [u16; 8],
+    region_count: u16,
+}
+
+impl RegionIdCycle {
+    pub fn is_inited(&self) -> bool {
+        self.region_count != 0
+    }
+
+    pub fn init(&mut self, region_count: u16) {
+        self.pos = [0; 8];
+        self.region_count = region_count;
+    }
+
+    /// Returns player id and region id iter for the player.
+    /// If the region id iter is not fully consumed, it'll continue next time from where
+    /// it left off. Otherwise it'll reset to 0.
+    pub fn cycle_all<'a>(&'a mut self) -> impl Iterator<Item = (u8, RegionCycleIter<'a>)> {
+        let limit = self.region_count;
+        self.pos.iter_mut().enumerate().map(move |(player, pos)| {
+            let iter = RegionCycleIter {
+                pos,
+                limit,
+            };
+            (player as u8, iter)
+        })
+    }
+}
+
+pub struct RegionCycleIter<'a> {
+    pos: &'a mut u16,
+    limit: u16,
+}
+
+impl<'a> Iterator for RegionCycleIter<'a> {
+    type Item = u16;
+    fn next(&mut self) -> Option<Self::Item> {
+        if *self.pos >= self.limit {
+            *self.pos = 0;
+            None
+        } else {
+            let result = *self.pos;
+            *self.pos += 1;
+            Some(result)
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct Globals {
     pub attack_timeouts: [AttackTimeoutState; 8],
@@ -500,6 +552,7 @@ pub struct Globals {
     pub reveal_states: Vec<RevealState>,
     pub under_attack_mode: [Option<bool>; 8],
     pub ai_mode: [AiMode; 8],
+    pub region_safety_pos: RegionIdCycle,
     // For tracking deleted towns.
     // If the tracking is updated after step_objects, it shouldn't be possible for a town
     // to be deleted and recreated in the same frame. (As recreation happens in scripts,
@@ -529,6 +582,7 @@ impl Globals {
             bank: Default::default(),
             under_attack_mode: [None; 8],
             ai_mode: [Default::default(); 8],
+            region_safety_pos: RegionIdCycle::default(),
             towns: Vec::new(),
             rng: Default::default(),
             ai_scripts: BlockAllocSet::new(),

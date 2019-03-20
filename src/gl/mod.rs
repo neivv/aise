@@ -57,19 +57,6 @@ mod bw_ext {
 
     use crate::bw;
 
-    #[repr(C, packed)]
-    pub struct Pathing {
-        pub dc0: [u8; 0x449fc],
-        pub regions: [Region; 5000],
-    }
-
-    #[repr(C, packed)]
-    pub struct Region {
-        pub unk: u16,
-        pub group: u16,
-        pub dc4: [u8; 0x3c],
-    }
-
     whack_hooks!(stdcall, 0x00400000,
         0x004E05B0 => create_window();
         0x0041CA00 => redraw_screen();
@@ -88,7 +75,6 @@ mod bw_ext {
         0x0051BFB0 => bw_window: *mut c_void;
         0x0062848C => screen_x: u32;
         0x006284A8 => screen_y: u32;
-        0x006D5BFC => pathing: *mut Pathing;
     );
 
     whack_funcs!(init_sc_funcs, 0x00400000,
