@@ -120,6 +120,11 @@ pub fn units_dat() -> *mut bw_dat::DatTable {
     unsafe { UNITS_DAT.get()() }
 }
 
+static mut WEAPONS_DAT: GlobalFunc<fn() -> *mut bw_dat::DatTable> = GlobalFunc(None);
+pub fn weapons_dat() -> *mut bw_dat::DatTable {
+    unsafe { WEAPONS_DAT.get()() }
+}
+
 static mut UPGRADES_DAT: GlobalFunc<fn() -> *mut bw_dat::DatTable> = GlobalFunc(None);
 pub fn upgrades_dat() -> *mut bw_dat::DatTable {
     unsafe { UPGRADES_DAT.get()() }
@@ -347,6 +352,8 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
     }
     UNITS_DAT.init(((*api).dat)(0).map(|x| mem::transmute(x)), "units.dat");
     bw_dat::init_units(units_dat());
+    WEAPONS_DAT.init(((*api).dat)(1).map(|x| mem::transmute(x)), "weapons.dat");
+    bw_dat::init_weapons(weapons_dat());
     UPGRADES_DAT.init(((*api).dat)(3).map(|x| mem::transmute(x)), "upgrades.dat");
     bw_dat::init_upgrades(upgrades_dat());
     TECHDATA_DAT.init(((*api).dat)(4).map(|x| mem::transmute(x)), "techdata.dat");
