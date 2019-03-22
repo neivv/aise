@@ -2969,6 +2969,84 @@ pub unsafe extern fn queue(script: *mut bw::AiScript) {
     globals.queues.add(queue);
 }
 
+pub unsafe extern fn defense_command(script: *mut bw::AiScript) {
+    #[derive(Eq, PartialEq, Copy, Clone, Debug)]
+    enum DefenseType {
+        Build,
+        Use,
+    }
+    #[derive(Eq, PartialEq, Copy, Clone, Debug)]
+    enum DefenseUnit {
+        Ground,
+        Air,
+    }
+    let mut read = ScriptData::new(script);
+    let amount = read.read_u16();
+    let unit = UnitId(read.read_u16());
+    let defense_type = read.read_u8();
+    let first = read.read_u8();
+    let second = read.read_u8();
+    let ai_data = bw::player_ai((*script).player);
+    let globals = Globals::get("ais defense");
+    let unit = globals.unit_replace.replace_check(unit); // replace_requests
+    let defense_type = match defense_type {
+        0 => DefenseType::Build,
+        1 => DefenseType::Use,
+        x => {
+            bw_print!("Unsupported defense type in defense command: {:x}", x);
+            return;
+        }
+    };
+    let first = match first {
+        0 => DefenseUnit::Ground,
+        1 => DefenseUnit::Air,
+        x => {
+            bw_print!("Unsupported defense direction in defense command: {:x}", x);
+            return;
+        }
+    };
+    let second = match second {
+        0 => DefenseUnit::Ground,
+        1 => DefenseUnit::Air,
+        x => {
+            bw_print!("Unsupported defense direction in defense command: {:x}", x);
+            return;
+        }
+    };
+
+    let defense_list: &mut [u16] = match defense_type {
+        DefenseType::Build => {
+            if first == DefenseUnit::Ground && second == DefenseUnit::Ground {
+                &mut (*ai_data).ground_vs_ground_build_def
+            } else if first == DefenseUnit::Ground && second == DefenseUnit::Air {
+                &mut (*ai_data).ground_vs_air_build_def
+            } else if first == DefenseUnit::Air && second == DefenseUnit::Ground {
+                &mut (*ai_data).air_vs_ground_build_def
+            } else {
+                &mut (*ai_data).air_vs_air_build_def
+            }
+        }
+        DefenseType::Use => {
+            if first == DefenseUnit::Ground && second == DefenseUnit::Ground {
+                &mut (*ai_data).ground_vs_ground_use_def
+            } else if first == DefenseUnit::Ground && second == DefenseUnit::Air {
+                &mut (*ai_data).ground_vs_air_use_def
+            } else if first == DefenseUnit::Air && second == DefenseUnit::Ground {
+                &mut (*ai_data).air_vs_ground_use_def
+            } else {
+                &mut (*ai_data).air_vs_air_use_def
+            }
+        }
+    };
+    let free_slots = defense_list
+        .iter_mut()
+        .skip_while(|x| **x != 0)
+        .take(amount as usize);
+    for defense_entry in free_slots {
+        *defense_entry = unit.0 + 1;
+    }
+}
+
 pub unsafe extern fn replace_requests(script: *mut bw::AiScript) {
     // Replacing guard, attack_add, defense, guard, do_morph, train
     let mut read = ScriptData::new(script);
