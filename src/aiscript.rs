@@ -1668,6 +1668,7 @@ pub unsafe extern fn aise_debug(script: *mut bw::AiScript) {
     let msg = read.read_string();
     debug!("{}", String::from_utf8_lossy(msg));
 }
+
 pub unsafe extern fn ping(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let x = read.read_u16();
