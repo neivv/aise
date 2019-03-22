@@ -871,6 +871,8 @@ pub unsafe extern fn do_morph(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let amount = read.read_u8();
     let unit_id = UnitId(read.read_u16());
+    let globals = Globals::get("ais do_morph");
+    let unit_id = globals.unit_replace.replace_check(unit_id); // replace_requests
     let player = (*script).player as u8;
     if ai::count_units(player, unit_id, Game::get()) < u32::from(amount) {
         let ai = ai::PlayerAi::get(player);
@@ -882,6 +884,8 @@ pub unsafe extern fn train(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let amount = read.read_u8();
     let unit_id = UnitId(read.read_u16());
+    let globals = Globals::get("ais train");
+    let unit_id = globals.unit_replace.replace_check(unit_id); // replace_requests
     let player = (*script).player as u8;
     if ai::count_units(player, unit_id, Game::get()) < u32::from(amount) {
         let ai = ai::PlayerAi::get(player);
@@ -1909,10 +1913,18 @@ pub unsafe extern fn attack_rand(script: *mut bw::AiScript) {
     }
     let mut globals = Globals::get("ais attack_rand");
     let random = globals.rng.synced_rand(r1..r2 + 1);
-    add_to_attack_force((*script).player as u8, UnitId(unit), random);
+    add_to_attack_force(&globals, (*script).player as u8, UnitId(unit), random);
 }
 
-unsafe fn add_to_attack_force(player: u8, unit: UnitId, amount: u32) {
+pub unsafe extern fn attack_add(script: *mut bw::AiScript) {
+    let mut read = ScriptData::new(script);
+    let amount = read.read_u8() as u32;
+    let unit = read.read_u16();
+    let globals = Globals::get("ais attack_rand");
+    add_to_attack_force(&globals, (*script).player as u8, UnitId(unit), amount);
+}
+unsafe fn add_to_attack_force(globals: &Globals, player: u8, unit: UnitId, amount: u32) {
+    let unit = globals.unit_replace.replace_check(unit);
     let ai = ai::PlayerAi::get(player);
     // Reuse slots that may have been deleted during the attack
     let attack_force = &mut (*ai.0).attack_force[..];
@@ -2956,6 +2968,42 @@ pub unsafe extern fn queue(script: *mut bw::AiScript) {
     globals.queues.add(queue);
 }
 
+pub unsafe extern fn replace_requests(script: *mut bw::AiScript) {
+    // Replacing guard, attack_add, defense, guard, do_morph, train
+    let mut read = ScriptData::new(script);
+    let id_first = UnitId(read.read_u16());
+    let id_second = UnitId(read.read_u16());
+    debug!("Replace unit {:x} with {:x}", id_first.0, id_second.0);
+    let ai_data = bw::player_ai((*script).player);
+    //replace build requests
+    //unit_id
+    let mut globals = Globals::get("ais replace_requests");
+    globals.unit_replace.add(id_first, id_second);
+
+    let replace_defense_requests = |list: &mut [u16]| {
+        for x in list {
+            if *x == id_first.0 + 1 {
+                *x = id_second.0 + 1;
+            }
+        }
+    };
+    replace_defense_requests(&mut (*ai_data).ground_vs_ground_build_def);
+    replace_defense_requests(&mut (*ai_data).ground_vs_air_build_def);
+    replace_defense_requests(&mut (*ai_data).air_vs_ground_build_def);
+    replace_defense_requests(&mut (*ai_data).air_vs_air_build_def);
+    replace_defense_requests(&mut (*ai_data).ground_vs_ground_use_def);
+    replace_defense_requests(&mut (*ai_data).ground_vs_air_use_def);
+    replace_defense_requests(&mut (*ai_data).air_vs_ground_use_def);
+    replace_defense_requests(&mut (*ai_data).air_vs_air_use_def);
+    let mut guard = bw::guard_ais((*script).player as u8);
+    while guard != null_mut() {
+        if (*guard).unit_id == id_first.0 {
+            (*guard).unit_id = id_second.0;
+        }
+        guard = (*guard).next;
+    }
+}
+
 pub unsafe extern fn lift_land(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     //unitId quantity liftLocation landLocation lifttownid landtownid hpval
@@ -3042,6 +3090,7 @@ pub unsafe extern fn guard_command(script: *mut bw::AiScript) {
         return;
     }
     let mut globals = Globals::get("ais guard");
+    let unit = globals.unit_replace.replace_check(UnitId(unit)); // replace_requests
     for _n in 0..quantity {
         let guards = samase::guard_ais().add((*script).player as usize);
         let old_first_active = (*guards).first;
@@ -3053,7 +3102,7 @@ pub unsafe extern fn guard_command(script: *mut bw::AiScript) {
             times_died: 0,
             dca: [0, 0],
             parent: null_mut(),
-            unit_id: unit,
+            unit_id: unit.0,
             home: target.center,
             other_home: target.center,
             padding1a: [0, 0],

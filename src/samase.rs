@@ -232,6 +232,7 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
     }
 
     aiscript_opcode(api, 0x00, ::aiscript::goto);
+    aiscript_opcode(api, 0x0c, ::aiscript::attack_add);
     aiscript_opcode(api, 0x40, ::aiscript::call);
     aiscript_opcode(api, 0x41, ::aiscript::ret);
     aiscript_opcode(api, 0x46, ::aiscript::do_morph);
@@ -279,6 +280,7 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
     aiscript_opcode(api, 0x99, ::aiscript::lift_land);
     aiscript_opcode(api, 0x9a, ::aiscript::queue);
     aiscript_opcode(api, 0x9b, ::aiscript::aise_debug);
+    aiscript_opcode(api, 0x9c, ::aiscript::replace_requests);
 
     GAME.init(((*api).game)().map(|x| mem::transmute(x)), "Game object");
     AI_REGIONS.init(

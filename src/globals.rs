@@ -483,6 +483,36 @@ impl BunkerCondition {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct ReplaceValue {
+    pub first: UnitId,
+    pub second: UnitId,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct UnitReplace {
+    pub unit_data: Vec<ReplaceValue>,
+}
+
+impl UnitReplace {
+    pub fn replace_check(&self, unit_id: UnitId) -> UnitId {
+        for u in &mut self.unit_data {
+            if u.first == unit_id {
+                return u.second;
+            }
+        }
+        return unit_id;
+    }
+
+    pub fn add(&mut self, first: UnitId, second: UnitId) {
+        let replace_value = ReplaceValue {
+            first: first,
+            second: second,
+        };
+        self.unit_data.push(replace_value);
+    }
+}
+
 /// Cycles through region ids, so each player do one heavy region-specific check per frame
 /// to distribute load.
 #[derive(Default, Serialize, Deserialize)]
@@ -549,6 +579,7 @@ pub struct Globals {
     pub renamed_units: RenameUnitState,
     pub guards: GuardState,
     pub bank: Bank,
+    pub unit_replace: UnitReplace,
     pub reveal_states: Vec<RevealState>,
     pub under_attack_mode: [Option<bool>; 8],
     pub ai_mode: [AiMode; 8],
@@ -580,6 +611,7 @@ impl Globals {
             renamed_units: Default::default(),
             guards: GuardState::new(),
             bank: Default::default(),
+            unit_replace: Default::default(),
             under_attack_mode: [None; 8],
             ai_mode: [Default::default(); 8],
             region_safety_pos: RegionIdCycle::default(),
