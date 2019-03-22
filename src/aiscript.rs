@@ -1659,6 +1659,11 @@ pub unsafe extern fn print_command(script: *mut bw::AiScript) {
     samase::print_text(msg.as_ptr());
 }
 
+pub unsafe extern fn aise_debug(script: *mut bw::AiScript) {
+    let mut read = ScriptData::new(script);
+    let msg = read.read_string();
+    debug!("{}", String::from_utf8_lossy(msg));
+}
 pub unsafe extern fn ping(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let x = read.read_u16();
