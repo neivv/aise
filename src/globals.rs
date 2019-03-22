@@ -496,7 +496,7 @@ pub struct UnitReplace {
 
 impl UnitReplace {
     pub fn replace_check(&self, unit_id: UnitId) -> UnitId {
-        for u in &mut self.unit_data {
+        for u in &self.unit_data {
             if u.first == unit_id {
                 return u.second;
             }
