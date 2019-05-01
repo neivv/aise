@@ -135,14 +135,14 @@ pub enum DatReq {
 
 pub struct ReadDatReqs {
     pos: *const u16,
-    upgrade_level: u8,
+    current_upgrade_level: u8,
 }
 
 impl ReadDatReqs {
-    pub unsafe fn new(pos: *const u16, upgrade_level: u8) -> ReadDatReqs {
+    pub unsafe fn new(pos: *const u16, current_upgrade_level: u8) -> ReadDatReqs {
         ReadDatReqs {
             pos,
-            upgrade_level,
+            current_upgrade_level,
         }
     }
 
@@ -157,7 +157,7 @@ impl ReadDatReqs {
                     return;
                 }
                 if *self.pos == 0xff1f {
-                    let end_op = match self.upgrade_level {
+                    let end_op = match self.current_upgrade_level {
                         0 => 0xff1f,
                         1 => 0xff20,
                         _ => 0xff21,
@@ -185,13 +185,13 @@ pub unsafe fn check_dat_requirements(
     game: Game,
     reqs: *const u16,
     unit: Unit,
-    upgrade_level: u8,
+    current_upgrade_level: u8,
 ) -> bool {
     if unit.is_disabled() || !unit.is_completed() {
         return false;
     }
     let mut dat_reqs: SmallVec<_> = SmallVec::new();
-    let mut read = ReadDatReqs::new(reqs, upgrade_level);
+    let mut read = ReadDatReqs::new(reqs, current_upgrade_level);
     let mut hallucinations_allowed = false;
     let player = unit.player();
     loop {

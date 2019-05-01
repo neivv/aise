@@ -130,12 +130,13 @@ pub unsafe fn can_satisfy_request(
         }
         5 => {
             let upgrade_id = UpgradeId(request.id);
-            let level = game.upgrade_level(player as u8, upgrade_id) + 1;
-            if game.upgrade_max_level(player, upgrade_id) < level {
+            let current_level = game.upgrade_level(player as u8, upgrade_id);
+            if game.upgrade_max_level(player, upgrade_id) <= current_level {
                 return Err(RequestSatisfyError::NotAvailable);
             }
             if !wait_resources {
-                if !has_resources(game, player, &ai::upgrade_cost(upgrade_id, level)) {
+                let cost = ai::upgrade_cost(upgrade_id, current_level + 1);
+                if !has_resources(game, player, &cost) {
                     return Err(RequestSatisfyError::Resources);
                 }
             }
@@ -143,7 +144,8 @@ pub unsafe fn can_satisfy_request(
                 Some(s) => s,
                 None => return Ok(()),
             };
-            can_satisfy_dat_request(game, player, reqs, level).map_err(RequestSatisfyError::DatReq)
+            can_satisfy_dat_request(game, player, reqs, current_level)
+                .map_err(RequestSatisfyError::DatReq)
         }
         6 => {
             let tech_id = TechId(request.id);
@@ -230,7 +232,7 @@ unsafe fn can_satisfy_dat_request(
     game: Game,
     player: u8,
     reqs: *const u16,
-    upgrade_level: u8,
+    current_upgrade_level: u8,
 ) -> Result<(), Vec<DatReqSatisfyError>> {
     fn match_req(dat_req: &DatReq) -> Option<MatchRequirement> {
         match *dat_req {
@@ -245,7 +247,7 @@ unsafe fn can_satisfy_dat_request(
 
     let mut match_requirements: SmallVec<[(MatchRequirement, SmallVec<_>); 8]> = SmallVec::new();
     let mut dat_reqs: SmallVec<_> = SmallVec::new();
-    let mut read = ReadDatReqs::new(reqs, upgrade_level);
+    let mut read = ReadDatReqs::new(reqs, current_upgrade_level);
     loop {
         read.next_dat_requirements(&mut dat_reqs);
         if dat_reqs.is_empty() {
