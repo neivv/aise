@@ -268,7 +268,34 @@ pub struct Location {
     pub flags: u16,
 }
 
-pub struct Image;
+pub struct GrpSprite;
+
+#[repr(C, packed)]
+pub struct Image {
+    pub prev: *mut Image,
+    pub next: *mut Image,
+    pub image_id: u8,
+    pub drawfunc: u8,
+    pub direction: u8,
+    pub flags: u16,
+    pub x_off: u8,
+    pub y_off: u8,
+    pub iscript_header_offset: u16,
+    pub iscript_offset: u16,
+    pub unk14: u16,
+    pub animation: u8,
+    pub wait: u8,
+    pub framesset: u8,
+    pub frame_index: u16,
+    pub map_position: Point,
+    pub screen_position: Point,
+    pub grp_bounds: Rect,
+    pub grp: *mut GrpSprite,
+    pub drawfunc_param: *mut c_void,
+    pub render_function: *mut c_void,
+    pub update_function: *mut c_void,
+    pub parent: *mut Sprite,
+}
 
 #[repr(C, packed)]
 pub struct Sprite {
@@ -492,6 +519,7 @@ mod test {
         assert_eq!(mem::size_of::<Game>(), 0x102f0);
         assert_eq!(mem::size_of::<Unit>(), 0x150);
         assert_eq!(mem::size_of::<Sprite>(), 0x24);
+        assert_eq!(mem::size_of::<Image>(), 0x40);
         assert_eq!(mem::size_of::<Pathing>(), 0x97a20);
         assert_eq!(mem::size_of::<Region>(), 0x40);
     }
