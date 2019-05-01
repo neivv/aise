@@ -211,6 +211,35 @@ impl PlayerAi {
             pos = (index << 1) + 1;
         }
     }
+
+    fn is_guard_being_trained(&self, guard: *mut bw::GuardAi) -> bool {
+        let requests = unsafe { &mut ((*self.0).requests)[..(*self.0).request_count as usize] };
+        if requests
+            .iter()
+            .any(|req| req.ty == 2 && req.val as *mut bw::GuardAi == guard)
+        {
+            return true;
+        }
+        for unit in active_units().filter(|x| x.player() == self.1) {
+            if let Some(ai) = unit.building_ai() {
+                unsafe {
+                    let iter = (*ai)
+                        .train_queue_types
+                        .iter_mut()
+                        .zip((*ai).train_queue_values.iter_mut());
+                    for (ty, val) in iter {
+                        if *ty == 2 && *val != null_mut() {
+                            let ai = *val as *mut bw::GuardAi;
+                            if ai == guard {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        false
+    }
 }
 
 /// Returns unit ids which are counted for request satisfication for request of `unit_id`
@@ -483,7 +512,7 @@ pub unsafe fn update_guard_needs(game: Game, guards: &mut GuardState) {
                     (*guard).previous_update = seconds;
                     if let Some(region) = ai_region(player, (*guard).other_home) {
                         if region_can_rebuild_guards(region) {
-                            if !is_guard_being_trained(player, guard) {
+                            if !ai.is_guard_being_trained(guard) {
                                 debug!(
                                     "Adding guard {:x} {:x} {:x?}",
                                     player,
@@ -501,28 +530,6 @@ pub unsafe fn update_guard_needs(game: Game, guards: &mut GuardState) {
             guard = (*guard).next;
         }
     }
-}
-
-fn is_guard_being_trained(player: u8, guard: *mut bw::GuardAi) -> bool {
-    for unit in active_units().filter(|x| x.player() == player) {
-        if let Some(ai) = unit.building_ai() {
-            unsafe {
-                let iter = (*ai)
-                    .train_queue_types
-                    .iter_mut()
-                    .zip((*ai).train_queue_values.iter_mut());
-                for (ty, val) in iter {
-                    if *ty == 2 && *val != null_mut() {
-                        let ai = *val as *mut bw::GuardAi;
-                        if ai == guard {
-                            return true;
-                        }
-                    }
-                }
-            }
-        }
-    }
-    false
 }
 
 unsafe fn region_can_rebuild_guards(region: *mut bw::AiRegion) -> bool {
