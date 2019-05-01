@@ -110,6 +110,13 @@ impl BaseLayouts {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq)]
+pub struct BuildMax {
+    pub town: Option<Town>,
+    pub quantity: u16,
+    pub unit_id: UnitId,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq)]
 pub struct UnitQueue {
     pub player: u8,
     pub current_quantity: u8,
@@ -162,6 +169,21 @@ impl Queues {
                 .binary_search_by(|a| value.priority.cmp(&a.priority))
                 .unwrap_or_else(|e| e);
             self.queue.insert(insert_pos, value)
+        }
+    }
+}
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct BuildMaxSet {
+    pub buildmax: Vec<BuildMax>,
+}
+impl BuildMaxSet {
+    pub fn add(&mut self, value: BuildMax) {
+        if !self.buildmax.iter().any(|i| i == &value) {
+            let insert_pos = self
+                .buildmax
+                .binary_search_by(|a| value.unit_id.0.cmp(&a.unit_id.0))
+                .unwrap_or_else(|e| e);
+            self.buildmax.insert(insert_pos, value)
         }
     }
 }
@@ -573,6 +595,7 @@ pub struct Globals {
     pub base_layouts: BaseLayouts,
     pub lift_lands: LiftLand,
     pub queues: Queues,
+    pub build_max: BuildMaxSet,
     pub max_workers: Vec<MaxWorkers>,
     pub town_ids: Vec<TownId>,
     pub bunker_states: BunkerCondition,
@@ -604,6 +627,7 @@ impl Globals {
             base_layouts: Default::default(),
             lift_lands: Default::default(),
             queues: Default::default(),
+            build_max: Default::default(),
             max_workers: Vec::new(),
             town_ids: Vec::new(),
             reveal_states: Vec::new(),

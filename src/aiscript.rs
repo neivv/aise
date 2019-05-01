@@ -22,8 +22,8 @@ use block_alloc::BlockAllocSet;
 use bw;
 use game::Game;
 use globals::{
-    self, BankKey, BaseLayout, BunkerCondition, BunkerDecl, Globals, LiftLand, LiftLandBuilding,
-    LiftLandStage, Queues, RenameStatus, RevealState, RevealType, UnitQueue,
+    self, BankKey, BaseLayout, BuildMax, BunkerCondition, BunkerDecl, Globals, LiftLand,
+    LiftLandBuilding, LiftLandStage, Queues, RenameStatus, RevealState, RevealType, UnitQueue,
 };
 use list::ListIter;
 use order::{self, OrderId};
@@ -1440,6 +1440,30 @@ pub unsafe extern fn attacking(script: *mut bw::AiScript) {
 
 fn unit_in_area(source: Unit, area: bw::Rect) -> bool {
     source.collision_rect().overlaps(&area)
+}
+
+pub unsafe fn add_spending_request_hook(
+    priority: u32,
+    c: *mut libc::c_void,
+    unit_id: u16,
+    ai_type: u32,
+    player: u8,
+    orig: &Fn(u32, *mut libc::c_void, u16, u32, u8),
+) {
+    let mut globals = Globals::get("add_spending_request");
+    let unit_id = UnitId(unit_id);
+    for maxbuild in &mut globals.build_max.buildmax {
+        if let Some(town) = maxbuild.town {
+            if maxbuild.unit_id == unit_id {
+                let units_in_town = ai::count_town_units(town, unit_id, false);
+                if units_in_town >= maxbuild.quantity as u32 {
+                    return;
+                }
+            }
+        }
+    }
+    drop(globals);
+    orig(priority, c, unit_id.0, ai_type, player);
 }
 
 pub unsafe fn ai_attack_focus_hook(
@@ -2950,6 +2974,31 @@ unsafe fn town_from_id(script: *mut bw::AiScript, globals: &mut Globals, id: u8)
             .map(|x| x.town),
     };
     town_src
+}
+
+pub unsafe extern fn max_build(script: *mut bw::AiScript) {
+    let mut read = ScriptData::new(script);
+    let mut globals = Globals::get("ais maxbuild");
+    let town_id = read.read_u8();
+    let unit_id = UnitId(read.read_u16());
+    let quantity = read.read_u16();
+    if feature_disabled("max_build") {
+        return;
+    }
+    let id = town_from_id(script, &mut globals, town_id);
+    let town = match id {
+        None => {
+            bw_print!("town id {:x} for local queue do not exist", town_id);
+            return;
+        }
+        Some(s) => Some(s),
+    };
+    let build = BuildMax {
+        town,
+        quantity,
+        unit_id,
+    };
+    globals.build_max.add(build);
 }
 
 pub unsafe extern fn queue(script: *mut bw::AiScript) {
