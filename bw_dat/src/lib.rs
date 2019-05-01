@@ -90,8 +90,10 @@ pub mod unit {
     pub const GHOST: UnitId = UnitId(0x1);
     pub const VULTURE: UnitId = UnitId(0x2);
     pub const SIEGE_TANK_TANK: UnitId = UnitId(0x5);
+    pub const SIEGE_TANK_TURRET: UnitId = UnitId(0x6);
     pub const SCV: UnitId = UnitId(0x7);
     pub const GUI_MONTAG: UnitId = UnitId(0xa);
+    pub const SPIDER_MINE: UnitId = UnitId(0xd);
     pub const SARAH_KERRIGAN: UnitId = UnitId(0x10);
     pub const JIM_RAYNOR_VULTURE: UnitId = UnitId(0x13);
     pub const JIM_RAYNOR_MARINE: UnitId = UnitId(0x14);
@@ -103,6 +105,7 @@ pub mod unit {
     pub const EGG: UnitId = UnitId(0x24);
     pub const ZERGLING: UnitId = UnitId(0x25);
     pub const HYDRALISK: UnitId = UnitId(0x26);
+    pub const DRONE: UnitId = UnitId(0x29);
     pub const OVERLORD: UnitId = UnitId(0x2a);
     pub const MUTALISK: UnitId = UnitId(0x2b);
     pub const GUARDIAN: UnitId = UnitId(0x2c);
@@ -125,10 +128,12 @@ pub mod unit {
     pub const INFESTED_DURAN: UnitId = UnitId(0x68);
     pub const COMMAND_CENTER: UnitId = UnitId(0x6a);
     pub const NUCLEAR_SILO: UnitId = UnitId(0x6c);
+    pub const SUPPLY_DEPOT: UnitId = UnitId(0x6d);
     pub const REFINERY: UnitId = UnitId(0x6e);
     pub const HATCHERY: UnitId = UnitId(0x83);
     pub const LAIR: UnitId = UnitId(0x84);
     pub const HIVE: UnitId = UnitId(0x85);
+    pub const HYDRALISK_DEN: UnitId = UnitId(0x87);
     pub const GREATER_SPIRE: UnitId = UnitId(0x89);
     pub const SPIRE: UnitId = UnitId(0x8d);
     pub const CREEP_COLONY: UnitId = UnitId(0x8f);
@@ -218,6 +223,7 @@ pub mod order {
     pub const DECLOAK: OrderId = OrderId(0x6e);
     pub const UNLOAD: OrderId = OrderId(0x6f);
     pub const MOVE_UNLOAD: OrderId = OrderId(0x70);
+    pub const UNBURROW: OrderId = OrderId(0x76);
     pub const CLOAKING_NEARBY_UNITS: OrderId = OrderId(0x83);
     pub const SAP_UNIT: OrderId = OrderId(0x86);
     pub const SAP_LOCATION: OrderId = OrderId(0x87);
