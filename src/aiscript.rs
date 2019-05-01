@@ -376,6 +376,10 @@ impl Town {
     pub fn buildings(self) -> impl Iterator<Item = *mut bw::BuildingAi> {
         unsafe { ListIter((*self.0).buildings) }
     }
+
+    pub fn workers(self) -> impl Iterator<Item = *mut bw::WorkerAi> {
+        unsafe { ListIter((*self.0).workers) }
+    }
 }
 
 unsafe impl Send for Town {}
@@ -1518,6 +1522,39 @@ pub unsafe extern fn unit_name(script: *mut bw::AiScript) {
     match flag {
         NameStatus::Enable => globals.renamed_units.try_add(rename_status),
         NameStatus::Disable => globals.renamed_units.try_remove(&rename_status),
+    }
+}
+pub unsafe extern fn wait_build(script: *mut bw::AiScript) {
+    let old_pos = (*script).pos - 1;
+    let mut read = ScriptData::new(script);
+    let amount = read.read_u8();
+    let mut unit_id = UnitId(read.read_u16());
+    let town = Town::from_ptr((*script).town);
+    let globals = Globals::get("ais wait_build");
+    unit_id = globals.unit_replace.replace_check(unit_id);
+
+    if let Some(town) = town {
+        let units_in_town = ai::count_town_units(town, unit_id, true);
+        if units_in_town < amount as u32 {
+            (*script).pos = old_pos;
+            (*script).wait = 30;
+        }
+    }
+}
+pub unsafe extern fn wait_buildstart(script: *mut bw::AiScript) {
+    let old_pos = (*script).pos - 1;
+    let mut read = ScriptData::new(script);
+    let amount = read.read_u8();
+    let mut unit_id = UnitId(read.read_u16());
+    let town = Town::from_ptr((*script).town);
+    let globals = Globals::get("ais wait_buildstart");
+    unit_id = globals.unit_replace.replace_check(unit_id);
+    if let Some(town) = town {
+        let units_in_town = ai::count_town_units(town, unit_id, false);
+        if units_in_town < amount as u32 {
+            (*script).pos = old_pos;
+            (*script).wait = 30;
+        }
     }
 }
 

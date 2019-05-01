@@ -5,6 +5,7 @@ use libc::c_void;
 
 use bw_dat::{order, unit, RaceFlags, TechId, UnitId, UpgradeId};
 
+use crate::aiscript::Town;
 use crate::bw;
 use crate::game::{Game, Race};
 use crate::globals::RegionIdCycle;
@@ -210,6 +211,34 @@ impl PlayerAi {
             pos = (index << 1) + 1;
         }
     }
+}
+
+/// Returns unit ids which are counted for request satisfication for request of `unit_id`
+/// So practically higher tier buildings with morph.
+pub fn request_equivalent_unit_ids(unit_id: UnitId) -> Vec<UnitId> {
+    use bw_dat::unit::*;
+    match unit_id {
+        SIEGE_TANK_TANK | SIEGE_TANK_SIEGE => vec![SIEGE_TANK_SIEGE, SIEGE_TANK_TANK],
+        SPIRE => vec![SPIRE, GREATER_SPIRE],
+        CREEP_COLONY => vec![CREEP_COLONY, SPORE_COLONY, SUNKEN_COLONY],
+        HATCHERY => vec![HATCHERY, LAIR, HIVE],
+        LAIR => vec![LAIR, HIVE],
+        _ => vec![unit_id],
+    }
+}
+
+pub fn count_town_units(town: Town, unit_id: UnitId, must_be_completed: bool) -> u32 {
+    let unit_ids = request_equivalent_unit_ids(unit_id);
+    let buildings = unsafe { town.buildings().flat_map(|x| Unit::from_ptr((*x).parent)) };
+    let workers = unsafe { town.workers().flat_map(|x| Unit::from_ptr((*x).parent)) };
+    let units_in_town = buildings
+        .chain(workers)
+        .filter(|&x| {
+            unit_ids.iter().any(|&id| id == x.id()) &&
+                ((x.is_completed() && must_be_completed) || !must_be_completed)
+        })
+        .count() as u32;
+    units_in_town
 }
 
 pub fn count_units(player: u8, unit_id: UnitId, game: Game) -> u32 {

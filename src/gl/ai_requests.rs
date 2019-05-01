@@ -246,40 +246,19 @@ pub unsafe fn missing_attack_force_units(ai: &PlayerAi, region: *mut bw::AiRegio
     attack_force
 }
 
+// TODO MAKE RETURN yes/working/no
 fn is_request_satisfied(game: Game, town: Town, req: &TownRequest) -> bool {
     let player = unsafe { (*town.0).player };
     match req.ty {
         RequestType::Unit(unit_id) => {
-            use bw_dat::unit::*;
-            // Include higher-tier morphed buildings in counts.
-            // Also tanks
-            let unit_ids = match unit_id {
-                SIEGE_TANK_TANK | SIEGE_TANK_SIEGE => vec![SIEGE_TANK_SIEGE, SIEGE_TANK_TANK],
-                SPIRE => vec![SPIRE, GREATER_SPIRE],
-                CREEP_COLONY => vec![CREEP_COLONY, SPORE_COLONY, SUNKEN_COLONY],
-                HATCHERY => vec![HATCHERY, LAIR, HIVE],
-                LAIR => vec![LAIR, HIVE],
-                _ => vec![unit_id],
+            let count = if req.only_if_needed {
+                ai::request_equivalent_unit_ids(unit_id)
+                    .into_iter()
+                    .map(|unit_id| game.unit_count(player, unit_id))
+                    .sum::<u32>()
+            } else {
+                ai::count_town_units(town, unit_id, true)
             };
-            let count = unit_ids
-                .iter()
-                .map(|&unit_id| {
-                    if req.only_if_needed {
-                        game.unit_count(player, unit_id)
-                    } else {
-                        unsafe {
-                            let buildings =
-                                town.buildings().flat_map(|x| Unit::from_ptr((*x).parent));
-                            let workers = ListIter((*town.0).workers)
-                                .flat_map(|x| Unit::from_ptr((*x).parent));
-                            buildings
-                                .chain(workers)
-                                .filter(|x| x.id() == unit_id)
-                                .count() as u32
-                        }
-                    }
-                })
-                .sum::<u32>();
             count >= req.count as u32
         }
         RequestType::Upgrade(upgrade_id) => game.upgrade_level(player, upgrade_id) >= req.count,
