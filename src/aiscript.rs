@@ -69,6 +69,37 @@ unsafe fn aiscript_unit_search(game: Game) -> Arc<UnitSearch> {
     }
 }
 
+unsafe fn attack_to_pos(player: u8, grouping: bw::Point, target: bw::Point) {
+    let grouping_region = match bw::get_region(grouping) {
+        Some(s) => s,
+        None => {
+            bw_print!(
+                "Aiscript attackto (player {}): invalid grouping coordinates {:?}",
+                player,
+                grouping,
+            );
+            return;
+        }
+    };
+    let target_region = match bw::get_region(target) {
+        Some(s) => s,
+        None => {
+            bw_print!(
+                "Aiscript attackto (player {}): invalid target coordinates {:?}",
+                player,
+                target,
+            );
+            return;
+        }
+    };
+    let ai_data = bw::player_ai(player.into());
+    (*ai_data).last_attack_second = bw::elapsed_seconds();
+    (*ai_data).attack_grouping_region = grouping_region + 1;
+    let region = ai_region(player.into(), grouping_region);
+    bw::change_ai_region_state(region, 8);
+    (*region).target_region_id = target_region; // Yes, 0-based
+}
+
 pub unsafe extern fn attack_to(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let grouping = read.read_position();
@@ -76,34 +107,36 @@ pub unsafe extern fn attack_to(script: *mut bw::AiScript) {
     if feature_disabled("attack_to") {
         return;
     }
-    let grouping_region = match bw::get_region(grouping.center) {
-        Some(s) => s,
-        None => {
-            bw_print!(
-                "Aiscript attackto (player {}): invalid grouping coordinates {}",
-                (*script).player,
-                grouping,
-            );
-            return;
-        }
+    attack_to_pos((*script).player as u8, grouping.center, target.center);
+}
+
+pub unsafe extern fn attack_to_deaths(script: *mut bw::AiScript) {
+    let mut read = ScriptData::new(script);
+    let grouping_x_unit = read.read_u16();
+    let grouping_x_player = read.read_u16();
+    let grouping_y_unit = read.read_u16();
+    let grouping_y_player = read.read_u16();
+    let target_x_unit = read.read_u16();
+    let target_x_player = read.read_u16();
+    let target_y_unit = read.read_u16();
+    let target_y_player = read.read_u16();
+    if feature_disabled("attack_to") {
+        return;
+    }
+    let game = Game::get();
+    let group_x = (*game.0).deaths[grouping_x_unit as usize][grouping_x_player as usize];
+    let group_y = (*game.0).deaths[grouping_y_unit as usize][grouping_y_player as usize];
+    let target_x = (*game.0).deaths[target_x_unit as usize][target_x_player as usize];
+    let target_y = (*game.0).deaths[target_y_unit as usize][target_y_player as usize];
+    let grouping = bw::Point {
+        x: group_x as i16,
+        y: group_y as i16,
     };
-    let target_region = match bw::get_region(target.center) {
-        Some(s) => s,
-        None => {
-            bw_print!(
-                "Aiscript attackto (player {}): invalid target coordinates {}",
-                (*script).player,
-                target,
-            );
-            return;
-        }
+    let target = bw::Point {
+        x: target_x as i16,
+        y: target_y as i16,
     };
-    let ai_data = bw::player_ai((*script).player);
-    (*ai_data).last_attack_second = bw::elapsed_seconds();
-    (*ai_data).attack_grouping_region = grouping_region + 1;
-    let region = ai_region((*script).player, grouping_region);
-    bw::change_ai_region_state(region, 8);
-    (*region).target_region_id = target_region; // Yes, 0-based
+    attack_to_pos((*script).player as u8, grouping, target);
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
