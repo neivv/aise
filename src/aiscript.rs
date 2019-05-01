@@ -24,6 +24,7 @@ use game::Game;
 use globals::{
     self, BankKey, BaseLayout, BuildMax, BunkerCondition, BunkerDecl, Globals, LiftLand,
     LiftLandBuilding, LiftLandStage, Queues, RenameStatus, RevealState, RevealType, UnitQueue,
+    UnitReplace,
 };
 use list::ListIter;
 use order::{self, OrderId};
@@ -978,6 +979,12 @@ impl UnitMatch {
             .next()
             .unwrap_or(UnitId(0))
     }
+
+    fn replace_ids(&mut self, unit_replace: &mut UnitReplace) {
+        for id in &mut self.units {
+            *id = unit_replace.replace_check(*id);
+        }
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Copy, Serialize, Deserialize)]
@@ -1845,11 +1852,14 @@ pub unsafe extern fn load_bunkers(script: *mut bw::AiScript) {
     let mut src = read.read_position();
     let radius = read.read_u16();
     src.extend_area(radius as i16);
-    let unit_id = read.read_unit_match();
+    let mut unit_id = read.read_unit_match();
     let quantity = read.read_u8();
-    let bunker_id = read.read_unit_match();
+    let mut bunker_id = read.read_unit_match();
     let bunker_quantity = read.read_u8();
     let priority = read.read_u8();
+    unit_id.replace_ids(&mut globals.unit_replace);
+    bunker_id.replace_ids(&mut globals.unit_replace);
+
     if feature_disabled("load_bunkers") {
         return;
     }
@@ -3165,9 +3175,8 @@ pub unsafe extern fn defense_command(script: *mut bw::AiScript) {
         *defense_entry = unit.0 + 1;
     }
 }
-
 pub unsafe extern fn replace_requests(script: *mut bw::AiScript) {
-    // Replacing guard, attack_add, defense, guard, do_morph, train
+    // Replacing guard, attack_add, defense, guard, do_morph, train, load_bunkers
     let mut read = ScriptData::new(script);
     let id_first = UnitId(read.read_u16());
     let id_second = UnitId(read.read_u16());
