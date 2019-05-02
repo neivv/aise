@@ -110,6 +110,33 @@ unsafe fn military_line(
     request_line(page, game, globals, player, &request);
 }
 
+/// Returns informative name for the request
+fn town_request_name(req: &TownRequest) -> Option<String> {
+    match req.ty {
+        RequestType::Unit(u) => {
+            if u.0 >= unit::NONE.0 {
+                None
+            } else {
+                Some(format!("{} {}", req.count, unit_name(u)))
+            }
+        }
+        RequestType::Upgrade(u) => {
+            if u.0 >= upgrade::NONE.0 {
+                None
+            } else {
+                Some(format!("{} level {}", upgrade_name(u), req.count))
+            }
+        }
+        RequestType::Tech(u) => {
+            if u.0 >= tech::NONE.0 {
+                None
+            } else {
+                Some(format!("{}", tech_name(u)))
+            }
+        }
+    }
+}
+
 unsafe fn town_request_line(
     page: &mut Page,
     game: Game,
@@ -117,25 +144,9 @@ unsafe fn town_request_line(
     town: Town,
     req: &TownRequest,
 ) {
-    match req.ty {
-        RequestType::Unit(u) => {
-            if u.0 >= unit::NONE.0 {
-                return;
-            }
-            page.push(format!("{} {}", req.count, unit_name(u)));
-        }
-        RequestType::Upgrade(u) => {
-            if u.0 >= upgrade::NONE.0 {
-                return;
-            }
-            page.push(format!("{} level {}", upgrade_name(u), req.count));
-        }
-        RequestType::Tech(u) => {
-            if u.0 >= tech::NONE.0 {
-                return;
-            }
-            page.push(format!("{}", tech_name(u)));
-        }
+    match town_request_name(req) {
+        Some(s) => page.push(s),
+        None => return,
     }
     let mut indent = page.indent(2);
     let page = indent.page();
@@ -246,23 +257,78 @@ pub unsafe fn missing_attack_force_units(ai: &PlayerAi, region: *mut bw::AiRegio
     attack_force
 }
 
-// TODO MAKE RETURN yes/working/no
-fn is_request_satisfied(game: Game, town: Town, req: &TownRequest) -> bool {
+enum RequestSatisfied {
+    Yes,
+    No,
+    /// The current town is working towards this request.
+    /// (All units/etc have already been started, just need time)
+    WorkingHere,
+    /// Another town is working towards this request.
+    WorkingElsewhere,
+}
+
+fn is_request_satisfied(game: Game, town: Town, req: &TownRequest) -> RequestSatisfied {
     let player = unsafe { (*town.0).player };
     match req.ty {
         RequestType::Unit(unit_id) => {
             let count = if req.only_if_needed {
                 ai::request_equivalent_unit_ids(unit_id)
                     .into_iter()
-                    .map(|unit_id| game.unit_count(player, unit_id))
+                    .map(|unit_id| game.completed_count(player, unit_id))
                     .sum::<u32>()
             } else {
                 ai::count_town_units(town, unit_id, true)
             };
-            count >= req.count as u32
+            if count >= req.count as u32 {
+                return RequestSatisfied::Yes;
+            }
+            let incomplete_current_town = ai::count_town_units(town, unit_id, false) -
+                ai::count_town_units(town, unit_id, true);
+            if count + incomplete_current_town >= req.count as u32 {
+                RequestSatisfied::WorkingHere
+            } else if req.only_if_needed && game.unit_count(player, unit_id) >= req.count as u32 {
+                RequestSatisfied::WorkingElsewhere
+            } else {
+                RequestSatisfied::No
+            }
         }
-        RequestType::Upgrade(upgrade_id) => game.upgrade_level(player, upgrade_id) >= req.count,
-        RequestType::Tech(tech_id) => game.tech_researched(player, tech_id),
+        RequestType::Upgrade(upgrade_id) => {
+            let current_level = game.upgrade_level(player, upgrade_id);
+            if current_level >= req.count {
+                RequestSatisfied::Yes
+            } else {
+                let working = active_units()
+                    .any(|x| x.player() == player && x.upgrade_in_progress() == upgrade_id);
+                if working {
+                    // Upgrades/techs aren't really associated with a town,
+                    // so don't report WorkingElsewhere
+                    if current_level == req.count - 1 {
+                        // Shows working on lower levels as "not working on", I guess
+                        // that makes most sense.
+                        RequestSatisfied::WorkingHere
+                    } else {
+                        RequestSatisfied::No
+                    }
+                } else {
+                    RequestSatisfied::No
+                }
+            }
+        }
+        RequestType::Tech(tech_id) => {
+            if game.tech_researched(player, tech_id) {
+                RequestSatisfied::Yes
+            } else {
+                let working =
+                    active_units().any(|x| x.player() == player && x.tech_in_progress() == tech_id);
+                if working {
+                    // Upgrades/techs aren't really associated with a town
+                    // so don't report WorkingElsewhere
+                    RequestSatisfied::WorkingHere
+                } else {
+                    RequestSatisfied::No
+                }
+            }
+        }
     }
 }
 
@@ -329,8 +395,19 @@ impl TownRequests {
             requests.sort_by(|a, b| b.priority.cmp(&a.priority));
             for req in &requests {
                 let town = Town(town);
-                if !is_request_satisfied(game, town, req) {
-                    town_request_line(page, game, globals, town, req);
+                match is_request_satisfied(game, town, req) {
+                    RequestSatisfied::Yes => (),
+                    RequestSatisfied::No => town_request_line(page, game, globals, town, req),
+                    RequestSatisfied::WorkingHere => {
+                        if let Some(name) = town_request_name(req) {
+                            page.push(format!("{} (Being worked on)", name));
+                        }
+                    }
+                    RequestSatisfied::WorkingElsewhere => {
+                        if let Some(name) = town_request_name(req) {
+                            page.push(format!("{} (Being worked on at another town)", name));
+                        }
+                    }
                 }
             }
         }

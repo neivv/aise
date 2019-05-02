@@ -395,7 +395,7 @@ pub fn update_towns(globals: &mut Globals) {
 pub struct Town(pub *mut bw::AiTown);
 
 impl Town {
-    fn from_ptr(ptr: *mut bw::AiTown) -> Option<Town> {
+    pub fn from_ptr(ptr: *mut bw::AiTown) -> Option<Town> {
         if ptr == null_mut() {
             None
         } else {
