@@ -274,7 +274,7 @@ pub struct GrpSprite;
 pub struct Image {
     pub prev: *mut Image,
     pub next: *mut Image,
-    pub image_id: u8,
+    pub image_id: u16,
     pub drawfunc: u8,
     pub direction: u8,
     pub flags: u16,
@@ -285,7 +285,7 @@ pub struct Image {
     pub unk14: u16,
     pub animation: u8,
     pub wait: u8,
-    pub framesset: u8,
+    pub frameset: u16,
     pub frame_index: u16,
     pub map_position: Point,
     pub screen_position: Point,
