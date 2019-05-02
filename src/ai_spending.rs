@@ -124,6 +124,7 @@ pub unsafe fn can_satisfy_request(
             }
             let reqs = match bw::unit_dat_requirements(unit_id) {
                 Some(s) => s,
+                // Units return ok on empty reqs, other dats fail
                 None => return Ok(()),
             };
             can_satisfy_dat_request(game, player, reqs, 0).map_err(RequestSatisfyError::DatReq)
@@ -142,7 +143,7 @@ pub unsafe fn can_satisfy_request(
             }
             let mut reqs = match bw::upgrade_dat_requirements(upgrade_id) {
                 Some(s) => s,
-                None => return Ok(()),
+                None => return Err(RequestSatisfyError::NeedDatReqs),
             };
             can_satisfy_dat_request(game, player, reqs, current_level)
                 .map_err(RequestSatisfyError::DatReq)
@@ -157,7 +158,7 @@ pub unsafe fn can_satisfy_request(
             }
             let mut reqs = match bw::tech_research_dat_requirements(tech_id) {
                 Some(s) => s,
-                None => return Ok(()),
+                None => return Err(RequestSatisfyError::NeedDatReqs),
             };
             can_satisfy_dat_request(game, player, reqs, 0).map_err(RequestSatisfyError::DatReq)
         }
@@ -174,6 +175,8 @@ pub enum RequestSatisfyError {
     /// One set of ors that couldn't be satisfied
     /// (Doesn't show rest if many)
     DatReq(Vec<DatReqSatisfyError>),
+    /// Dat reqs are required for request type (Units default success on no reqs)
+    NeedDatReqs,
 }
 
 #[derive(Copy, Clone)]

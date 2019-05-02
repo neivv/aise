@@ -188,6 +188,7 @@ unsafe fn request_line(
             RequestSatisfyError::Resources => "Not enough resources/supply",
             RequestSatisfyError::NotAvailable => "Disabled in map settings",
             RequestSatisfyError::BuildLimit => "Reached build limit",
+            RequestSatisfyError::NeedDatReqs => "Dat requirements are empty",
             RequestSatisfyError::DatReq(errs) => {
                 if errs.len() != 1 {
                     page.push("Couldn't satisfy any of these requirements:");
