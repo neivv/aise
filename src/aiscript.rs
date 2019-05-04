@@ -2448,6 +2448,7 @@ impl ScriptData {
 }
 
 #[derive(Serialize, Deserialize)]
+#[repr(C)]
 pub struct Script {
     #[serde(serialize_with = "serialize_bw_script")]
     #[serde(deserialize_with = "deserialize_bw_script")]
@@ -2574,7 +2575,7 @@ pub fn deserialize_scripts<'de, D: Deserializer<'de>>(
 
 impl Script {
     pub fn ptr_from_bw(bw: *mut bw::AiScript) -> *mut Script {
-        ((bw as usize) - offset_of!(Script, bw)) as *mut Script
+        bw as *mut Script
     }
 
     fn debug_string(&self) -> String {

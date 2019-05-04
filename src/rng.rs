@@ -2,8 +2,8 @@ use std::ops::Range;
 
 use byteorder::{WriteBytesExt, LE};
 use rand::distributions::{Distribution, Uniform};
-use rand::prng::XorShiftRng;
 use rand::SeedableRng;
+use rand_xorshift::XorShiftRng;
 
 use bw;
 

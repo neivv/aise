@@ -30,26 +30,26 @@ fxhash = "0.2.1"
 lazy_static = "1.0"
 libc = "0.2"
 log = "0.4"
-memoffset = "0.2.1"
-parking_lot = "0.6"
-scopeguard = "0.3.2"
+parking_lot = "0.8"
+rand = "0.6"
+scopeguard = "1.0"
 serde = { version = "1.0.27", features = ["rc"] }
 serde_derive = "1.0.27"
 smallvec = "0.6"
 thread_local = "0.3.5"
 
-cgmath = { version = "0.16", optional = true }
+cgmath = { version = "0.17", optional = true }
 euclid = { version = "0.19", optional = true }
-glium = { version = "0.22", optional = true, default-features = false }
-gl = { version = "0.10", optional = true }
+glium = { version = "0.24", optional = true, default-features = false }
+gl = { version = "0.12", optional = true }
 
 [dependencies.font-kit]
 git = "https://github.com/pcwalton/font-kit"
 rev = "7e6a5599bd7f2b1a0166ce868e72a76086f317cb"
 optional = true
 
-[dependencies.rand]
-version = "0.5"
+[dependencies.rand_xorshift]
+version = "0.1.1"
 features = ["serde1"]
 
 [dependencies.winapi]

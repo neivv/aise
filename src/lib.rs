@@ -15,10 +15,9 @@ extern crate lazy_static;
 extern crate libc;
 #[macro_use]
 extern crate log;
-#[macro_use]
-extern crate memoffset;
 extern crate parking_lot;
 extern crate rand;
+extern crate rand_xorshift;
 #[macro_use]
 extern crate scopeguard;
 extern crate serde;
