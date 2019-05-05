@@ -26,7 +26,7 @@ use std::mem;
 use std::path::{Path, PathBuf};
 use std::ptr::null_mut;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::SystemTime;
 
 use glium::backend::{Context, Facade};
@@ -124,6 +124,7 @@ impl DrawState {
 
 static OPENGL32_DLL: AtomicUsize = AtomicUsize::new(0);
 static OLD_WINDOW_PROC: AtomicUsize = AtomicUsize::new(0);
+static IS_SCR: AtomicBool = AtomicBool::new(false);
 
 pub unsafe fn init_hooks(patcher: &mut whack::ActivePatcher) {
     use self::bw_ext::*;

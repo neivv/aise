@@ -216,7 +216,7 @@ pub unsafe fn can_satisfy_request(
                     return Err(RequestSatisfyError::Resources);
                 }
             }
-            let mut reqs = match bw::upgrade_dat_requirements(upgrade_id) {
+            let reqs = match bw::upgrade_dat_requirements(upgrade_id) {
                 Some(s) => s,
                 None => return Err(RequestSatisfyError::NeedDatReqs),
             };
@@ -231,7 +231,7 @@ pub unsafe fn can_satisfy_request(
             if !wait_resources && !has_resources(game, player, &ai::tech_cost(tech_id)) {
                 return Err(RequestSatisfyError::Resources);
             }
-            let mut reqs = match bw::tech_research_dat_requirements(tech_id) {
+            let reqs = match bw::tech_research_dat_requirements(tech_id) {
                 Some(s) => s,
                 None => return Err(RequestSatisfyError::NeedDatReqs),
             };

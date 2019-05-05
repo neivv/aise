@@ -1726,7 +1726,7 @@ pub unsafe extern fn kills_command(script: *mut bw::AiScript) {
             for unit_id in units.iter_flatten_groups() {
                 for p1 in player1.players() {
                     for p2 in player2.players() {
-                        let mut kpos = globals::KCPos::new(p1, p2, unit_id.0);
+                        let kpos = globals::KCPos::new(p1, p2, unit_id.0);
                         match write {
                             WriteModifier::Set => globals.kills_table.try_set(kpos, amount),
                             WriteModifier::Add => globals.kills_table.try_add(kpos, amount),

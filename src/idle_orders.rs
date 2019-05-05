@@ -458,8 +458,8 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
                         };
                     }
                     8 => {
-                        let mut first = read.read_u16();
-                        let mut second = read.read_u16();
+                        let first = read.read_u16();
+                        let second = read.read_u16();
                         if first > second {
                             rate.lower = second;
                             rate.upper = first;
