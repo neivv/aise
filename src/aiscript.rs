@@ -2614,13 +2614,13 @@ pub fn claim_bw_allocated_scripts(globals: &mut Globals) {
         if new_first != first {
             bw::set_first_ai_script(new_first);
         }
-        let delete_count = clear_deleted_scripts(&mut globals.ai_scripts, new_first);
-        if delete_count != 0 {
-            let (deleted, even_newer_first_free) =
-                clean_free_scripts(&globals.ai_scripts, first_free, delete_count);
+        let (deleted, even_newer_first_free) =
+            clean_free_scripts(&globals.ai_scripts, new_first_free, !0);
+        if deleted != 0 {
             if let Some(x) = even_newer_first_free {
                 new_first_free = x;
             }
+            let delete_count = clear_deleted_scripts(&mut globals.ai_scripts, new_first);
             assert_eq!(delete_count, deleted);
         }
         if new_first_free != first_free {
@@ -2687,8 +2687,6 @@ unsafe fn take_bw_allocated_scripts(
     let mut first_new_free = None;
     let mut first_new: Option<*mut bw::AiScript> = None;
     let mut prev: Option<*mut bw::AiScript> = None;
-    // Break out once we run into a script which is already owned by us,
-    // bw inserts new scripts at start of the list.
     while !script.is_null() {
         if scripts.len() == AISCRIPT_LIMIT {
             bw_print!("AI script limit reached.");
