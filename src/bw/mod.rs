@@ -28,6 +28,10 @@ pub fn pathing() -> *mut Pathing {
     samase::pathing()
 }
 
+pub fn players() -> *mut Player {
+    samase::players()
+}
+
 pub fn get_region(pos: Point) -> Option<u16> {
     let Point {
         x,
@@ -203,7 +207,7 @@ pub fn rect_distance(a: &Rect, b: &Rect) -> u32 {
     )
 }
 
-pub fn town_array_start() -> *mut AiTown {
+pub fn town_array() -> *mut AiTownArray {
     let ptr = samase::active_towns();
     if ptr.is_null() {
         null_mut()

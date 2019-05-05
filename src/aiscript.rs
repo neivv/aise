@@ -403,6 +403,10 @@ impl Town {
         }
     }
 
+    pub fn player(self) -> u8 {
+        unsafe { (*self.0).player }
+    }
+
     pub fn has_building(self, unit: Unit) -> bool {
         unsafe { self.buildings().any(|x| (*x).parent == unit.0) }
     }
@@ -422,7 +426,7 @@ impl Serialize for Town {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::Error;
 
-        let array = bw::town_array_start();
+        let array = bw::town_array() as *mut bw::AiTown;
         if array.is_null() {
             Err(S::Error::custom("Saving is not supported"))
         } else {
@@ -437,11 +441,11 @@ impl<'de> Deserialize<'de> for Town {
         use serde::de::Error;
 
         let id = u32::deserialize(deserializer)?;
-        let array = bw::town_array_start();
+        let array = bw::town_array() as *mut bw::AiTown;
         if array.is_null() {
             Err(S::Error::custom("Saving is not supported"))
         } else {
-            unsafe { Ok(Town(bw::town_array_start().offset(id as isize))) }
+            unsafe { Ok(Town(array.offset(id as isize))) }
         }
     }
 }

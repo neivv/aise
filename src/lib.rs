@@ -76,6 +76,7 @@ use libc::c_void;
 
 use winapi::um::processthreadsapi::{GetCurrentProcess, TerminateProcess};
 
+use crate::game::Game;
 use crate::globals::Globals;
 use crate::unit::Unit;
 
@@ -349,8 +350,9 @@ unsafe extern fn frame_hook() {
                     unit.position()
                 );
                 (*unit.0).ai = null_mut();
+                let ai_regions = bw::ai_regions(unit.player() as u32);
                 let region =
-                    ai::ai_region(unit.player(), unit.position()).expect("Unit out of bounds??");
+                    ai::ai_region(ai_regions, unit.position()).expect("Unit out of bounds??");
                 ai::add_military_ai(unit, region, true);
             }
         }
@@ -377,7 +379,10 @@ unsafe extern fn step_order_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_v
     if FIRST_STEP_ORDER_OF_FRAME.load(Ordering::Relaxed) {
         FIRST_STEP_ORDER_OF_FRAME.store(false, Ordering::Relaxed);
         let globals = Globals::get("step order hook (start)");
-        ai_spending::frame_hook(&globals.ai_mode);
+        let game = Game::get();
+        // TODO Init lazily
+        let unit_search = unit_search::UnitSearch::from_bw();
+        ai_spending::frame_hook(game, &unit_search, &globals.ai_mode);
     }
 
     let unit = unit::Unit(u as *mut bw::Unit);
@@ -450,7 +455,8 @@ unsafe extern fn step_order_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_v
                                 (*guard).home = (*guard).other_home;
                                 (*unit.0).ai = guard as *mut c_void;
                             } else {
-                                let region = ai::ai_region(unit.player(), unit.position())
+                                let ai_regions = bw::ai_regions(unit.player() as u32);
+                                let region = ai::ai_region(ai_regions, unit.position())
                                     .expect("Unit out of bounds??");
                                 ai::add_military_ai(unit, region, false);
                             }
@@ -473,7 +479,8 @@ unsafe extern fn step_order_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_v
                 // frames, but it should be fine.
                 if other.id() == unit.id() && (*other.0).ai.is_null() {
                     if other.player() == unit.player() {
-                        let region = ai::ai_region(other.player(), other.position())
+                        let ai_regions = bw::ai_regions(other.player() as u32);
+                        let region = ai::ai_region(ai_regions, other.position())
                             .expect("Unit out of bounds??");
                         ai::add_military_ai(other, region, false);
                     }

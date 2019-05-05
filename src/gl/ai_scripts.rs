@@ -38,7 +38,7 @@ impl AiScripts {
             Some(&s) => s,
             None => return,
         };
-        let town_array = bw::town_array_start();
+        let town_array = bw::town_array();
         unsafe {
             let town = (*script).town;
             let town_id = match town.is_null() {

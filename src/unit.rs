@@ -320,6 +320,17 @@ impl Unit {
         }
     }
 
+    pub fn military_ai(&self) -> Option<*mut bw::MilitaryAi> {
+        unsafe {
+            let ai = (*self.0).ai as *mut bw::MilitaryAi;
+            if ai != null_mut() && (*ai).ai_type == 4 {
+                Some(ai)
+            } else {
+                None
+            }
+        }
+    }
+
     pub fn matches_id(&self, other: UnitId) -> bool {
         let id = self.id();
         match other {
@@ -342,14 +353,16 @@ impl Unit {
         }
     }
 
-    pub unsafe fn issue_secondary_order(&self, order: OrderId) {
-        if (*self.0).secondary_order != order.0 {
-            (*self.0).secondary_order = order.0;
-            (*self.0).secondary_order_state = 0;
-            // Uhh.. Is this sensible to allow to be done from AI scripts?
-            (*self.0).currently_building = null_mut();
-            (*self.0).unke8 = 0;
-            (*self.0).unkea = 0;
+    pub fn issue_secondary_order(&self, order: OrderId) {
+        unsafe {
+            if (*self.0).secondary_order != order.0 {
+                (*self.0).secondary_order = order.0;
+                (*self.0).secondary_order_state = 0;
+                // Uhh.. Is this sensible to allow to be done from AI scripts?
+                (*self.0).currently_building = null_mut();
+                (*self.0).unke8 = 0;
+                (*self.0).unkea = 0;
+            }
         }
     }
 
@@ -469,6 +482,16 @@ impl Unit {
                 !addon.is_completed()
         } else {
             false
+        }
+    }
+
+    pub fn first_queued_unit(self) -> Option<UnitId> {
+        let current_build_unit =
+            unsafe { UnitId((*self.0).build_queue[(*self.0).current_build_slot as usize]) };
+        if current_build_unit == id::NONE {
+            None
+        } else {
+            Some(current_build_unit)
         }
     }
 

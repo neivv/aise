@@ -155,6 +155,11 @@ pub fn change_ai_region_state(region: *mut bw::AiRegion, state: u32) {
     unsafe { CHANGE_AI_REGION_STATE.get()(region, state) }
 }
 
+static mut PLAYERS: GlobalFunc<fn() -> *mut bw::Player> = GlobalFunc(None);
+pub fn players() -> *mut bw::Player {
+    unsafe { PLAYERS.get()() }
+}
+
 static mut ISSUE_ORDER: GlobalFunc<
     unsafe extern fn(*mut bw::Unit, u32, u32, u32, *mut bw::Unit, u32),
 > = GlobalFunc(None);
@@ -222,7 +227,7 @@ unsafe fn aiscript_opcode(
 
 #[no_mangle]
 pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
-    let required_version = 10;
+    let required_version = 12;
     if (*api).version < required_version {
         fatal(&format!(
             "Newer samase is required. (Plugin API version {}, this plugin requires version {})",
@@ -330,6 +335,7 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
         "guard ais",
     );
     PATHING.init(((*api).pathing)().map(|x| mem::transmute(x)), "pathing");
+    PLAYERS.init(((*api).players)().map(|x| mem::transmute(x)), "players");
     match ((*api).issue_order)() {
         None => ((*api).warn_unsupported_feature)(b"Ai script issue_order\0".as_ptr()),
         Some(s) => ISSUE_ORDER.0 = Some(mem::transmute(s)),

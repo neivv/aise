@@ -18,6 +18,7 @@ pub struct PlayerAi(pub *mut bw::PlayerAiData, pub u8);
 
 impl PlayerAi {
     pub fn get(player: u8) -> PlayerAi {
+        assert!(player < 8);
         PlayerAi(bw::player_ai(player.into()), player)
     }
 
@@ -36,7 +37,8 @@ impl PlayerAi {
             unsafe {
                 (*self.0).train_unit_id = 0;
             }
-            if let Some(region) = unit_ai_region(self.1, unit) {
+            let ai_regions = bw::ai_regions(self.1 as u32);
+            if let Some(region) = unit_ai_region(ai_regions, unit) {
                 let priority = self.train_request_priority(game);
                 self.add_train_request(unit_id, region, priority, game);
             }
@@ -60,7 +62,7 @@ impl PlayerAi {
         self.add_spending_request(&SpendingRequest::Military(unit, region), priority, game);
     }
 
-    fn is_at_limit(&self, unit: UnitId, game: Game) -> bool {
+    pub fn is_at_limit(&self, unit: UnitId, game: Game) -> bool {
         match unsafe { (*self.0).build_limits[unit.0 as usize] } {
             0 => false,
             0xff => true,
@@ -240,6 +242,22 @@ impl PlayerAi {
         }
         false
     }
+
+    fn remove_from_attack_force(&self, unit_id: UnitId) {
+        let unit_id = if unit_id == unit::SIEGE_TANK_SIEGE {
+            unit::SIEGE_TANK_TANK
+        } else {
+            unit_id
+        };
+        unsafe {
+            for val in (*self.0).attack_force.iter_mut() {
+                if *val == unit_id.0 + 1 {
+                    *val = unit::NONE.0 + 1;
+                    return;
+                }
+            }
+        }
+    }
 }
 
 /// Returns unit ids which are counted for request satisfication for request of `unit_id`
@@ -389,12 +407,11 @@ enum SpendingRequest {
     Guard(UnitId, *mut bw::GuardAi),
 }
 
-pub fn unit_ai_region(player: u8, unit: Unit) -> Option<*mut bw::AiRegion> {
-    ai_region(player, unit.position())
+pub fn unit_ai_region(regions: *mut bw::AiRegion, unit: Unit) -> Option<*mut bw::AiRegion> {
+    ai_region(regions, unit.position())
 }
 
-pub fn ai_region(player: u8, position: bw::Point) -> Option<*mut bw::AiRegion> {
-    let regions = bw::ai_regions(player.into());
+pub fn ai_region(regions: *mut bw::AiRegion, position: bw::Point) -> Option<*mut bw::AiRegion> {
     if regions != null_mut() {
         if let Some(region) = bw::get_region(position) {
             unsafe { Some(regions.offset(region as isize)) }
@@ -491,6 +508,7 @@ pub unsafe fn update_guard_needs(game: Game, guards: &mut GuardState) {
     let seconds = (*game.0).elapsed_seconds;
     for player in 0..8 {
         let ai = PlayerAi::get(player);
+        let ai_regions = bw::ai_regions(player as u32);
         let mut guard = bw::guard_ais(player);
         while guard != null_mut() {
             if (*guard).times_died > 0 {
@@ -510,7 +528,7 @@ pub unsafe fn update_guard_needs(game: Game, guards: &mut GuardState) {
             if !skip {
                 if seconds.saturating_sub(previous_update) > 5 {
                     (*guard).previous_update = seconds;
-                    if let Some(region) = ai_region(player, (*guard).other_home) {
+                    if let Some(region) = ai_region(ai_regions, (*guard).other_home) {
                         if region_can_rebuild_guards(region) {
                             if !ai.is_guard_being_trained(guard) {
                                 debug!(
@@ -621,7 +639,8 @@ pub unsafe fn add_guard_ai(unit: Unit) {
 pub unsafe fn add_military_ai(unit: Unit, region: *mut bw::AiRegion, always_this_region: bool) {
     assert!((*unit.0).ai.is_null());
     let region = if !always_this_region && (*region).state == 3 {
-        ai_region(unit.player(), unit.position()).expect("Unit out of bounds??")
+        let regions = bw::ai_regions(unit.player() as u32);
+        ai_region(regions, unit.position()).expect("Unit out of bounds??")
     } else {
         region
     };
@@ -734,6 +753,370 @@ pub unsafe fn update_region_safety(
                 }
             }
         }
+    }
+}
+
+/// Helper function for remove_unit_ai. Probably call that instead.
+///
+/// Does ai region/military -related cleanup
+unsafe fn remove_from_ai_structs(
+    game: Game,
+    unit_search: &UnitSearch,
+    player_ai: &PlayerAi,
+    unit: Unit,
+    was_killed: bool,
+) {
+    let players = bw::players();
+    let pathing = bw::pathing();
+    let region_count = (*pathing).region_count;
+    for i in 0u8..8 {
+        if (*players.add(i as usize)).ty != 1 {
+            continue;
+        }
+        let ai_regions = bw::ai_regions(i as u32);
+        // Region 0 is not used?
+        for j in 1..region_count {
+            let region = ai_regions.add(j as usize);
+            if (*region).air_target == unit.0 {
+                (*region).air_target = null_mut();
+            }
+            if (*region).ground_target == unit.0 {
+                (*region).ground_target = null_mut();
+            }
+            if (*region).slowest_military == unit.0 {
+                (*region).slowest_military = null_mut();
+            }
+            if (*region).detector == unit.0 {
+                (*region).detector = null_mut();
+            }
+        }
+        if !game.allied(i, unit.player()) {
+            if let Some(_region) = unit_ai_region(ai_regions, unit) {
+                // TODO
+                // (*region).needed_ground_strength =
+                //     (*region).needed_ground_strength.saturating_sub(ground_strength(unit.id()));
+                // (*region).needed_air_strength =
+                //     (*region).needed_air_strength.saturating_sub(air_strength(unit.id()));
+            }
+        }
+    }
+    if let Some(ai) = unit.military_ai() {
+        let ai_regions = bw::ai_regions(unit.player() as u32);
+        let region = (*ai).region;
+        if (*region).state == 8 {
+            player_ai.remove_from_attack_force(unit.id());
+        } else if was_killed {
+            let is_attack_region = match (*region).state {
+                1 | 2 | 8 | 9 => true,
+                3 | 4 | 5 | 6 | 7 | _ => false,
+            };
+            if !is_attack_region {
+                if let Some(current_region) = unit_ai_region(ai_regions, unit) {
+                    if current_region != region {
+                        let near_town = has_worker_or_building_at_region(
+                            unit_search,
+                            pathing,
+                            (*region).id,
+                            unit.player(),
+                        );
+                        if !near_town {
+                            bw::change_ai_region_state(region, 3);
+                        }
+                    }
+                }
+            }
+        }
+        let array = (*region).military.array;
+        ListEntry::move_to(ai, &mut (*region).military.first, &mut (*array).first_free);
+        (*unit.0).ai = null_mut();
+    }
+}
+
+unsafe fn has_worker_or_building_at_region(
+    unit_search: &UnitSearch,
+    pathing: *mut bw::Pathing,
+    region_id: u16,
+    player: u8,
+) -> bool {
+    let region = (*pathing).regions.as_ptr().add(region_id as usize);
+    let mut region_units = unit_search
+        .search_iter(&(*region).area)
+        .filter(|unit| bw::get_region(unit.position()) == Some(region_id));
+    region_units
+        .any(|unit| unit.player() == player && (unit.id().is_building() || unit.id().is_worker()))
+}
+
+/// Helper function for remove_unit_ai. Probably call that instead.
+/// Does town-related cleanup.
+///
+/// check_delete is set false if recursing here when check_town_delete moves units
+unsafe fn remove_worker_or_building_ai(
+    game: Game,
+    player_ai: &PlayerAi,
+    unit: Unit,
+    check_delete: bool,
+) {
+    if unit.id().is_resource_container() {
+        for town in (0..8).flat_map(|player| ListIter(bw::first_active_ai_town(player))) {
+            if (*town).mineral == unit.0 {
+                (*town).mineral = null_mut();
+            }
+            for gas in (*town).gas_buildings.iter_mut() {
+                if *gas == unit.0 {
+                    *gas = null_mut();
+                }
+            }
+        }
+    }
+    let mut used_town = None;
+    if let Some(ai) = unit.worker_ai() {
+        let town = (*ai).town;
+        used_town = Some(town);
+        ListEntry::move_to(
+            ai,
+            &mut (*town).workers,
+            &mut (*(*town).free_workers).first_free,
+        );
+        (*town).worker_count = (*town).worker_count.saturating_sub(1);
+        (*unit.0).ai = null_mut();
+        if (*town).building_scv == unit.0 {
+            (*town).building_scv = null_mut();
+        }
+    }
+    if let Some(ai) = unit.building_ai() {
+        let town = (*ai).town;
+        used_town = Some(town);
+        ListEntry::move_to(
+            ai,
+            &mut (*town).buildings,
+            &mut (*(*town).free_buildings).first_free,
+        );
+        (*unit.0).ai = null_mut();
+        if (*town).main_building == unit.0 {
+            (*town).main_building = null_mut();
+        }
+    }
+    if check_delete {
+        if let Some(town) = used_town {
+            check_town_delete(game, player_ai, Town(town));
+        }
+    }
+}
+
+/// Deletes a town if it is empty.
+unsafe fn check_town_delete(game: Game, player_ai: &PlayerAi, town: Town) {
+    if !prepare_town_delete(game, player_ai, town) {
+        return;
+    }
+    for unit in active_units() {
+        if unit.id().is_resource_container() {
+            // Resarea for resources
+            (*unit.0).unit_specific2[0x9] = 0;
+        }
+    }
+    if (*town.0).resource_area != 0 {
+        // TODO
+        //let resource_areas = bw::resource_areas();
+        //(*resource_areas).areas[(*town.0).resource_area as usize].flags &= !0x2;
+    }
+    let towns = crate::samase::active_towns().add(player_ai.1 as usize);
+    let town_array = (*towns).array;
+    ListEntry::move_to(town.0, &mut (*towns).first, &mut (*town_array).first_free);
+}
+
+/// Returns true if the town is ready to be deleted.
+///
+/// May move workers to another town.
+unsafe fn prepare_town_delete(game: Game, player_ai: &PlayerAi, town: Town) -> bool {
+    let has_workers = town.workers().next().is_some();
+    let has_buildings = town.buildings().next().is_some();
+    if !has_workers && !has_buildings {
+        return true;
+    }
+    let has_buildings_left = town
+        .buildings()
+        .map(|ai| Unit::from_ptr((*ai).parent).expect("Parentless building ai"))
+        .any(|unit| unit.id() != unit::OVERLORD);
+    if has_buildings_left {
+        return false;
+    }
+
+    // Move units to a new town
+    let new_town = ListIter(bw::first_active_ai_town(town.player()))
+        .filter(|&other| other != town.0)
+        .min_by_key(|&other| bw::distance((*town.0).position, (*other).position))
+        .map(|x| Town(x));
+    let new_town = match new_town {
+        Some(s) => s,
+        None => return false,
+    };
+    for ai in town.workers() {
+        let worker = Unit::from_ptr((*ai).parent).expect("Parentless worker ai");
+        remove_worker_or_building_ai(game, player_ai, worker, false);
+        add_worker_ai(game, worker, new_town);
+    }
+    for ai in town.buildings() {
+        let building = Unit::from_ptr((*ai).parent).expect("Parentless building ai");
+        remove_worker_or_building_ai(game, player_ai, building, false);
+        let ai_regions = bw::ai_regions(building.player() as u32);
+        add_building_ai(game, player_ai, ai_regions, building, new_town);
+    }
+    true
+}
+
+unsafe fn add_building_ai(
+    game: Game,
+    player_ai: &PlayerAi,
+    ai_regions: *mut bw::AiRegion,
+    unit: Unit,
+    town: Town,
+) {
+    assert!((*unit.0).ai.is_null());
+    let array = (*town.0).free_buildings;
+    if (*array).first_free.is_null() {
+        warn!("Building ai limit");
+        return;
+    }
+
+    let ai = (*array).first_free;
+    ListEntry::move_to(ai, &mut (*array).first_free, &mut (*town.0).buildings);
+    (*ai).parent = unit.0;
+    (*ai).town = town.0;
+    (*ai).ai_type = 0x3;
+    (*ai).train_queue_types = [0; 5];
+    (*ai).train_queue_values = [null_mut(); 5];
+    (*unit.0).ai = ai as *mut c_void;
+    match unit.id() {
+        unit::HATCHERY | unit::LAIR | unit::HIVE | unit::CREEP_COLONY => {
+            // Bw only does hatch/lair/hive, but might as well do creep colony as
+            // it doesn't do anything important.
+            if unit.is_completed() {
+                unit.issue_order_ground(order::COMPUTER_AI, unit.position());
+                unit.issue_secondary_order(order::SPREAD_CREEP);
+            }
+        }
+        _ => (),
+    }
+    fn is_minor_building(unit_id: UnitId) -> bool {
+        match unit_id {
+            unit::MISSILE_TURRET |
+            unit::BUNKER |
+            unit::CREEP_COLONY |
+            unit::SUNKEN_COLONY |
+            unit::SPORE_COLONY |
+            unit::PYLON |
+            unit::PHOTON_CANNON => true,
+            _ => false,
+        }
+    }
+    if !player_ai.is_campaign() || (unit.is_landed_building() && !is_minor_building(unit.id())) {
+        create_town_region(game, player_ai, ai_regions, unit);
+    }
+    if (*town.0).inited == 0 {
+        (*town.0).inited = 1;
+        (*town.0).gas_buildings = [null_mut(); 3];
+    }
+    if unit.id().is_town_hall() {
+        (*town.0).main_building = unit.0;
+    } else if is_gas_building(unit.id()) {
+        if let Some(slot) = (*town.0).gas_buildings.iter_mut().find(|x| x.is_null()) {
+            *slot = unit.0;
+        }
+        if (*town.0).resource_area != 0 {
+            (*town.0).resource_units_not_set = 1;
+        }
+    }
+}
+
+unsafe fn create_town_region(
+    game: Game,
+    player_ai: &PlayerAi,
+    ai_regions: *mut bw::AiRegion,
+    unit: Unit,
+) {
+    let region = unit_ai_region(ai_regions, unit).expect("Unit out of bounds?");
+    let is_campaign = player_ai.is_campaign();
+    if (*region).state == 0 || (*region).state == 4 {
+        bw::change_ai_region_state(region, 5);
+        (*region).flags |= 0x1;
+        if !is_campaign {
+            (*region).flags |= 0x40;
+            for other_player in 0..8 {
+                if game.allied(other_player, player_ai.1) {
+                    let other_regions = bw::ai_regions(other_player as u32);
+                    if let Some(other_region) = unit_ai_region(other_regions, unit) {
+                        if (*other_region).state == 0 {
+                            bw::change_ai_region_state(other_region, 4);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if (unit.is_landed_building() && unit.id().is_town_hall()) || unit.id().is_worker() {
+        if is_campaign {
+            let starting_strength = (*player_ai.0).default_min_strength_for_regions as u16 * 6;
+            (*region).needed_ground_strength = starting_strength;
+            (*region).needed_air_strength = starting_strength;
+        } else {
+            (*region).flags |= 0x40;
+            (*region).needed_ground_strength = 1500;
+            (*region).needed_air_strength = 1000;
+        }
+        bw::change_ai_region_state(region, 6);
+        (*region).unk_count = 45;
+    }
+}
+
+pub fn is_gas_building(unit_id: UnitId) -> bool {
+    use bw_dat::unit::*;
+    match unit_id {
+        REFINERY | EXTRACTOR | ASSIMILATOR => true,
+        _ => false,
+    }
+}
+
+unsafe fn add_worker_ai(game: Game, unit: Unit, town: Town) {
+    assert!((*unit.0).ai.is_null());
+    let array = (*town.0).free_workers;
+    if (*array).first_free.is_null() {
+        warn!("Worker ai limit");
+    } else {
+        let ai = (*array).first_free;
+        ListEntry::move_to(ai, &mut (*array).first_free, &mut (*town.0).workers);
+        (*ai).parent = unit.0;
+        (*ai).town = town.0;
+        (*ai).ai_type = 0x2;
+        (*ai).target_resource = 0x1;
+        (*ai).reassign_count = 0;
+        (*ai).wait_timer = 0;
+        (*ai).last_update_second = (*game.0).elapsed_seconds;
+        (*unit.0).ai = ai as *mut c_void;
+        (*town.0).worker_count = (*town.0).worker_count.saturating_add(1);
+    }
+}
+
+// TODO NOT FULLY COMPLETE, NEED STRENGTH AND RESAREAS
+pub fn remove_unit_ai(game: Game, unit_search: &UnitSearch, unit: Unit, was_killed: bool) {
+    unsafe {
+        let player_ai = PlayerAi::get(unit.player());
+        remove_from_ai_structs(game, unit_search, &player_ai, unit, was_killed);
+        remove_worker_or_building_ai(game, &player_ai, unit, true);
+        if let Some(ai) = unit.guard_ai() {
+            (*ai).parent = null_mut();
+            // Just do what bw does and let the guard ai hooks notice this.
+            // And yes, += 1 even if it wasn't killed
+            (*ai).times_died += 1;
+            (*unit.0).ai = null_mut();
+        }
+        if (*player_ai.0).free_medic == unit.0 {
+            (*player_ai.0).free_medic = active_units()
+                .filter(|x| x.player() == unit.player())
+                .find(|x| x.id() == unit::MEDIC && !(*x.0).ai.is_null())
+                .map(|x| x.0)
+                .unwrap_or_else(null_mut);
+        }
+        assert!((*unit.0).ai.is_null());
     }
 }
 

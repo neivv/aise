@@ -101,6 +101,7 @@ pub mod unit {
     pub const EDMUND_DUKE_SIEGE: UnitId = UnitId(0x19);
     pub const SIEGE_TANK_SIEGE: UnitId = UnitId(0x1e);
     pub const FIREBAT: UnitId = UnitId(0x20);
+    pub const MEDIC: UnitId = UnitId(0x22);
     pub const LARVA: UnitId = UnitId(0x23);
     pub const EGG: UnitId = UnitId(0x24);
     pub const ZERGLING: UnitId = UnitId(0x25);
@@ -130,6 +131,8 @@ pub mod unit {
     pub const NUCLEAR_SILO: UnitId = UnitId(0x6c);
     pub const SUPPLY_DEPOT: UnitId = UnitId(0x6d);
     pub const REFINERY: UnitId = UnitId(0x6e);
+    pub const MISSILE_TURRET: UnitId = UnitId(0x7c);
+    pub const BUNKER: UnitId = UnitId(0x7d);
     pub const HATCHERY: UnitId = UnitId(0x83);
     pub const LAIR: UnitId = UnitId(0x84);
     pub const HIVE: UnitId = UnitId(0x85);
@@ -142,6 +145,7 @@ pub mod unit {
     pub const EXTRACTOR: UnitId = UnitId(0x95);
     pub const PYLON: UnitId = UnitId(0x9c);
     pub const ASSIMILATOR: UnitId = UnitId(0x9d);
+    pub const PHOTON_CANNON: UnitId = UnitId(0xa2);
     pub const MINERAL_FIELD_1: UnitId = UnitId(0xb0);
     pub const MINERAL_FIELD_2: UnitId = UnitId(0xb1);
     pub const MINERAL_FIELD_3: UnitId = UnitId(0xb2);

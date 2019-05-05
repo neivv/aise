@@ -48,7 +48,7 @@ impl MilitaryRequests {
                 let mut indent = page.indent(4);
                 let page = indent.page();
                 let unit_id = UnitId((*player_ai.0).train_unit_id - 1);
-                military_line(page, game, globals, self.player, unit_id);
+                military_line(page, game, &player_ai, globals, self.player, unit_id);
             }
             if (*player_ai.0).attack_grouping_region != 0 {
                 let region = bw::ai_regions(self.player as u32)
@@ -59,7 +59,7 @@ impl MilitaryRequests {
                     let mut indent = page.indent(4);
                     let page = indent.page();
                     for &unit_id in &attack_force {
-                        military_line(page, game, globals, self.player, unit_id);
+                        military_line(page, game, &player_ai, globals, self.player, unit_id);
                     }
                 }
             }
@@ -80,7 +80,7 @@ impl MilitaryRequests {
                 let mut indent = page.indent(2);
                 let page = indent.page();
                 for &unit_id in &defense_builds {
-                    military_line(page, game, globals, self.player, unit_id);
+                    military_line(page, game, &player_ai, globals, self.player, unit_id);
                 }
             }
         }
@@ -90,6 +90,7 @@ impl MilitaryRequests {
 unsafe fn military_line(
     page: &mut Page,
     game: Game,
+    player_ai: &PlayerAi,
     globals: &Globals,
     player: u8,
     unit_id: UnitId,
@@ -107,7 +108,7 @@ unsafe fn military_line(
         id: unit_id.0,
         val: bw::ai_regions(player as u32) as *mut c_void,
     };
-    request_line(page, game, globals, player, &request);
+    request_line(page, game, player_ai, globals, player, &request);
 }
 
 /// Returns informative name for the request
@@ -140,6 +141,7 @@ fn town_request_name(req: &TownRequest) -> Option<String> {
 unsafe fn town_request_line(
     page: &mut Page,
     game: Game,
+    player_ai: &PlayerAi,
     globals: &Globals,
     town: Town,
     req: &TownRequest,
@@ -167,18 +169,20 @@ unsafe fn town_request_line(
         },
         val: town.0 as *mut c_void,
     };
-    request_line(page, game, globals, (*town.0).player, &request);
+    request_line(page, game, player_ai, globals, (*town.0).player, &request);
 }
 
 unsafe fn request_line(
     page: &mut Page,
     game: Game,
+    player_ai: &PlayerAi,
     globals: &Globals,
     player: u8,
     request: &bw::AiSpendingRequest,
 ) {
     let result = crate::ai_spending::can_satisfy_request(
         game,
+        player_ai,
         player,
         &request,
         &globals.ai_mode[player as usize],
@@ -379,8 +383,9 @@ impl TownRequests {
         };
 
         let game = Game::get();
-        let town_array = bw::town_array_start();
+        let town_array = bw::town_array();
         unsafe {
+            let player_ai = PlayerAi::get((*town).player);
             let town_id = (town as usize - town_array as usize) / mem::size_of::<bw::AiTown>();
             page.push(format!(
                 "Town #{}/{} id {:x}: {:p} player {:x} pos ({}, {})",
@@ -417,7 +422,9 @@ impl TownRequests {
                 let town = Town(town);
                 match is_request_satisfied(game, town, req) {
                     RequestSatisfied::Yes => (),
-                    RequestSatisfied::No => town_request_line(page, game, globals, town, req),
+                    RequestSatisfied::No => {
+                        town_request_line(page, game, &player_ai, globals, town, req)
+                    }
                     RequestSatisfied::WorkingHere(completion) => {
                         if let Some(name) = town_request_name(req) {
                             if let Some(completion) = completion {

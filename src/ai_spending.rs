@@ -11,20 +11,25 @@ use crate::datreq::{check_dat_requirements, DatReq, ReadDatReqs};
 use crate::game::Game;
 use crate::list::ListIter;
 use crate::unit::{self, Unit};
+use crate::unit_search::UnitSearch;
 
-pub unsafe fn frame_hook(ai_mode: &[AiMode; 8]) {
-    let game = Game::get();
+pub unsafe fn frame_hook(game: Game, unit_search: &UnitSearch, ai_mode: &[AiMode; 8]) {
     for player in 0..8 {
         let ai_mode = &ai_mode[player as usize];
         let player_ai = PlayerAi::get(player);
         while let Some(request) = player_ai.first_request() {
-            let can = can_satisfy_request(game, player, &request, ai_mode).is_ok();
+            let can = can_satisfy_request(game, &player_ai, player, &request, ai_mode).is_ok();
             let mut handled = false;
             if can {
                 // Handle building morphs since preplaced colonies don't check for requests
                 // (Since their order switches to idle because they don't have a town on frame 0)
                 // Could handle other requests as well, but no need at the moment.
                 if handle_building_morph(game, &request, player) == Ok(()) {
+                    handled = true;
+                }
+                // Handle military/guard training as well since train opcode is otherwise
+                // bad at spreading work across buildings
+                if handle_training(game, unit_search, &request, player) == Ok(()) {
                     handled = true;
                 }
                 if !handled {
@@ -82,16 +87,83 @@ fn handle_building_morph(
     Err(())
 }
 
-fn is_gas_building(unit_id: UnitId) -> bool {
-    use bw_dat::unit::*;
-    match unit_id {
-        REFINERY | EXTRACTOR | ASSIMILATOR => true,
-        _ => false,
+fn handle_training(
+    game: Game,
+    unit_search: &UnitSearch,
+    request: &bw::AiSpendingRequest,
+    player: u8,
+) -> Result<(), ()> {
+    if request.ty == 1 || request.ty == 2 {
+        let unit_id = UnitId(request.id);
+        let cost = ai::unit_cost(unit_id);
+        if has_resources(game, player, &cost) && game.unit_available(player, unit_id) {
+            let reqs = match bw::unit_dat_requirements(unit_id) {
+                Some(s) => s,
+                None => return Err(()),
+            };
+            let mut valid_unit_ids: SmallVec<[UnitId; 4]> = SmallVec::new();
+            parent_unit_ids_for_request(reqs, 0, &mut valid_unit_ids);
+            let unit = unit::active_units()
+                .filter(|x| x.player() == player && x.first_queued_unit().is_none())
+                .filter(|x| unsafe { !(*x.0).ai.is_null() })
+                .find(|&unit| {
+                    valid_unit_ids.iter().any(|&y| unit.matches_id(y)) &&
+                        unsafe { check_dat_requirements(game, reqs, unit, 0) }
+                });
+            if let Some(unit) = unit {
+                if unit.id() == bw_dat::unit::HIGH_TEMPLAR ||
+                    unit.id() == bw_dat::unit::DARK_TEMPLAR
+                {
+                    // todo. these should not go through start_unit_building, but
+                    // just find a partner and order merge.
+                    // BW should handle these fine though.
+                    return Err(());
+                }
+
+                start_unit_building(game, unit, unit_id, &cost)?;
+                if let Some(ai) = unit.building_ai() {
+                    unsafe {
+                        let slot = (*unit.0).current_build_slot as usize;
+                        (*ai).train_queue_types[slot] = request.ty;
+                        (*ai).train_queue_values[slot] = request.val;
+                    }
+                }
+                match unit.id() {
+                    bw_dat::unit::MUTALISK | bw_dat::unit::HYDRALISK => {
+                        unsafe {
+                            ai::remove_unit_ai(game, unit_search, unit, false);
+                            if request.ty == 2 {
+                                let ai = request.val as *mut bw::GuardAi;
+                                assert!(!ai.is_null());
+                                (*ai).home = (*ai).other_home;
+                                (*unit.0).ai = ai as *mut _;
+                                (*ai).parent = unit.0;
+                            } else {
+                                assert_eq!(request.ty, 1);
+                                let region = request.val as *mut bw::AiRegion;
+                                assert!(!region.is_null());
+                                ai::add_military_ai(unit, region, true);
+                            }
+                        }
+                        unit.issue_order_ground(order::UNIT_MORPH, unit.position());
+                    }
+                    bw_dat::unit::LARVA => {
+                        unit.issue_order_ground(order::UNIT_MORPH, unit.position());
+                    }
+                    _ => {
+                        unit.issue_secondary_order(order::TRAIN);
+                    }
+                }
+                return Ok(());
+            }
+        }
     }
+    Err(())
 }
 
 pub unsafe fn can_satisfy_request(
     game: Game,
+    player_ai: &PlayerAi,
     player: u8,
     request: &bw::AiSpendingRequest,
     ai_mode: &AiMode,
@@ -103,7 +175,10 @@ pub unsafe fn can_satisfy_request(
             if !game.unit_available(player, unit_id) {
                 return Err(RequestSatisfyError::NotAvailable);
             }
-            if request.ty == 3 && !ai_mode.build_gas && is_gas_building(unit_id) {
+            if player_ai.is_at_limit(unit_id, game) {
+                return Err(RequestSatisfyError::BuildLimit);
+            }
+            if request.ty == 3 && !ai_mode.build_gas && ai::is_gas_building(unit_id) {
                 let town = request.val as *mut bw::AiTown;
                 let existing_gas_buildings = ListIter((*town).buildings)
                     .filter_map(|x| Unit::from_ptr((*x).parent))
@@ -380,6 +455,10 @@ unsafe fn can_satisfy_dat_request(
     }
 }
 
+/// Starts unit building immediately. That is, it cannot be used with workers starting
+/// construction.
+///
+/// Does not do anything ai-specific either.
 fn start_unit_building(game: Game, unit: Unit, unit_id: UnitId, cost: &Cost) -> Result<(), ()> {
     let slot = match unit.empty_build_slot() {
         Some(s) => s as usize,

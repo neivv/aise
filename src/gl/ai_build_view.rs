@@ -54,7 +54,7 @@ impl AiBuildView {
         page.push(format!("Placement for {}", unit_name(self.unit_id)));
 
         let game = Game::get();
-        let town_array = bw::town_array_start();
+        let town_array = bw::town_array();
         unsafe {
             let town_id = (town as usize - town_array as usize) / mem::size_of::<bw::AiTown>();
             page.push(format!(

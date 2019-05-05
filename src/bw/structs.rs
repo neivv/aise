@@ -28,7 +28,7 @@ pub struct TownReq {
 pub struct AiTown {
     pub next: *mut AiTown,                    // 0x0
     pub prev: *mut AiTown,                    // 0x4
-    pub free_workers: *mut c_void,            // 0x8
+    pub free_workers: *mut WorkerAiArray,     // 0x8
     pub workers: *mut WorkerAi,               // 0xc
     pub free_buildings: *mut BuildingAiArray, // 0x10
     pub buildings: *mut BuildingAi,           // 0x14
@@ -50,8 +50,14 @@ pub struct AiTown {
 
 #[repr(C)]
 pub struct AiTownList {
-    pub array: *mut AiTown,
+    pub array: *mut AiTownArray,
     pub first: *mut AiTown,
+}
+
+#[repr(C, packed)]
+pub struct AiTownArray {
+    pub towns: [AiTown; 100],
+    pub first_free: *mut AiTown,
 }
 
 #[repr(C, packed)]
@@ -73,10 +79,16 @@ pub struct BuildingAi {
     pub prev: *mut BuildingAi,
     pub ai_type: u8,
     pub train_queue_types: [u8; 0x5],
-    pub dce: [u8; 0x2],
+    pub padding_e: [u8; 0x2],
     pub parent: *mut Unit, // 0x10
     pub town: *mut AiTown,
     pub train_queue_values: [*mut c_void; 0x5],
+}
+
+#[repr(C, packed)]
+pub struct WorkerAiArray {
+    pub ais: [WorkerAi; 1000],
+    pub first_free: *mut WorkerAi,
 }
 
 #[repr(C, packed)]
@@ -135,7 +147,7 @@ pub struct AiRegion {
     pub air_target: *mut Unit,
     pub ground_target: *mut Unit,
     pub slowest_military: *mut Unit,
-    pub dc28: [u8; 0x4],
+    pub detector: *mut Unit,
     pub military: MilitaryAiList,
 }
 
@@ -177,7 +189,8 @@ pub struct PlayerAiData {
     pub dc21a: [u8; 0x4],
     pub attack_grouping_region: u16,
     pub train_unit_id: u16,
-    pub dc222: [u8; 0x2],
+    pub default_min_strength_for_regions: u8,
+    pub defense_priority_base: u8,
     pub previous_building_hit_second: u32,
     pub last_attack_second: u32,
     pub strategic_suicide_mission_cooldown: u8,
@@ -500,6 +513,16 @@ pub struct Region {
     pub _dc20: [u8; 0x20],
 }
 
+#[repr(C, packed)]
+pub struct Player {
+    pub id: u32,
+    pub storm_id: u32,
+    pub ty: u8,
+    pub race: u8,
+    pub team: u8,
+    pub name: [u8; 25],
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -522,5 +545,6 @@ mod test {
         assert_eq!(mem::size_of::<Image>(), 0x40);
         assert_eq!(mem::size_of::<Pathing>(), 0x97a20);
         assert_eq!(mem::size_of::<Region>(), 0x40);
+        assert_eq!(mem::size_of::<Player>(), 0x24);
     }
 }
