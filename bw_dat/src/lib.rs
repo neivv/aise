@@ -1,12 +1,10 @@
 #[macro_use]
-extern crate bitflags;
-extern crate libc;
-#[macro_use]
-extern crate serde_derive;
-#[macro_use]
 extern crate whack;
 
 mod bw;
+
+use bitflags::bitflags;
+use serde_derive::{Serialize, Deserialize};
 
 pub use bw::DatTable;
 
@@ -73,7 +71,7 @@ pub struct UpgradeId(pub u16);
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize, Ord, PartialOrd, Hash)]
 pub struct TechId(pub u16);
 
-unsafe fn get(dat: *const bw::DatTable, id: u32, field: u32) -> u32 {
+unsafe fn dat_read(dat: *const bw::DatTable, id: u32, field: u32) -> u32 {
     let dat = &*dat.offset(field as isize);
     assert!(dat.entries > id);
     match dat.entry_size {
@@ -257,7 +255,7 @@ impl UnitId {
     }
 
     pub fn get(&self, id: u32) -> u32 {
-        unsafe { ::get(UNITS_DAT, self.0 as u32, id) }
+        unsafe { crate::dat_read(UNITS_DAT, self.0 as u32, id) }
     }
 
     pub fn hitpoints(&self) -> i32 {
@@ -278,11 +276,11 @@ impl UnitId {
     }
 
     pub fn ground_weapon(&self) -> Option<WeaponId> {
-        ::WeaponId::optional(self.get(17))
+        WeaponId::optional(self.get(17))
     }
 
     pub fn air_weapon(&self) -> Option<WeaponId> {
-        ::WeaponId::optional(self.get(19))
+        WeaponId::optional(self.get(19))
     }
 
     pub fn flags(&self) -> u32 {
@@ -334,7 +332,7 @@ impl UnitId {
     }
 
     pub fn armor_upgrade(&self) -> Option<UpgradeId> {
-        ::UpgradeId::optional(self.get(25))
+        UpgradeId::optional(self.get(25))
     }
 
     pub fn mineral_cost(&self) -> u32 {
@@ -401,7 +399,7 @@ impl WeaponId {
     }
 
     pub fn get(&self, id: u32) -> u32 {
-        unsafe { ::get(WEAPONS_DAT, self.0 as u32, id) }
+        unsafe { crate::dat_read(WEAPONS_DAT, self.0 as u32, id) }
     }
 
     pub fn damage(&self) -> u32 {
@@ -409,7 +407,7 @@ impl WeaponId {
     }
 
     pub fn upgrade(&self) -> Option<UpgradeId> {
-        ::UpgradeId::optional(self.get(6))
+        UpgradeId::optional(self.get(6))
     }
 
     pub fn bonus(&self) -> u32 {
@@ -439,7 +437,7 @@ impl UpgradeId {
     }
 
     pub fn get(&self, id: u32) -> u32 {
-        unsafe { ::get(UPGRADES_DAT, self.0 as u32, id) }
+        unsafe { crate::dat_read(UPGRADES_DAT, self.0 as u32, id) }
     }
 
     pub fn label(&self) -> u32 {
@@ -489,7 +487,7 @@ impl TechId {
     }
 
     fn get(&self, id: u32) -> u32 {
-        unsafe { ::get(TECHDATA_DAT, self.0 as u32, id) }
+        unsafe { crate::dat_read(TECHDATA_DAT, self.0 as u32, id) }
     }
 
     pub fn mineral_cost(&self) -> u32 {
@@ -562,10 +560,10 @@ impl OrderId {
     }
 
     fn get(&self, id: u32) -> u32 {
-        unsafe { ::get(ORDERS_DAT, self.0 as u32, id) }
+        unsafe { crate::dat_read(ORDERS_DAT, self.0 as u32, id) }
     }
 
     pub fn tech(&self) -> Option<TechId> {
-        ::TechId::optional(self.get(14))
+        TechId::optional(self.get(14))
     }
 }
