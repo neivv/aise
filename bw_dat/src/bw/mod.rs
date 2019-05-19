@@ -1,13 +1,8 @@
 #![allow(non_upper_case_globals)]
 
-use libc::c_void;
+pub mod structs;
 
-#[repr(C, packed)]
-pub struct DatTable {
-    pub data: *mut c_void,
-    pub entry_size: u32,
-    pub entries: u32,
-}
+pub use self::structs::*;
 
 whack_vars!(init_vars, 0x00400000,
     0x00513C30 => units_dat: [DatTable; 0x35];

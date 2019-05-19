@@ -1,7 +1,19 @@
 #[macro_use]
 extern crate whack;
 
+pub mod game;
+pub mod expr;
+pub mod unit;
+
 mod bw;
+mod parse_expr;
+
+pub use crate::game::Game;
+pub use crate::unit::Unit;
+
+pub mod structs {
+    pub use crate::bw::structs::*;
+}
 
 use bitflags::bitflags;
 use serde_derive::{Serialize, Deserialize};
@@ -80,79 +92,6 @@ unsafe fn dat_read(dat: *const bw::DatTable, id: u32, field: u32) -> u32 {
         4 => *(dat.data as *const u32).offset(id as isize),
         x => panic!("Invalid dat entry size: {}", x),
     }
-}
-
-pub mod unit {
-    use super::UnitId;
-    pub const MARINE: UnitId = UnitId(0x0);
-    pub const GHOST: UnitId = UnitId(0x1);
-    pub const VULTURE: UnitId = UnitId(0x2);
-    pub const SIEGE_TANK_TANK: UnitId = UnitId(0x5);
-    pub const SIEGE_TANK_TURRET: UnitId = UnitId(0x6);
-    pub const SCV: UnitId = UnitId(0x7);
-    pub const GUI_MONTAG: UnitId = UnitId(0xa);
-    pub const SPIDER_MINE: UnitId = UnitId(0xd);
-    pub const SARAH_KERRIGAN: UnitId = UnitId(0x10);
-    pub const JIM_RAYNOR_VULTURE: UnitId = UnitId(0x13);
-    pub const JIM_RAYNOR_MARINE: UnitId = UnitId(0x14);
-    pub const EDMUND_DUKE_TANK: UnitId = UnitId(0x17);
-    pub const EDMUND_DUKE_SIEGE: UnitId = UnitId(0x19);
-    pub const SIEGE_TANK_SIEGE: UnitId = UnitId(0x1e);
-    pub const FIREBAT: UnitId = UnitId(0x20);
-    pub const MEDIC: UnitId = UnitId(0x22);
-    pub const LARVA: UnitId = UnitId(0x23);
-    pub const EGG: UnitId = UnitId(0x24);
-    pub const ZERGLING: UnitId = UnitId(0x25);
-    pub const HYDRALISK: UnitId = UnitId(0x26);
-    pub const DRONE: UnitId = UnitId(0x29);
-    pub const OVERLORD: UnitId = UnitId(0x2a);
-    pub const MUTALISK: UnitId = UnitId(0x2b);
-    pub const GUARDIAN: UnitId = UnitId(0x2c);
-    pub const SCOURGE: UnitId = UnitId(0x2f);
-    pub const INFESTED_KERRIGAN: UnitId = UnitId(0x33);
-    pub const COCOON: UnitId = UnitId(0x3b);
-    pub const DARK_TEMPLAR: UnitId = UnitId(0x3d);
-    pub const DEVOURER: UnitId = UnitId(0x3e);
-    pub const DARK_ARCHON: UnitId = UnitId(0x3f);
-    pub const HIGH_TEMPLAR: UnitId = UnitId(0x43);
-    pub const ARCHON: UnitId = UnitId(0x44);
-    pub const CARRIER: UnitId = UnitId(0x48);
-    pub const WARBRINGER: UnitId = UnitId(0x51);
-    pub const GANTRITHOR: UnitId = UnitId(0x52);
-    pub const REAVER: UnitId = UnitId(0x53);
-    pub const LURKER_EGG: UnitId = UnitId(0x61);
-    pub const SAMIR_DURAN: UnitId = UnitId(0x63);
-    pub const ALEXEI_STUKOV: UnitId = UnitId(0x64);
-    pub const LURKER: UnitId = UnitId(0x67);
-    pub const INFESTED_DURAN: UnitId = UnitId(0x68);
-    pub const COMMAND_CENTER: UnitId = UnitId(0x6a);
-    pub const NUCLEAR_SILO: UnitId = UnitId(0x6c);
-    pub const SUPPLY_DEPOT: UnitId = UnitId(0x6d);
-    pub const REFINERY: UnitId = UnitId(0x6e);
-    pub const MISSILE_TURRET: UnitId = UnitId(0x7c);
-    pub const BUNKER: UnitId = UnitId(0x7d);
-    pub const HATCHERY: UnitId = UnitId(0x83);
-    pub const LAIR: UnitId = UnitId(0x84);
-    pub const HIVE: UnitId = UnitId(0x85);
-    pub const HYDRALISK_DEN: UnitId = UnitId(0x87);
-    pub const GREATER_SPIRE: UnitId = UnitId(0x89);
-    pub const SPIRE: UnitId = UnitId(0x8d);
-    pub const CREEP_COLONY: UnitId = UnitId(0x8f);
-    pub const SPORE_COLONY: UnitId = UnitId(0x90);
-    pub const SUNKEN_COLONY: UnitId = UnitId(0x92);
-    pub const EXTRACTOR: UnitId = UnitId(0x95);
-    pub const PYLON: UnitId = UnitId(0x9c);
-    pub const ASSIMILATOR: UnitId = UnitId(0x9d);
-    pub const PHOTON_CANNON: UnitId = UnitId(0xa2);
-    pub const MINERAL_FIELD_1: UnitId = UnitId(0xb0);
-    pub const MINERAL_FIELD_2: UnitId = UnitId(0xb1);
-    pub const MINERAL_FIELD_3: UnitId = UnitId(0xb2);
-    pub const VESPENE_GEYSER: UnitId = UnitId(0xbc);
-    pub const NONE: UnitId = UnitId(0xe4);
-    pub const ANY_UNIT: UnitId = UnitId(0xe5);
-    pub const GROUP_MEN: UnitId = UnitId(0xe6);
-    pub const GROUP_BUILDINGS: UnitId = UnitId(0xe7);
-    pub const GROUP_FACTORIES: UnitId = UnitId(0xe8);
 }
 
 pub mod weapon {
