@@ -138,6 +138,7 @@ impl IntExpr {
                         SigOrder => (**unit).order_signal as i32,
                         Player => (**unit).player as i32,
                         UnitId => (**unit).unit_id as i32,
+                        Order => (**unit).order as i32,
                         Sin(degrees) => {
                             let val = degrees.eval_with_unit(unit, game);
                             ((val as f32).to_radians().sin() * 256.0) as i32
