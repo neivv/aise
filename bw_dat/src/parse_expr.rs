@@ -379,6 +379,7 @@ decl_func!(
     b"speed", Speed,
     b"sigorder", SigOrder,
     b"player", Player,
+    b"unit_id", UnitId,
     b"sin", Sin(Box<IntExpr>) -> |x| -> Result<IntFunc, easy::Error<_, _>> {
         parse_single_expr(x).map(|x| IntFunc::Sin(Box::new(x)))
     },

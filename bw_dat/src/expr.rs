@@ -57,24 +57,26 @@ fn format_combine_err(e: &parse_expr::SingleError<u8, &[u8], usize>, input: &[u8
 }
 
 impl IntExpr {
+    /// Fails if the entire byte slice isn't parsed.
     pub fn parse(bytes: &[u8]) -> Result<IntExpr, Error> {
-        use combine::stream::state::State;
-        use crate::parse_expr::SingleErrorStream;
-        parse_expr::int_expr().parse(SingleErrorStream::new(State::new(bytes)))
-            .map_err(|e| format_combine_err(&e, bytes))
+        IntExpr::parse_part(bytes)
             .and_then(|(result, rest)| {
-                let rest = rest.inner;
-                if !rest.input.is_empty() {
-                    Err(Error {
-                        message: format!(
-                            "Trailing characters: {}",
-                            String::from_utf8_lossy(rest.input),
-                        )
-                    })
+                if !rest.is_empty() {
+                    let msg = format!("Trailing characters: {}", String::from_utf8_lossy(rest));
+                    Err(Error { message: msg })
                 } else {
                     Ok(result)
                 }
             })
+    }
+
+    /// Parses expression and returns what's left from input.
+    pub fn parse_part(bytes: &[u8]) -> Result<(IntExpr, &[u8]), Error> {
+        use combine::stream::state::State;
+        use crate::parse_expr::SingleErrorStream;
+        parse_expr::int_expr().parse(SingleErrorStream::new(State::new(bytes)))
+            .map_err(|e| format_combine_err(&e, bytes))
+            .map(|(result, rest)| (result, rest.inner.input))
     }
 
     pub fn eval_with_unit(&self, unit: Unit, game: Game) -> i32 {
@@ -135,6 +137,7 @@ impl IntExpr {
                         Speed => (**unit).speed,
                         SigOrder => (**unit).order_signal as i32,
                         Player => (**unit).player as i32,
+                        UnitId => (**unit).unit_id as i32,
                         Sin(degrees) => {
                             let val = degrees.eval_with_unit(unit, game);
                             ((val as f32).to_radians().sin() * 256.0) as i32
@@ -162,24 +165,26 @@ impl IntExpr {
 }
 
 impl BoolExpr {
+    /// Fails if the entire byte slice isn't parsed.
     pub fn parse(bytes: &[u8]) -> Result<BoolExpr, Error> {
-        use combine::stream::state::State;
-        use crate::parse_expr::SingleErrorStream;
-        parse_expr::bool_expr().parse(SingleErrorStream::new(State::new(bytes)))
-            .map_err(|e| format_combine_err(&e, bytes))
+        BoolExpr::parse_part(bytes)
             .and_then(|(result, rest)| {
-                let rest = rest.inner;
-                if !rest.input.is_empty() {
-                    Err(Error {
-                        message: format!(
-                            "Trailing characters: {}",
-                            String::from_utf8_lossy(rest.input),
-                        )
-                    })
+                if !rest.is_empty() {
+                    let msg = format!("Trailing characters: {}", String::from_utf8_lossy(rest));
+                    Err(Error { message: msg })
                 } else {
                     Ok(result)
                 }
             })
+    }
+
+    /// Parses expression and returns what's left from input.
+    pub fn parse_part(bytes: &[u8]) -> Result<(BoolExpr, &[u8]), Error> {
+        use combine::stream::state::State;
+        use crate::parse_expr::SingleErrorStream;
+        parse_expr::bool_expr().parse(SingleErrorStream::new(State::new(bytes)))
+            .map_err(|e| format_combine_err(&e, bytes))
+            .map(|(result, rest)| (result, rest.inner.input))
     }
 
     pub fn eval_with_unit(&self, unit: Unit, game: Game) -> bool {
