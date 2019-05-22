@@ -1,14 +1,16 @@
-pub use crate::parse_expr::{IntFunc, BoolFunc};
+pub use crate::parse_expr::{
+    IntFunc, IntFuncType, BoolFunc, BoolFuncType, CustomState, NoCustom, CustomParser,
+};
 pub use crate::parse_expr::{BoolExpr as BoolExprTree, IntExpr as IntExprTree};
 
-use std::any::Any;
+
 use std::fmt;
 use std::ptr::null_mut;
 
 use bitflags::bitflags;
 
 use crate::game::Game;
-use crate::parse_expr;
+use crate::parse_expr::{self, DefaultParser};
 use crate::unit::{self, Unit};
 use crate::order;
 
@@ -25,15 +27,18 @@ impl fmt::Display for Error {
     }
 }
 
+pub type IntExpr = CustomIntExpr<NoCustom>;
+pub type BoolExpr = CustomBoolExpr<NoCustom>;
+
 #[derive(Debug, Eq, PartialEq, Hash)]
-pub struct IntExpr {
-    ty: parse_expr::IntExpr,
+pub struct CustomIntExpr<C: CustomState> {
+    ty: parse_expr::IntExpr<C>,
     required_context: RequiredContext,
 }
 
 #[derive(Debug, Eq, PartialEq, Hash)]
-pub struct BoolExpr {
-    ty: parse_expr::BoolExpr,
+pub struct CustomBoolExpr<C: CustomState> {
+    ty: parse_expr::BoolExpr<C>,
     required_context: RequiredContext,
 }
 
@@ -45,8 +50,9 @@ bitflags! {
 }
 
 pub trait CustomEval: Sized {
-    fn eval_int(&mut self, param: &Box<dyn Any>) -> i32;
-    fn eval_bool(&mut self, param: &Box<dyn Any>) -> bool;
+    type State: CustomState;
+    fn eval_int(&mut self, param: &<Self::State as CustomState>::IntExt) -> i32;
+    fn eval_bool(&mut self, param: &<Self::State as CustomState>::BoolExt) -> bool;
 }
 
 pub struct EvalCtx<E: CustomEval> {
@@ -57,17 +63,19 @@ pub struct EvalCtx<E: CustomEval> {
 
 struct DefaultEval;
 impl CustomEval for DefaultEval {
-    fn eval_int(&mut self, _: &Box<dyn Any>) -> i32 {
-        panic!("Custom eval term");
+    type State = NoCustom;
+
+    fn eval_int(&mut self, _: &parse_expr::Void) -> i32 {
+        0
     }
 
-    fn eval_bool(&mut self, _: &Box<dyn Any>) -> bool {
-        panic!("Custom eval term");
+    fn eval_bool(&mut self, _: &parse_expr::Void) -> bool {
+        false
     }
 }
 
 impl<E: CustomEval> EvalCtx<E> {
-    fn eval_int(&mut self, expr: &parse_expr::IntExpr) -> i32 {
+    fn eval_int(&mut self, expr: &parse_expr::IntExpr<E::State>) -> i32 {
         use crate::parse_expr::IntExpr::*;
         use crate::parse_expr::IntFuncType::*;
         match expr {
@@ -87,7 +95,7 @@ impl<E: CustomEval> EvalCtx<E> {
                 }
             }
             Integer(i) => *i,
-            //Custom(x) => self.custom.eval_int(x),
+            Custom(x) => self.custom.eval_int(x),
             Func(x) => {
                 unsafe {
                     let unit = self.unit.unwrap_or(Unit::from_ptr(16 as *mut _).unwrap());
@@ -155,7 +163,7 @@ impl<E: CustomEval> EvalCtx<E> {
         }
     }
 
-    fn eval_bool(&mut self, expr: &parse_expr::BoolExpr) -> bool {
+    fn eval_bool(&mut self, expr: &parse_expr::BoolExpr<E::State>) -> bool {
         use crate::parse_expr::BoolExpr::*;
         use crate::parse_expr::BoolFuncType::*;
         match expr {
@@ -168,7 +176,7 @@ impl<E: CustomEval> EvalCtx<E> {
             EqualInt(x) => self.eval_int(&x.0) == self.eval_int(&x.1),
             EqualBool(x) => self.eval_bool(&x.0) == self.eval_bool(&x.1),
             Not(x) => !self.eval_bool(&x),
-            //Custom(x) => self.custom.eval_bool(&x),
+            Custom(x) => self.custom.eval_bool(&x),
             Func(x) => {
                 unsafe {
                     let unit = self.unit.unwrap_or(Unit::from_ptr(16 as *mut _).unwrap());
@@ -207,7 +215,7 @@ impl<E: CustomEval> EvalCtx<E> {
     }
 }
 
-fn format_err(e: &parse_expr::Error<'_>, _input: &[u8]) -> Error {
+fn format_err<C: CustomState>(e: &parse_expr::Error<'_, C>, _input: &[u8]) -> Error {
     let msg = match e {
         parse_expr::Error::Msg(pos, msg) => {
             format!("Starting from {}\n{}", String::from_utf8_lossy(pos), msg)
@@ -237,21 +245,7 @@ impl IntExpr {
 
     /// Parses expression and returns what's left from input.
     pub fn parse_part(bytes: &[u8]) -> Result<(IntExpr, &[u8]), Error> {
-        IntExpr::parse_part_custom(bytes)
-    }
-
-    pub fn parse_part_custom(bytes: &[u8]) -> Result<(IntExpr, &[u8]), Error> {
-        let parser = crate::parse_expr::Parserr::new();
-        parser.int_expr(bytes)
-            .map_err(|e| format_err(&e, bytes))
-            .map(|(result, rest)| (IntExpr {
-                required_context: int_expr_required_context(&result),
-                ty: result,
-            }, rest))
-    }
-
-    pub fn inner(&self) -> &IntExprTree {
-        &self.ty
+        IntExpr::parse_part_custom(bytes, &mut DefaultParser)
     }
 
     pub fn eval_with_unit(&self, unit: Unit, game: Game) -> i32 {
@@ -261,6 +255,25 @@ impl IntExpr {
             custom: DefaultEval,
         };
         ctx.eval_int(&self.ty)
+    }
+}
+
+impl<C: CustomState> CustomIntExpr<C> {
+    pub fn parse_part_custom<'a, P: CustomParser<State = C>>(
+        bytes: &'a [u8],
+        custom: &mut P,
+    ) -> Result<(CustomIntExpr<C>, &'a [u8]), Error> {
+        let mut parser = crate::parse_expr::Parser::new(custom);
+        parser.int_expr(bytes)
+            .map_err(|e| format_err(&e, bytes))
+            .map(|(result, rest)| (CustomIntExpr {
+                required_context: int_expr_required_context(&result),
+                ty: result,
+            }, rest))
+    }
+
+    pub fn inner(&self) -> &IntExprTree<C> {
+        &self.ty
     }
 }
 
@@ -280,21 +293,7 @@ impl BoolExpr {
 
     /// Parses expression and returns what's left from input.
     pub fn parse_part(bytes: &[u8]) -> Result<(BoolExpr, &[u8]), Error> {
-        BoolExpr::parse_part_custom(bytes)
-    }
-
-    pub fn parse_part_custom(bytes: &[u8]) -> Result<(BoolExpr, &[u8]), Error> {
-        let parser = crate::parse_expr::Parserr::new();
-        parser.bool_expr(bytes)
-            .map_err(|e| format_err(&e, bytes))
-            .map(|(result, rest)| (BoolExpr {
-                required_context: bool_expr_required_context(&result),
-                ty: result,
-            }, rest))
-    }
-
-    pub fn inner(&self) -> &BoolExprTree {
-        &self.ty
+        BoolExpr::parse_part_custom(bytes, &mut DefaultParser)
     }
 
     pub fn eval_with_unit(&self, unit: Unit, game: Game) -> bool {
@@ -307,7 +306,26 @@ impl BoolExpr {
     }
 }
 
-fn bool_expr_required_context(expr: &parse_expr::BoolExpr) -> RequiredContext {
+impl<C: CustomState> CustomBoolExpr<C> {
+    pub fn parse_part_custom<'a, P: CustomParser<State = C>>(
+        bytes: &'a [u8],
+        custom: &mut P,
+    ) -> Result<(CustomBoolExpr<C>, &'a [u8]), Error> {
+        let mut parser = crate::parse_expr::Parser::new(custom);
+        parser.bool_expr(bytes)
+            .map_err(|e| format_err(&e, bytes))
+            .map(|(result, rest)| (CustomBoolExpr {
+                required_context: bool_expr_required_context(&result),
+                ty: result,
+            }, rest))
+    }
+
+    pub fn inner(&self) -> &BoolExprTree<C> {
+        &self.ty
+    }
+}
+
+fn bool_expr_required_context<C: CustomState>(expr: &parse_expr::BoolExpr<C>) -> RequiredContext {
     use crate::parse_expr::BoolExpr::*;
     use crate::parse_expr::BoolFuncType::*;
     match expr {
@@ -325,11 +343,11 @@ fn bool_expr_required_context(expr: &parse_expr::BoolExpr) -> RequiredContext {
                 Disabled | Completed | SelfCloaked | ArbiterCloaked | Cloaked |
                 UnderDweb | Hallucination => RequiredContext::UNIT,
         },
-        //Custom(_) => RequiredContext::empty(),
+        Custom(_) => RequiredContext::empty(),
     }
 }
 
-fn int_expr_required_context(expr: &parse_expr::IntExpr) -> RequiredContext {
+fn int_expr_required_context<C: CustomState>(expr: &parse_expr::IntExpr<C>) -> RequiredContext {
     use crate::parse_expr::IntExpr::*;
     use crate::parse_expr::IntFuncType::*;
     match expr {
@@ -357,6 +375,6 @@ fn int_expr_required_context(expr: &parse_expr::IntExpr) -> RequiredContext {
                     RequiredContext::GAME
             }
         },
-        //Custom(_) => RequiredContext::empty(),
+        Custom(_) => RequiredContext::empty(),
     }
 }

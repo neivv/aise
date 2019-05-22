@@ -2,23 +2,58 @@ use lazy_static::lazy_static;
 use fxhash::FxHashMap;
 
 #[derive(Debug)]
-pub enum Error<'a> {
+pub enum Error<'a, C: CustomState> {
     Msg(&'a [u8], &'static str),
     Eof,
-    NotBoolean(IntExpr),
-    NotInteger(BoolExpr),
+    NotBoolean(IntExpr<C>),
+    NotInteger(BoolExpr<C>),
+}
+
+pub trait CustomState {
+    type IntExt: std::fmt::Debug + Eq + PartialEq + std::hash::Hash;
+    type BoolExt: std::fmt::Debug + Eq + PartialEq + std::hash::Hash;
 }
 
 #[derive(Debug, Eq, PartialEq, Hash)]
-pub enum IntExpr {
-    Add(Box<(IntExpr, IntExpr)>),
-    Sub(Box<(IntExpr, IntExpr)>),
-    Mul(Box<(IntExpr, IntExpr)>),
-    Div(Box<(IntExpr, IntExpr)>),
-    Modulo(Box<(IntExpr, IntExpr)>),
+pub struct NoCustom;
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub enum Void {
+}
+
+impl CustomState for NoCustom {
+    type IntExt = Void;
+    type BoolExt = Void;
+}
+
+pub trait CustomParser {
+    type State: CustomState;
+    fn parse_int<'a>(&mut self, input: &'a [u8]) ->
+        Option<(<Self::State as CustomState>::IntExt, &'a [u8])>;
+    fn parse_bool<'a>(&mut self, input: &'a [u8]) ->
+        Option<(<Self::State as CustomState>::BoolExt, &'a [u8])>;
+}
+
+pub struct DefaultParser;
+
+impl CustomParser for DefaultParser {
+    type State = NoCustom;
+    fn parse_int<'a>(&mut self, _: &'a [u8]) ->
+        Option<(<Self::State as CustomState>::IntExt, &'a [u8])> { None }
+
+    fn parse_bool<'a>(&mut self, _: &'a [u8]) ->
+        Option<(<Self::State as CustomState>::BoolExt, &'a [u8])> { None }
+}
+
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub enum IntExpr<C: CustomState> {
+    Add(Box<(IntExpr<C>, IntExpr<C>)>),
+    Sub(Box<(IntExpr<C>, IntExpr<C>)>),
+    Mul(Box<(IntExpr<C>, IntExpr<C>)>),
+    Div(Box<(IntExpr<C>, IntExpr<C>)>),
+    Modulo(Box<(IntExpr<C>, IntExpr<C>)>),
     Integer(i32),
-    Func(IntFunc),
-    //Custom(Box<dyn CustomExpr>),
+    Func(IntFunc<C>),
+    Custom(C::IntExt),
 }
 
 macro_rules! decl_funcc {
@@ -106,15 +141,15 @@ decl_funcc!(
 );
 
 #[derive(Debug, Eq, PartialEq, Hash)]
-pub struct BoolFunc {
+pub struct BoolFunc<C: CustomState> {
     pub ty: BoolFuncType,
-    pub args: Box<[IntExpr]>,
+    pub args: Box<[IntExpr<C>]>,
 }
 
 #[derive(Debug, Eq, PartialEq, Hash)]
-pub struct IntFunc {
+pub struct IntFunc<C: CustomState> {
     pub ty: IntFuncType,
-    pub args: Box<[IntExpr]>,
+    pub args: Box<[IntExpr<C>]>,
 }
 
 lazy_static! {
@@ -131,19 +166,21 @@ struct ParserMaps {
     bool_funcs: FxHashMap<&'static [u8], (BoolFuncType, u8)>,
 }
 
-pub struct Parserr {
+pub struct Parser<'a, P: CustomParser> {
     maps: &'static ParserMaps,
+    custom_state: &'a mut P,
 }
 
-impl Parserr {
+impl<'b, C: CustomState, P: CustomParser<State = C>> Parser<'b, P> {
     #[inline(never)]
-    pub fn new() -> Parserr {
-        Parserr {
+    pub fn new(custom_state: &mut P) -> Parser<P> {
+        Parser {
             maps: &PARSER_MAPS,
+            custom_state,
         }
     }
 
-    fn int_func<'a>(&self, input: &'a [u8]) -> Result<(IntFunc, &'a [u8]), Error<'a>> {
+    fn int_func<'a>(&mut self, input: &'a [u8]) -> Result<(IntFunc<C>, &'a [u8]), Error<'a, C>> {
         let next_nonalpha = input.iter().position(|&x| {
             !x.is_ascii_alphanumeric() && x != b'_'
         }).unwrap_or(input.len());
@@ -161,7 +198,7 @@ impl Parserr {
         Ok((func, rest))
     }
 
-    fn bool_func<'a>(&self, input: &'a [u8]) -> Result<(BoolFunc, &'a [u8]), Error<'a>> {
+    fn bool_func<'a>(&mut self, input: &'a [u8]) -> Result<(BoolFunc<C>, &'a [u8]), Error<'a, C>> {
         let next_nonalpha = input.iter().position(|&x| {
             !x.is_ascii_alphanumeric() && x != b'_'
         }).unwrap_or(input.len());
@@ -180,10 +217,10 @@ impl Parserr {
     }
 
     fn parse_args<'a>(
-        &self,
+        &mut self,
         argc: u8,
         input: &'a [u8],
-    ) -> Result<(Vec<IntExpr>, &'a [u8]), Error<'a>> {
+    ) -> Result<(Vec<IntExpr<C>>, &'a [u8]), Error<'a, C>> {
         let mut rest = input;
         let mut args = Vec::with_capacity(argc as usize);
         if rest.get(0).cloned() == Some(b'(') {
@@ -216,7 +253,10 @@ impl Parserr {
         Ok((args, rest))
     }
 
-    pub fn int_expr<'a>(&self, input: &'a [u8]) -> Result<(IntExpr, &'a [u8]), Error<'a>> {
+    pub fn int_expr<'a>(
+        &mut self,
+        input: &'a [u8],
+    ) -> Result<(IntExpr<C>, &'a [u8]), Error<'a, C>> {
         #[derive(Copy, Clone)]
         enum Operator {
             Add,
@@ -228,7 +268,10 @@ impl Parserr {
         }
 
         #[inline(always)]
-        fn apply_op(op: Operator, val: Box<(IntExpr, IntExpr)>) -> IntExpr {
+        fn apply_op<C: CustomState>(
+            op: Operator,
+            val: Box<(IntExpr<C>, IntExpr<C>)>,
+        ) -> IntExpr<C> {
             match op {
                 Operator::Add => IntExpr::Add(val),
                 Operator::Sub => IntExpr::Sub(val),
@@ -259,16 +302,20 @@ impl Parserr {
                     rest
                 }
                 _ => {
-                    // CUSTOM PARSE HERE
-                    let (func, rest) = match self.int_func(input) {
-                        Ok(o) => o,
-                        Err(e) => {
-                            error = e;
-                            break;
-                        }
-                    };
-                    out_stack.push(IntExpr::Func(func));
-                    rest
+                    if let Some((result, rest)) = self.custom_state.parse_int(input) {
+                        out_stack.push(IntExpr::Custom(result));
+                        rest
+                    } else {
+                        let (func, rest) = match self.int_func(input) {
+                            Ok(o) => o,
+                            Err(e) => {
+                                error = e;
+                                break;
+                            }
+                        };
+                        out_stack.push(IntExpr::Func(func));
+                        rest
+                    }
                 }
             };
             input = rest;
@@ -344,7 +391,10 @@ impl Parserr {
         }
     }
 
-    pub fn bool_expr<'a>(&self, input: &'a [u8]) -> Result<(BoolExpr, &'a [u8]), Error<'a>> {
+    pub fn bool_expr<'a>(
+        &mut self,
+        input: &'a [u8],
+    ) -> Result<(BoolExpr<C>, &'a [u8]), Error<'a, C>> {
         #[derive(Copy, Clone, Eq, PartialEq)]
         enum Operator {
             And,
@@ -359,12 +409,15 @@ impl Parserr {
             OpenBrace,
         }
 
-        enum Expr {
-            Bool(BoolExpr),
-            Int(IntExpr),
+        enum Expr<C: CustomState> {
+            Bool(BoolExpr<C>),
+            Int(IntExpr<C>),
         }
 
-        fn apply_op(stack: &mut Vec<Expr>, op: Operator) -> Result<BoolExpr, Error<'static>> {
+        fn apply_op<C: CustomState>(
+            stack: &mut Vec<Expr<C>>,
+            op: Operator,
+        ) -> Result<BoolExpr<C>, Error<'static, C>> {
             let right = match stack.pop() {
                 Some(s) => s,
                 None => return Err(Error::Eof),
@@ -473,19 +526,23 @@ impl Parserr {
                     continue;
                 }
                 _ => {
-                    // CUSTOM PARSE HERE
-                    let (func, rest) = match self.bool_func(input) {
-                        Ok(o) => (Expr::Bool(BoolExpr::Func(o.0)), o.1),
-                        Err(_) => match self.int_expr(input) {
-                            Ok(o) => (Expr::Int(o.0), o.1),
-                            Err(e) => {
-                                error = e;
-                                break;
-                            }
-                        },
-                    };
-                    out_stack.push(func);
-                    rest
+                    if let Some((result, rest)) = self.custom_state.parse_bool(input) {
+                        out_stack.push(Expr::Bool(BoolExpr::Custom(result)));
+                        rest
+                    } else {
+                        let (func, rest) = match self.bool_func(input) {
+                            Ok(o) => (Expr::Bool(BoolExpr::Func(o.0)), o.1),
+                            Err(_) => match self.int_expr(input) {
+                                Ok(o) => (Expr::Int(o.0), o.1),
+                                Err(e) => {
+                                    error = e;
+                                    break;
+                                }
+                            },
+                        };
+                        out_stack.push(func);
+                        rest
+                    }
                 }
             };
             input = rest;
@@ -612,7 +669,7 @@ impl Parserr {
     }
 }
 
-fn parse_i32(input: &[u8]) -> Result<(i32, &[u8]), Error> {
+fn parse_i32<C: CustomState>(input: &[u8]) -> Result<(i32, &[u8]), Error<C>> {
     let (input, neg) = match input.get(0) {
         Some(b'-') => (&input[1..], true),
         Some(_) => (input, false),
@@ -642,18 +699,18 @@ fn skip_spaces(input: &[u8]) -> &[u8] {
 }
 
 #[derive(Debug, Eq, PartialEq, Hash)]
-pub enum BoolExpr {
-    And(Box<(BoolExpr, BoolExpr)>),
-    Or(Box<(BoolExpr, BoolExpr)>),
-    LessThan(Box<(IntExpr, IntExpr)>),
-    LessOrEqual(Box<(IntExpr, IntExpr)>),
-    GreaterThan(Box<(IntExpr, IntExpr)>),
-    GreaterOrEqual(Box<(IntExpr, IntExpr)>),
-    EqualInt(Box<(IntExpr, IntExpr)>),
-    EqualBool(Box<(BoolExpr, BoolExpr)>),
-    Not(Box<BoolExpr>),
-    Func(BoolFunc),
-    //Custom(Box<dyn CustomExpr>),
+pub enum BoolExpr<C: CustomState> {
+    And(Box<(BoolExpr<C>, BoolExpr<C>)>),
+    Or(Box<(BoolExpr<C>, BoolExpr<C>)>),
+    LessThan(Box<(IntExpr<C>, IntExpr<C>)>),
+    LessOrEqual(Box<(IntExpr<C>, IntExpr<C>)>),
+    GreaterThan(Box<(IntExpr<C>, IntExpr<C>)>),
+    GreaterOrEqual(Box<(IntExpr<C>, IntExpr<C>)>),
+    EqualInt(Box<(IntExpr<C>, IntExpr<C>)>),
+    EqualBool(Box<(BoolExpr<C>, BoolExpr<C>)>),
+    Not(Box<BoolExpr<C>>),
+    Func(BoolFunc<C>),
+    Custom(C::BoolExt),
 }
 
 #[cfg(test)]
@@ -661,9 +718,11 @@ mod test {
     use super::*;
     use std::fmt::Debug;
 
+    type Error<'a> = super::Error<'a, NoCustom>;
+
     fn assert_error_contains<T: Debug>(result: Result<T, Error<'_>>, expected: &str) {
         match result.unwrap_err() {
-            Error::Msg(ctx, msg) => {
+            super::Error::Msg(ctx, msg) => {
                 if !msg.contains(expected) {
                     panic!(
                         "Expected '{}' in '{}' (Ctx \"{}\")",
@@ -679,7 +738,7 @@ mod test {
         let result = match result {
             Ok(o) => o,
             Err(e) => match e {
-                Error::Msg(ctx, msg) => {
+                super::Error::Msg(ctx, msg) => {
                     panic!("Unwrap fail: {}, context \"{}\"", msg, String::from_utf8_lossy(ctx));
                 }
                 e => panic!("Unwrap fail: {:?}", e),
@@ -691,14 +750,14 @@ mod test {
         result.0
     }
 
-    fn noarg(ty: IntFuncType) -> IntFunc {
+    fn noarg(ty: IntFuncType) -> IntFunc<NoCustom> {
         IntFunc {
             ty,
             args: Box::new([]),
         }
     }
 
-    fn noargb(ty: BoolFuncType) -> BoolFunc {
+    fn noargb(ty: BoolFuncType) -> BoolFunc<NoCustom> {
         BoolFunc {
             ty,
             args: Box::new([]),
@@ -707,8 +766,9 @@ mod test {
 
     #[test]
     fn test_int_func() {
-        let parser = Parserr::new();
-        let parse = |text| {
+        let default = &mut DefaultParser;
+        let mut parser = Parser::new(default);
+        let mut parse = |text| {
             parser.int_func(text)
         };
         assert_eq!(empty_unwrap(parse(b"hitpoints")), noarg(IntFuncType::Hitpoints));
@@ -723,8 +783,9 @@ mod test {
 
     #[test]
     fn test_int_expr() {
-        let parser = Parserr::new();
-        let parse = |text| {
+        let default = &mut DefaultParser;
+        let mut parser = Parser::new(default);
+        let mut parse = |text| {
             parser.int_expr(text)
         };
         assert_eq!(empty_unwrap(parse(b"20")), IntExpr::Integer(20));
@@ -780,8 +841,9 @@ mod test {
 
     #[test]
     fn test_bool_expr() {
-        let parser = Parserr::new();
-        let parse = |text| {
+        let default = &mut DefaultParser;
+        let mut parser = Parser::new(default);
+        let mut parse = |text| {
             parser.bool_expr(text)
         };
         let fun_true = || BoolExpr::Func(noargb(BoolFuncType::True));
@@ -861,8 +923,9 @@ mod test {
 
     #[test]
     fn test_trig() {
-        let parser = Parserr::new();
-        let parse = |text| {
+        let default = &mut DefaultParser;
+        let mut parser = Parser::new(default);
+        let mut parse = |text| {
             parser.int_func(text)
         };
         assert_eq!(
@@ -886,8 +949,9 @@ mod test {
 
     #[test]
     fn test_complex_int_expr() {
-        let parser = Parserr::new();
-        let parse = |text| {
+        let default = &mut DefaultParser;
+        let mut parser = Parser::new(default);
+        let mut parse = |text| {
             parser.int_expr(text)
         };
         assert_eq!(
@@ -904,8 +968,9 @@ mod test {
 
     #[test]
     fn test_2arg_fn() {
-        let parser = Parserr::new();
-        let parse = |text| {
+        let default = &mut DefaultParser;
+        let mut parser = Parser::new(default);
+        let mut parse = |text| {
             parser.int_func(text)
         };
         assert_eq!(
