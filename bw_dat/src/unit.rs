@@ -21,7 +21,7 @@ impl std::ops::Deref for Unit {
 }
 
 impl Unit {
-    pub fn from_ptr(ptr: *mut bw::Unit) -> Option<Unit> {
+    pub unsafe fn from_ptr(ptr: *mut bw::Unit) -> Option<Unit> {
         NonNull::new(ptr).map(Unit)
     }
 
@@ -249,10 +249,11 @@ impl Unit {
 
     pub fn powerup(self) -> Option<Unit> {
         if self.id().is_worker() {
-            let powerup = unsafe {
-                (&(**self).unit_specific[..]).read_u32::<LE>().unwrap() as *mut bw::Unit
-            };
-            Unit::from_ptr(powerup)
+            unsafe {
+                let powerup =
+                    (&(**self).unit_specific[..]).read_u32::<LE>().unwrap() as *mut bw::Unit;
+                Unit::from_ptr(powerup)
+            }
         } else {
             None
         }

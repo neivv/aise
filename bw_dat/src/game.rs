@@ -23,7 +23,7 @@ pub enum Race {
 }
 
 impl Game {
-    pub fn from_ptr(game: *mut bw::Game) -> Game {
+    pub unsafe fn from_ptr(game: *mut bw::Game) -> Game {
         Game(NonNull::new(game).unwrap())
     }
 

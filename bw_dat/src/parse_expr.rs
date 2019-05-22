@@ -1,355 +1,49 @@
-use std::fmt::{self, Display, Debug};
-use std::cmp::PartialEq;
-
-use combine::{
-    Parser, Positioned, RangeStreamOnce,
-    attempt, look_ahead, not_followed_by, many, many1, optional, skip_many,
-};
-use combine::{ConsumedResult, ParseError, StreamOnce, RangeStream};
-use combine::byte::{alpha_num, byte, digit, hex_digit, letter, spaces};
-use combine::easy;
-use combine::error::{Consumed, Tracked, StreamError};
-use combine::parser::function;
-use combine::range::{range, recognize};
-use combine::stream::{Resetable, StreamErrorFor};
-use combine::stream::state::{IndexPositioner, State};
-use combine::choice;
-
-// bool_expr -> {
-//  p1_bool_expr || p1_bool_expr [|| ..]
-//  p1_bool_expr && p1_bool_expr [&& ..]
-//  p1_bool_expr
-// }
-// p1_bool_expr -> {
-//  int_expr < int_expr
-//  int_expr <= int_expr
-//  int_expr > int_expr
-//  int_expr >= int_expr
-//  p2_bool_expr == p2_bool_expr
-//  p2_bool_expr != p2_bool_expr
-//  int_expr == int_expr
-//  int_expr != int_expr
-//  p2_bool_expr
-// }
-// p2_bool_expr -> {
-//  true
-//  false
-//  !p2_bool_expr
-//  (bool_expr)
-//  bool_fun[(...)]
-// }
-// int_expr {
-//  p1_int_expr +- p1_int_expr [+- ..]
-//  p1_int_expr
-// }
-// p1_int_expr {
-//  p2_int_expr */% p2_int_expr [*/% ..]
-//  p2_int_expr
-// }
-// p2_int_expr {
-//  0xhex
-//  dec
-//  int_fun[(...)]
-//  (int_expr)
-// }
-// int_fun {
-//  stim_timer
-//  ensnare_timer
-//  maelstrom_timer
-//  death_timer
-//  lockdown_timer
-//  irradiate_timer
-//  stasis_timer
-//  plague_timer
-//  irradiate_timer
-//  matrix_timer
-//  matrix_hitpoints
-//  acid_spore_count
-//  fighters
-//  mines
-//  hitpoints
-//  hitpoints_percent
-//  shields
-//  shields_percent
-//  energy
-//  kills
-//  frame_count
-//  tileset
-//  minerals
-//  gas
-//  carried_resource_amount
-//  ground_cooldown
-//  air_cooldown
-//  spell_cooldown
-//  speed
-//  sigorder
-// }
-// bool_fun {
-//  parasited
-//  blind
-//  under_storm
-//  lifted_off
-//  building_unit
-//  in_transport
-//  in_bunker
-//  carrying_powerup
-//  carrying_minerals
-//  carrying_gas
-//  burrowed
-//  disabled
-//  completed
-//  self_cloaked
-//  arbiter_cloaked
-//  cloaked
-//  under_dweb
-//  hallucination
-// }
-
-type Bytes<'a> = SingleErrorStream<State<&'a [u8], IndexPositioner>>;
+use lazy_static::lazy_static;
+use fxhash::FxHashMap;
 
 #[derive(Debug)]
-pub struct SingleErrorStream<I: StreamOnce> {
-    pub inner: I,
+pub enum Error<'a> {
+    Msg(&'a [u8], &'static str),
+    Eof,
+    NotBoolean(IntExpr),
+    NotInteger(BoolExpr),
 }
 
-#[derive(PartialEq)]
-pub struct SingleError<I: PartialEq, R: PartialEq, P> {
-    pub error: Option<Box<easy::Error<I, R>>>,
-    pub pos: P,
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub enum IntExpr {
+    Add(Box<(IntExpr, IntExpr)>),
+    Sub(Box<(IntExpr, IntExpr)>),
+    Mul(Box<(IntExpr, IntExpr)>),
+    Div(Box<(IntExpr, IntExpr)>),
+    Modulo(Box<(IntExpr, IntExpr)>),
+    Integer(i32),
+    Func(IntFunc),
+    //Custom(Box<dyn CustomExpr>),
 }
 
-impl<Item, Range, Position> ParseError<Item, Range, Position> for
-    SingleError<Item, Range, Position>
-where Item: PartialEq,
-      Range: PartialEq,
-      Position: PartialEq,
-{
-    type StreamError = easy::Error<Item, Range>;
-    fn empty(position: Position) -> Self {
-        SingleError {
-            error: None,
-            pos: position,
-        }
-    }
-
-    fn from_error(position: Position, e: Self::StreamError) -> Self {
-        SingleError {
-            error: Some(Box::new(e)),
-            pos: position,
-        }
-    }
-
-    fn set_position(&mut self, position: Position) {
-        self.pos = position;
-    }
-
-    fn add(&mut self, e: Self::StreamError) {
-        self.error = Some(Box::new(e));
-    }
-
-    fn set_expected<F: FnOnce(&mut Tracked<Self>)>(
-        self_: &mut Tracked<Self>,
-        _info: Self::StreamError,
-        f: F,
-    ) {
-        // wtf
-        f(self_);
-    }
-
-    fn is_unexpected_end_of_input(&self) -> bool {
-        // I really don't know how I'd do this sensibly
-        false
-    }
-
-    fn into_other<T>(self) -> T
-    where T: ParseError<Item, Range, Position>,
-    {
-        match self.error {
-            Some(s) => T::from_error(self.pos, StreamError::into_other(*s)),
-            None => T::empty(self.pos),
-        }
-    }
-}
-
-impl<I, R, P> std::error::Error for SingleError<I, R, P>
-where I: PartialEq + Display + Debug,
-      R: PartialEq + Display + Debug,
-{
-}
-
-impl<I, R, P> Debug for SingleError<I, R, P>
-where I: PartialEq + Debug,
-      R: PartialEq + Debug,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.error {
-            Some(ref s) => write!(f, "{:?}", s),
-            None => write!(f, "(No error)"),
-        }
-    }
-}
-
-impl<I, R, P> Display for SingleError<I, R, P>
-where I: PartialEq + Display,
-      R: PartialEq + Display,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.error {
-            Some(ref s) => write!(f, "{}", s),
-            None => write!(f, "(No error)"),
-        }
-    }
-}
-
-impl<I: StreamOnce> SingleErrorStream<I> {
-    pub fn new(inner: I) -> SingleErrorStream<I> {
-        SingleErrorStream {
-            inner,
-        }
-    }
-}
-
-impl<I: StreamOnce + Positioned> Positioned for SingleErrorStream<I> {
-    fn position(&self) -> I::Position {
-        self.inner.position()
-    }
-}
-
-impl<I: Resetable + StreamOnce> Resetable for SingleErrorStream<I> {
-    type Checkpoint = I::Checkpoint;
-
-    fn checkpoint(&self) -> Self::Checkpoint {
-        self.inner.checkpoint()
-    }
-
-    fn reset(&mut self, checkpoint: Self::Checkpoint) {
-        self.inner.reset(checkpoint)
-    }
-}
-
-impl<I: RangeStream> RangeStreamOnce for SingleErrorStream<I> {
-    fn uncons_range(&mut self, size: usize) -> Result<Self::Range, StreamErrorFor<Self>> {
-        self.inner.uncons_range(size).map_err(StreamError::into_other)
-    }
-
-    fn uncons_while<F>(&mut self, f: F) -> Result<Self::Range, StreamErrorFor<Self>>
-    where F: FnMut(Self::Item) -> bool,
-    {
-        self.inner.uncons_while(f).map_err(StreamError::into_other)
-    }
-
-    fn distance(&self, end: &Self::Checkpoint) -> usize {
-        self.inner.distance(end)
-    }
-}
-
-impl<I: StreamOnce> StreamOnce for SingleErrorStream<I> {
-    type Item = I::Item;
-    type Range = I::Range;
-    type Position = I::Position;
-    type Error = SingleError<Self::Item, Self::Range, Self::Position>;
-
-    fn uncons(&mut self) -> Result<Self::Item, StreamErrorFor<Self>> {
-        self.inner.uncons().map_err(StreamError::into_other)
-    }
-}
-
-struct Stateless<P: Parser>(P);
-
-impl<P: Parser> Parser for Stateless<P> {
-    type Input = P::Input;
-    type Output = P::Output;
-    type PartialState = ();
-
-    fn parse_lazy(
-        &mut self,
-        input: &mut Self::Input,
-    ) -> ConsumedResult<Self::Output, Self::Input> {
-        self.0.parse_lazy(input)
-    }
-}
-
-/// Function arguments
-/// Given "a, b, c()) + 2", returns "a, b, c()" and ") + 2"
-fn func_arg_list<'a>() -> impl Parser<Input = Bytes<'a>, Output = &'a [u8]> {
-    Stateless(byte(b'(').with(function::parser(|input: &mut Bytes<'a>| {
-        let mut parens = 1;
-        let pos = input.position();
-        input.uncons_while(|byte| {
-            if byte == b'(' {
-                parens += 1;
-                true
-            } else if byte == b')' {
-                parens -= 1;
-                parens != 0
-            } else {
-                true
-            }
-        }).map(|x| {
-            (x, Consumed::Consumed(()))
-        }).map_err(|e| {
-            Consumed::Consumed(SingleError::from_error(pos, e).into())
-        })
-    })).skip(byte(b')')))
-}
-
-fn identifier<'a>() -> impl Parser<Input = Bytes<'a>, Output = &'a [u8]> {
-    Stateless(recognize(letter().or(byte(b'_')).with(skip_many(alpha_num().or(byte(b'_'))))))
-}
-
-fn func<'a>() -> impl Parser<Input = Bytes<'a>, Output = (&'a [u8], &'a [u8])> {
-    Stateless(identifier()
-        .and(optional(func_arg_list()))
-        .skip(spaces())
-        .map(|(x, y)| (x, y.unwrap_or(b""))))
-}
-
-macro_rules! decl_func {
-    (construct, [], $ename:ident::$variant_name:ident, $params:expr,) => {{
-        if $params != b"" {
-            let err: easy::Error<_, _>
-                = StreamError::unexpected_message("Can't have parameters");
-            Err(err)
-        } else {
-            Ok($ename::$variant_name)
-        }
-    }};
-    (construct, [$construct:expr], $ename:ident::$variant_name:ident, $params:expr,) => {{
-        $construct($params)
-    }};
-    ($name:ident, $ename:ident,
-        $(
-            $conf_name:expr,
-            $variant_name:ident $( ( $($variant_ty:ty),* ) )? $( -> $construct:expr )? ,
-        )*
+macro_rules! decl_funcc {
+    (argc, $argc:expr) => {
+        $argc
+    };
+    (argc,) => {
+        0
+    };
+    ($stname:ident, $ename:ident,
+        $($conf_name:expr, $variant_name:ident $( ( $argc:expr ) )?  ,)*
     ) => {
-        fn $name<'a>() -> impl Parser<Input = Bytes<'a>, Output = $ename> {
-            Stateless(func().and_then(|(name, params)| -> Result<_, easy::Error<_, _>> {
-                let result = match name {
-                    $($conf_name => decl_func!(
-                        construct,
-                        [$($construct)?],
-                        $ename::$variant_name,
-                        params,
-                    )?,)*
-                    other => {
-                        let message = format!("Invalid name {}", String::from_utf8_lossy(other));
-                        return Err(StreamError::unexpected_message(message));
-                    }
-                };
-                Ok(result)
-            }))
-        }
+        static $stname: &[(&[u8], ($ename, u8))] = &[
+            $( ($conf_name, ($ename::$variant_name, decl_funcc!(argc, $($argc)?) )), )*
+        ];
 
-        #[derive(Debug, Eq, PartialEq, Clone, Hash)]
+        #[derive(Debug, Eq, PartialEq, Copy, Clone, Hash)]
         pub enum $ename {
-            $($variant_name $( ($($variant_ty),*) )? ,)*
+            $($variant_name,)*
         }
     };
 }
 
-decl_func!(
-    int_func, IntFunc,
+decl_funcc!(
+    INT_FUNCS, IntFuncType,
     b"stim_timer", StimTimer,
     b"ensnare_timer", EnsnareTimer,
     b"maelstrom_timer", MaelstromTimer,
@@ -381,54 +75,13 @@ decl_func!(
     b"player", Player,
     b"unit_id", UnitId,
     b"order", Order,
-    b"sin", Sin(Box<IntExpr>) -> |x| -> Result<IntFunc, easy::Error<_, _>> {
-        parse_single_expr(x).map(|x| IntFunc::Sin(Box::new(x)))
-    },
-    b"cos", Cos(Box<IntExpr>) -> |x| -> Result<IntFunc, easy::Error<_, _>> {
-        parse_single_expr(x).map(|x| IntFunc::Cos(Box::new(x)))
-    },
-    b"deaths", Deaths(Box<(IntExpr, IntExpr)>) -> |x| -> Result<IntFunc, easy::Error<_, _>> {
-        let args = parse_many_args(x)
-            .and_then(|x| match x.len() {
-                2 => Ok((x[0], x[1])),
-                _ => Err(()),
-            });
-        let args = match args {
-            Ok(o) => o,
-            Err(()) => return Err(StreamError::message_static_message("Invalid argument list")),
-        };
-        let player = parse_single_expr(&args.0)?;
-        let unit_id = parse_single_expr(&args.1)?;
-        Ok(IntFunc::Deaths(Box::new((player, unit_id))))
-    },
+    b"sin", Sin(1),
+    b"cos", Cos(1),
+    b"deaths", Deaths(2),
 );
 
-fn parse_many_args<'a>(x: &'a [u8]) -> Result<Vec<&'a [u8]>, ()> {
-    x.split(|&x| x == b',')
-        .map(|x| {
-            let start = x.iter().position(|&x| x != b' ').ok_or(())?;
-            let end = x.len() - x.iter().rev().position(|&x| x != b' ').ok_or(())?;
-            Ok(&x[start..end])
-        })
-        .collect::<Result<Vec<_>, ()>>()
-}
-
-fn parse_single_expr<'a>(x: &'a [u8]) -> Result<IntExpr, easy::Error<u8, &'a [u8]>> {
-    let mut parser = int_expr();
-    let (result, rest) = parser.parse(SingleErrorStream::new(State::new(x)))
-        .map_err(|e| match e.error {
-            Some(s) => *s,
-            None => unreachable!(),
-        })?;
-    if !rest.inner.input.is_empty() {
-        let msg = "Extra characters in arguments";
-        return Err(StreamError::message_static_message(msg));
-    }
-    Ok(result)
-}
-
-decl_func!(
-    bool_func, BoolFunc,
+decl_funcc!(
+    BOOL_FUNCS, BoolFuncType,
     // Shrug, true/false work this way
     b"true", True,
     b"false", False,
@@ -452,106 +105,543 @@ decl_func!(
     b"hallucination", Hallucination,
 );
 
-#[derive(Debug, Eq, PartialEq, Clone, Hash)]
-pub enum IntExpr {
-    Add(Box<(IntExpr, IntExpr)>),
-    Sub(Box<(IntExpr, IntExpr)>),
-    Mul(Box<(IntExpr, IntExpr)>),
-    Div(Box<(IntExpr, IntExpr)>),
-    Modulo(Box<(IntExpr, IntExpr)>),
-    Integer(i32),
-    Func(IntFunc),
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub struct BoolFunc {
+    pub ty: BoolFuncType,
+    pub args: Box<[IntExpr]>,
 }
 
-pub fn int_expr<'a>() -> impl Parser<Input = Bytes<'a>, Output = IntExpr> {
-    Stateless(Box::new(p1_int_expr().skip(spaces()).and(
-        many::<Vec<_>, _>(byte(b'+').or(byte(b'-')).skip(spaces()).and(p1_int_expr()))
-    ).map(|(mut left, rest)| {
-        for (op, right) in rest {
-            match op {
-                b'+' => left = IntExpr::Add(Box::new((left, right))),
-                b'-' | _  => left = IntExpr::Sub(Box::new((left, right))),
-            }
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub struct IntFunc {
+    pub ty: IntFuncType,
+    pub args: Box<[IntExpr]>,
+}
+
+lazy_static! {
+    static ref PARSER_MAPS: ParserMaps = {
+        ParserMaps {
+            int_funcs: INT_FUNCS.iter().cloned().collect(),
+            bool_funcs: BOOL_FUNCS.iter().cloned().collect(),
         }
-        left
-    })))
+    };
 }
 
-fn p1_int_expr<'a>() -> impl Parser<Input = Bytes<'a>, Output = IntExpr> {
-    Stateless(p2_int_expr().skip(spaces()).and(
-        many::<Vec<_>, _>(
-            choice!(
-                byte(b'*'),
-                byte(b'/'),
-                byte(b'%')
-            ).skip(spaces()).and(p2_int_expr())
-        )
-    ).and_then(|(mut left, rest)| -> Result<_, easy::Error<_, _>> {
-        for (op, right) in rest {
-            match op {
-                b'*' => left = IntExpr::Mul(Box::new((left, right))),
-                b'/' | b'%' | _ => {
-                    match right {
-                        IntExpr::Integer(0) => {
-                            let msg = "Cannot divide by zero";
-                            return Err(StreamError::message_static_message(msg));
+struct ParserMaps {
+    int_funcs: FxHashMap<&'static [u8], (IntFuncType, u8)>,
+    bool_funcs: FxHashMap<&'static [u8], (BoolFuncType, u8)>,
+}
+
+pub struct Parserr {
+    maps: &'static ParserMaps,
+}
+
+impl Parserr {
+    #[inline(never)]
+    pub fn new() -> Parserr {
+        Parserr {
+            maps: &PARSER_MAPS,
+        }
+    }
+
+    fn int_func<'a>(&self, input: &'a [u8]) -> Result<(IntFunc, &'a [u8]), Error<'a>> {
+        let next_nonalpha = input.iter().position(|&x| {
+            !x.is_ascii_alphanumeric() && x != b'_'
+        }).unwrap_or(input.len());
+        let rest = skip_spaces(&input[next_nonalpha..]);
+        let (ty, argc) = if let Some(&s) = self.maps.int_funcs.get(&input[..next_nonalpha]) {
+            s
+        } else {
+            return Err(Error::Msg(input, "Invalid name"));
+        };
+        let (args, rest) = self.parse_args(argc, rest)?;
+        let func = IntFunc {
+            ty,
+            args: args.into_boxed_slice(),
+        };
+        Ok((func, rest))
+    }
+
+    fn bool_func<'a>(&self, input: &'a [u8]) -> Result<(BoolFunc, &'a [u8]), Error<'a>> {
+        let next_nonalpha = input.iter().position(|&x| {
+            !x.is_ascii_alphanumeric() && x != b'_'
+        }).unwrap_or(input.len());
+        let rest = skip_spaces(&input[next_nonalpha..]);
+        let (ty, argc) = if let Some(&s) = self.maps.bool_funcs.get(&input[..next_nonalpha]) {
+            s
+        } else {
+            return Err(Error::Msg(input, "Invalid name"));
+        };
+        let (args, rest) = self.parse_args(argc, rest)?;
+        let func = BoolFunc {
+            ty,
+            args: args.into_boxed_slice(),
+        };
+        Ok((func, rest))
+    }
+
+    fn parse_args<'a>(
+        &self,
+        argc: u8,
+        input: &'a [u8],
+    ) -> Result<(Vec<IntExpr>, &'a [u8]), Error<'a>> {
+        let mut rest = input;
+        let mut args = Vec::with_capacity(argc as usize);
+        if rest.get(0).cloned() == Some(b'(') {
+            rest = skip_spaces(&rest[1..]);
+            if rest.get(0).cloned() != Some(b')') {
+                loop {
+                    let (expr, new_rest) = self.int_expr(rest)?;
+                    args.push(expr);
+                    rest = skip_spaces(&new_rest);
+                    match rest.get(0).cloned() {
+                        Some(b')') => {
+                            rest = skip_spaces(&rest[1..]);
+                            break;
                         }
-                        IntExpr::Integer(_) => (),
+                        Some(b',') => {
+                            rest = skip_spaces(&rest[1..]);
+                        }
                         _ => {
-                            let msg = "Can only divide by a constant";
-                            return Err(StreamError::message_static_message(msg));
+                            return Err(Error::Msg(rest, "Invalid argument"));
                         }
                     }
-                    left = if op == b'/' {
-                        IntExpr::Div(Box::new((left, right)))
-                    } else {
-                        IntExpr::Modulo(Box::new((left, right)))
+                }
+            } else {
+                rest = skip_spaces(&rest[1..]);
+            }
+        }
+        if args.len() != argc as usize {
+            return Err(Error::Msg(rest, "Wrong amount of arguments"));
+        }
+        Ok((args, rest))
+    }
+
+    pub fn int_expr<'a>(&self, input: &'a [u8]) -> Result<(IntExpr, &'a [u8]), Error<'a>> {
+        #[derive(Copy, Clone)]
+        enum Operator {
+            Add,
+            Sub,
+            Mul,
+            Div,
+            Mod,
+            OpenBrace,
+        }
+
+        #[inline(always)]
+        fn apply_op(op: Operator, val: Box<(IntExpr, IntExpr)>) -> IntExpr {
+            match op {
+                Operator::Add => IntExpr::Add(val),
+                Operator::Sub => IntExpr::Sub(val),
+                Operator::Mul => IntExpr::Mul(val),
+                Operator::Div => IntExpr::Div(val),
+                Operator::Mod | _ => IntExpr::Modulo(val),
+            }
+        }
+
+        let mut out_stack = Vec::new();
+        let mut op_stack = Vec::new();
+        let mut input = input;
+        let mut error = Error::Eof;
+        'outer_loop: loop {
+            let &first_byte = match input.get(0) {
+                Some(s) => s,
+                None => break,
+            };
+            let rest = match first_byte {
+                b'(' => {
+                    op_stack.push(Operator::OpenBrace);
+                    input = skip_spaces(&input[1..]);
+                    continue;
+                }
+                b'0' ..= b'9' | b'-' => {
+                    let (int, rest) = parse_i32(input)?;
+                    out_stack.push(IntExpr::Integer(int));
+                    rest
+                }
+                _ => {
+                    // CUSTOM PARSE HERE
+                    let (func, rest) = match self.int_func(input) {
+                        Ok(o) => o,
+                        Err(e) => {
+                            error = e;
+                            break;
+                        }
                     };
+                    out_stack.push(IntExpr::Func(func));
+                    rest
+                }
+            };
+            input = rest;
+            'op_loop: loop {
+                let rest = skip_spaces(input);
+                let &operator = match rest.get(0) {
+                    Some(s) => s,
+                    None => {
+                        input = rest;
+                        break 'outer_loop;
+                    }
+                };
+                let op = match operator {
+                    b'+' => Operator::Add,
+                    b'-' => Operator::Sub,
+                    b'*' => Operator::Mul,
+                    b'/' => Operator::Div,
+                    b'%' => Operator::Mod,
+                    b')' => {
+                        while let Some(op) = op_stack.pop() {
+                            if let Operator::OpenBrace = op {
+                                input = &rest[1..];
+                                continue 'op_loop;
+                            }
+                            let right = out_stack.pop().unwrap();
+                            let left = out_stack.pop().unwrap();
+                            let val = Box::new((left, right));
+                            out_stack.push(apply_op(op, val));
+                        }
+                        input = rest;
+                        break 'outer_loop;
+                    }
+                    _ => {
+                        input = rest;
+                        break 'outer_loop;
+                    }
+                };
+                loop {
+                    match op_stack.last().cloned() {
+                        Some(Operator::OpenBrace) | None => break,
+                        Some(Operator::Add) | Some(Operator::Sub) => match op {
+                            Operator::Mul | Operator::Div | Operator::Mod => break,
+                            _ => (),
+                        },
+                        _ => (),
+                    }
+                    let right = out_stack.pop().unwrap();
+                    let left = out_stack.pop().unwrap();
+                    let val = Box::new((left, right));
+                    out_stack.push(apply_op(op_stack.pop().unwrap(), val));
+                }
+                op_stack.push(op);
+                input = skip_spaces(&rest[1..]);
+                break;
+            }
+        }
+        while let Some(op) = op_stack.pop() {
+            if let Operator::OpenBrace = op {
+                return Err(Error::Msg(input, "Unclosed '('"));
+            }
+            if out_stack.len() < 2 {
+                return Err(Error::Msg(input, "Missing right operand"));
+            }
+            let right = out_stack.pop().unwrap();
+            let left = out_stack.pop().unwrap();
+            let val = Box::new((left, right));
+            out_stack.push(apply_op(op, val));
+        }
+        if out_stack.is_empty() {
+            Err(error)
+        } else {
+            Ok((out_stack.remove(0), input))
+        }
+    }
+
+    pub fn bool_expr<'a>(&self, input: &'a [u8]) -> Result<(BoolExpr, &'a [u8]), Error<'a>> {
+        #[derive(Copy, Clone, Eq, PartialEq)]
+        enum Operator {
+            And,
+            Or,
+            Eq,
+            Neq,
+            LessThan,
+            LessOrEq,
+            GreaterThan,
+            GreaterOrEq,
+            Not,
+            OpenBrace,
+        }
+
+        enum Expr {
+            Bool(BoolExpr),
+            Int(IntExpr),
+        }
+
+        fn apply_op(stack: &mut Vec<Expr>, op: Operator) -> Result<BoolExpr, Error<'static>> {
+            let right = match stack.pop() {
+                Some(s) => s,
+                None => return Err(Error::Eof),
+            };
+            let left = stack.pop();
+            match op {
+                Operator::And | Operator::Or => {
+                    if left.is_none() {
+                        return Err(Error::Eof);
+                    }
+                    let (left, right) = match (left.unwrap(), right) {
+                        (Expr::Bool(l), Expr::Bool(r)) => (l, r),
+                        (Expr::Int(e), _) | (_, Expr::Int(e)) => {
+                            return Err(Error::NotBoolean(e));
+                        }
+                    };
+                    let val = Box::new((left, right));
+                    if let Operator::And = op {
+                        Ok(BoolExpr::And(val))
+                    } else {
+                        Ok(BoolExpr::Or(val))
+                    }
+                }
+                Operator::Eq => {
+                    if left.is_none() {
+                        return Err(Error::Eof);
+                    }
+                    match (left.unwrap(), right) {
+                        (Expr::Bool(l), Expr::Bool(r)) => {
+                            Ok(BoolExpr::EqualBool(Box::new((l, r))))
+                        }
+                        (Expr::Int(l), Expr::Int(r)) => {
+                            Ok(BoolExpr::EqualInt(Box::new((l, r))))
+                        }
+                        (Expr::Int(e), _) | (_, Expr::Int(e)) => {
+                            Err(Error::NotBoolean(e))
+                        }
+                    }
+                }
+                Operator::Neq => {
+                    if left.is_none() {
+                        return Err(Error::Eof);
+                    }
+                    match (left.unwrap(), right) {
+                        (Expr::Bool(l), Expr::Bool(r)) => {
+                            Ok(BoolExpr::Not(Box::new(BoolExpr::EqualBool(Box::new((l, r))))))
+                        }
+                        (Expr::Int(l), Expr::Int(r)) => {
+                            Ok(BoolExpr::Not(Box::new(BoolExpr::EqualInt(Box::new((l, r))))))
+                        }
+                        (Expr::Int(e), _) | (_, Expr::Int(e)) => {
+                            Err(Error::NotBoolean(e))
+                        }
+                    }
+                }
+                Operator::GreaterThan | Operator::GreaterOrEq | Operator::LessThan |
+                    Operator::LessOrEq =>
+                {
+                    if left.is_none() {
+                        return Err(Error::Eof);
+                    }
+                    let (left, right) = match (left.unwrap(), right) {
+                        (Expr::Int(l), Expr::Int(r)) => (l, r),
+                        (Expr::Bool(e), _) | (_, Expr::Bool(e)) => {
+                            return Err(Error::NotInteger(e));
+                        }
+                    };
+                    let val = Box::new((left, right));
+                    match op {
+                        Operator::GreaterThan => Ok(BoolExpr::GreaterThan(val)),
+                        Operator::GreaterOrEq => Ok(BoolExpr::GreaterOrEqual(val)),
+                        Operator::LessThan => Ok(BoolExpr::LessThan(val)),
+                        Operator::LessOrEq | _ => Ok(BoolExpr::LessOrEqual(val)),
+                    }
+                }
+                Operator::Not | _ => {
+                    if let Some(left) = left {
+                        stack.push(left);
+                    }
+                    match right {
+                        Expr::Bool(r) => Ok(BoolExpr::Not(Box::new(r))),
+                        Expr::Int(e) => Err(Error::NotBoolean(e)),
+                    }
                 }
             }
         }
-        Ok(left)
-    }))
-}
 
-fn p2_int_expr<'a>() -> impl Parser<Input = Bytes<'a>, Output = IntExpr> {
-    let lazy = function::parser(|input| int_expr().parse_stream(input));
-    Stateless(choice!(
-        Stateless(integer().map(|x| IntExpr::Integer(x))),
-        Stateless(int_func().map(|x| IntExpr::Func(x))),
-        Stateless(byte(b'(').skip(spaces()).with(lazy).skip(byte(b')')))
-    ))
-}
-
-fn integer<'a>() -> impl Parser<Input = Bytes<'a>, Output = i32> {
-    use std::str;
-    Stateless(optional(byte(b'-'))
-        .skip(look_ahead(digit()))
-        .and(
-            optional(range(&b"0x"[..])).and(
-                recognize(skip_many(hex_digit()))
-            )
-        )
-        .skip(not_followed_by(alpha_num()))
-        .skip(spaces())
-        .and_then(|(neg, (hex, int))| -> Result<_, easy::Error<_, _>> {
-            let base = match hex.is_some() {
-                true => 16,
-                false => 10,
+        let mut out_stack = Vec::new();
+        let mut op_stack = Vec::new();
+        let mut input = input;
+        let mut error = Error::Eof;
+        'outer_loop: loop {
+            let &first_byte = match input.get(0) {
+                Some(s) => s,
+                None => break,
             };
-            let int_parse_result = str::from_utf8(int).ok()
-                .and_then(|x| i32::from_str_radix(x, base).ok());
-            match int_parse_result {
-                Some(o) => Ok(match neg.is_some() {
-                    true => 0 - o,
-                    false => o,
-                }),
-                None => Err(StreamError::unexpected_message("Invalid integer literal")),
+            let rest = match first_byte {
+                b'(' => {
+                    op_stack.push(Operator::OpenBrace);
+                    input = skip_spaces(&input[1..]);
+                    continue;
+                }
+                b'!' => {
+                    op_stack.push(Operator::Not);
+                    input = &input[1..];
+                    continue;
+                }
+                _ => {
+                    // CUSTOM PARSE HERE
+                    let (func, rest) = match self.bool_func(input) {
+                        Ok(o) => (Expr::Bool(BoolExpr::Func(o.0)), o.1),
+                        Err(_) => match self.int_expr(input) {
+                            Ok(o) => (Expr::Int(o.0), o.1),
+                            Err(e) => {
+                                error = e;
+                                break;
+                            }
+                        },
+                    };
+                    out_stack.push(func);
+                    rest
+                }
+            };
+            input = rest;
+            'op_loop: loop {
+                input = skip_spaces(input);
+                let &operator = match input.get(0) {
+                    Some(s) => s,
+                    None => break,
+                };
+                let rest = &input[1..];
+                let op = match operator {
+                    b'|' => if rest.get(0).cloned() == Some(b'|') {
+                        input = &rest[1..];
+                        Operator::Or
+                    } else {
+                        break 'outer_loop;
+                    },
+                    b'&' => if rest.get(0).cloned() == Some(b'&') {
+                        input = &rest[1..];
+                        Operator::And
+                    } else {
+                        break 'outer_loop;
+                    },
+                    b'<' => if rest.get(0).cloned() == Some(b'=') {
+                        input = &rest[1..];
+                        Operator::LessOrEq
+                    } else {
+                        input = rest;
+                        Operator::LessThan
+                    },
+                    b'>' => if rest.get(0).cloned() == Some(b'=') {
+                        input = &rest[1..];
+                        Operator::GreaterOrEq
+                    } else {
+                        input = rest;
+                        Operator::GreaterThan
+                    },
+                    b'=' => if rest.get(0).cloned() == Some(b'=') {
+                        input = &rest[1..];
+                        Operator::Eq
+                    } else {
+                        break 'outer_loop;
+                    },
+                    b'!' => if rest.get(0).cloned() == Some(b'=') {
+                        input = &rest[1..];
+                        Operator::Neq
+                    } else {
+                        break 'outer_loop;
+                    },
+                    b')' => {
+                        while let Some(op) = op_stack.pop() {
+                            if let Operator::OpenBrace = op {
+                                input = rest;
+                                continue 'op_loop;
+                            }
+                            let val = apply_op(&mut out_stack, op)?;
+                            out_stack.push(Expr::Bool(val));
+                        }
+                        break 'outer_loop;
+                    }
+                    _ => {
+                        break 'outer_loop;
+                    }
+                };
+                loop {
+                    let last = match op_stack.last() {
+                        Some(&s) => s,
+                        None => break,
+                    };
+                    match last {
+                        Operator::OpenBrace => break,
+                        Operator::Or | Operator::And => match op {
+                            Operator::Eq | Operator::Neq | Operator::LessThan | Operator::LessOrEq |
+                                Operator::GreaterThan | Operator::GreaterOrEq => break,
+                            _ => (),
+                        }
+                        _ => (),
+                    };
+                    if last != op {
+                        let conflict = match last {
+                            Operator::Not => false,
+                            Operator::Eq | Operator::Neq | Operator::LessThan | Operator::LessOrEq |
+                                Operator::GreaterThan | Operator::GreaterOrEq =>
+                            {
+                                match op {
+                                    Operator::Or | Operator::And => false,
+                                    _ => true,
+                                }
+                            }
+                            _ => true,
+                        };
+                        if conflict {
+                            return Err(Error::Msg(rest, "Conflicting operators"));
+                        }
+                    }
+                    op_stack.pop();
+                    let val = apply_op(&mut out_stack, last)?;
+                    out_stack.push(Expr::Bool(val));
+                }
+                op_stack.push(op);
+                break;
             }
-        }))
+            input = skip_spaces(input);
+        }
+        while let Some(op) = op_stack.pop() {
+            if let Operator::OpenBrace = op {
+                return Err(Error::Msg(input, "Unclosed '('"));
+            }
+            let val = apply_op(&mut out_stack, op)
+                .map_err(|e| match e {
+                    Error::Eof => Error::Msg(input, "Missing right operand"),
+                    x => x,
+                })?;
+            out_stack.push(Expr::Bool(val));
+        }
+        if out_stack.is_empty() {
+            Err(error)
+        } else {
+            match out_stack.remove(0) {
+                Expr::Bool(x) => Ok((x, input)),
+                Expr::Int(x) => Err(Error::NotBoolean(x)),
+            }
+        }
+    }
 }
 
-#[derive(Debug, Eq, PartialEq, Clone, Hash)]
+fn parse_i32(input: &[u8]) -> Result<(i32, &[u8]), Error> {
+    let (input, neg) = match input.get(0) {
+        Some(b'-') => (&input[1..], true),
+        Some(_) => (input, false),
+        None => return Err(Error::Eof),
+    };
+    let (input, base) = match input.get(..2) {
+        Some(b"0x") => (&input[2..], 16),
+        Some(_) => (input, 10),
+        None => (input, 10),
+    };
+    let end = input.iter().position(|&x| !x.is_ascii_alphanumeric()).unwrap_or(input.len());
+    let text = unsafe { std::str::from_utf8_unchecked(&input[..end]) };
+    let val = i32::from_str_radix(text, base)
+        .map_err(|_| Error::Msg(input, "Invalid integer literal"))?;
+    if neg {
+        Ok((0 - val, &input[end..]))
+    } else {
+        Ok((val, &input[end..]))
+    }
+}
+
+fn skip_spaces(input: &[u8]) -> &[u8] {
+    match input.iter().position(|&x| x != b' ' && x != b'\t') {
+        Some(s) => &input[s..],
+        None => &[],
+    }
+}
+
+#[derive(Debug, Eq, PartialEq, Hash)]
 pub enum BoolExpr {
     And(Box<(BoolExpr, BoolExpr)>),
     Or(Box<(BoolExpr, BoolExpr)>),
@@ -563,68 +653,7 @@ pub enum BoolExpr {
     EqualBool(Box<(BoolExpr, BoolExpr)>),
     Not(Box<BoolExpr>),
     Func(BoolFunc),
-}
-
-pub fn bool_expr<'a>() -> impl Parser<Input = Bytes<'a>, Output = BoolExpr> {
-    Stateless(p1_bool_expr().skip(spaces()).and(
-        many1::<Vec<_>, _>(range(&b"||"[..]).skip(spaces()).and(p1_bool_expr()))
-            .or(many::<Vec<_>, _>(range(&b"&&"[..]).skip(spaces()).and(p1_bool_expr())))
-    ).map(|(mut left, rest)| {
-        for (op, right) in rest {
-            match op {
-                b"||" => left = BoolExpr::Or(Box::new((left, right))),
-                b"&&" | _  => left = BoolExpr::And(Box::new((left, right))),
-            }
-        }
-        left
-    }))
-}
-
-fn p1_bool_expr<'a>() -> impl Parser<Input = Bytes<'a>, Output = BoolExpr> {
-    Stateless(attempt(int_expr()).and(
-        choice!(
-            range(&b"<="[..]),
-            range(&b"<"[..]),
-            range(&b">="[..]),
-            range(&b">"[..]),
-            range(&b"=="[..]),
-            range(&b"!="[..])
-        ).skip(spaces())
-    ).and(int_expr()).map(|((left, op), right)| {
-        match op {
-            b"<" => BoolExpr::LessThan(Box::new((left, right))),
-            b"<=" => BoolExpr::LessOrEqual(Box::new((left, right))),
-            b">" => BoolExpr::GreaterThan(Box::new((left, right))),
-            b">=" => BoolExpr::GreaterOrEqual(Box::new((left, right))),
-            b"==" => BoolExpr::EqualInt(Box::new((left, right))),
-            b"!=" | _ => BoolExpr::Not(Box::new(BoolExpr::EqualInt(Box::new((left, right))))),
-        }
-    }).or(
-        p2_bool_expr().skip(spaces()).and(Stateless(
-            optional(range(&b"=="[..]).or(range(&b"!="[..])).skip(spaces()).and(p2_bool_expr()))
-        )).map(|(mut left, rest)| {
-            if let Some((op, right)) = rest {
-                match op {
-                    b"==" => left = BoolExpr::EqualBool(Box::new((left, right))),
-                    b"!=" | _ => {
-                        left =
-                            BoolExpr::Not(Box::new(BoolExpr::EqualBool(Box::new((left, right)))));
-                    }
-                }
-            }
-            left
-        })
-    ))
-}
-
-fn p2_bool_expr<'a>() -> impl Parser<Input = Bytes<'a>, Output = BoolExpr> {
-    let lazy = function::parser(|input| bool_expr().parse_stream(input));
-    let lazy_p2 = function::parser(|input| p2_bool_expr().parse_stream(input));
-    Stateless(choice!(
-        Stateless(byte(b'!').with(lazy_p2).map(|x| BoolExpr::Not(Box::new(x)))),
-        Stateless(bool_func().map(|x| BoolExpr::Func(x))),
-        Stateless(byte(b'(').skip(spaces()).with(lazy).skip(byte(b')')))
-    ))
+    //Custom(Box<dyn CustomExpr>),
 }
 
 #[cfg(test)]
@@ -632,60 +661,71 @@ mod test {
     use super::*;
     use std::fmt::Debug;
 
-    fn error_contains<T: Debug, A: PartialEq, B: PartialEq, C>(
-        result: Result<T, SingleError<A, B, C>>,
-        expected: &str,
-    ) -> bool {
-        result.unwrap_err().error.into_iter().any(|x| {
-            match *x {
-                easy::Error::Unexpected(i) |
-                    easy::Error::Expected(i) |
-                    easy::Error::Message(i) =>
-                {
-                    match i {
-                        easy::Info::Owned(s) => s.contains(expected),
-                        easy::Info::Borrowed(s) => s.contains(expected),
-                        _ => false,
-                    }
+    fn assert_error_contains<T: Debug>(result: Result<T, Error<'_>>, expected: &str) {
+        match result.unwrap_err() {
+            Error::Msg(ctx, msg) => {
+                if !msg.contains(expected) {
+                    panic!(
+                        "Expected '{}' in '{}' (Ctx \"{}\")",
+                        expected, msg, String::from_utf8_lossy(ctx),
+                    );
                 }
-                _ => false,
             }
-        })
+            _ => panic!("Expected {}", expected),
+        }
     }
 
-    fn empty_unwrap<'a, T, A: Debug + PartialEq, B: Debug + PartialEq, C: Debug>(
-        result: Result<(T, Bytes), SingleError<A, B, C>>,
-    ) -> T {
-        let result = result.unwrap();
-        assert_eq!(result.1.inner.input.len(), 0);
+    fn empty_unwrap<'a, T>(result: Result<(T, &'a [u8]), Error<'a>>) -> T {
+        let result = match result {
+            Ok(o) => o,
+            Err(e) => match e {
+                Error::Msg(ctx, msg) => {
+                    panic!("Unwrap fail: {}, context \"{}\"", msg, String::from_utf8_lossy(ctx));
+                }
+                e => panic!("Unwrap fail: {:?}", e),
+            }
+        };
+        if result.1.len() != 0 {
+            panic!("Trailing bytes: \"{}\"", String::from_utf8_lossy(result.1));
+        }
         result.0
     }
 
-    fn s<'a>(text: &'a [u8]) -> Bytes {
-        SingleErrorStream::new(State::new(text))
+    fn noarg(ty: IntFuncType) -> IntFunc {
+        IntFunc {
+            ty,
+            args: Box::new([]),
+        }
+    }
+
+    fn noargb(ty: BoolFuncType) -> BoolFunc {
+        BoolFunc {
+            ty,
+            args: Box::new([]),
+        }
     }
 
     #[test]
     fn test_int_func() {
-        let mut parser = int_func();
-        let mut parse = |text| {
-            parser.parse(s(text))
+        let parser = Parserr::new();
+        let parse = |text| {
+            parser.int_func(text)
         };
-        assert_eq!(empty_unwrap(parse(b"hitpoints")), IntFunc::Hitpoints);
-        assert_eq!(empty_unwrap(parse(b"hitpoints()")), IntFunc::Hitpoints);
+        assert_eq!(empty_unwrap(parse(b"hitpoints")), noarg(IntFuncType::Hitpoints));
+        assert_eq!(empty_unwrap(parse(b"hitpoints()")), noarg(IntFuncType::Hitpoints));
         assert_eq!(
             empty_unwrap(parse(b"acid_spore_count")),
-            IntFunc::AcidSporeCount
+            noarg(IntFuncType::AcidSporeCount),
         );
-        assert!(error_contains(parse(b"hitpoints(s)"), "Can't have parameter"));
-        assert!(error_contains(parse(b"unknown"), "Invalid"));
+        assert_error_contains(parse(b"hitpoints(1)"), "Wrong amount");
+        assert_error_contains(parse(b"unknown"), "Invalid");
     }
 
     #[test]
     fn test_int_expr() {
-        let mut parser = int_expr();
-        let mut parse = |text| {
-            parser.parse(s(text))
+        let parser = Parserr::new();
+        let parse = |text| {
+            parser.int_expr(text)
         };
         assert_eq!(empty_unwrap(parse(b"20")), IntExpr::Integer(20));
         assert_eq!(empty_unwrap(parse(b"0x20")), IntExpr::Integer(0x20));
@@ -693,7 +733,7 @@ mod test {
         assert_eq!(empty_unwrap(parse(b"-0x20")), IntExpr::Integer(-0x20));
         assert_eq!(empty_unwrap(parse(b"(20)")), IntExpr::Integer(20));
         assert_eq!(empty_unwrap(parse(b"((20))")), IntExpr::Integer(20));
-        assert_eq!(empty_unwrap(parse(b"energy")), IntExpr::Func(IntFunc::Energy));
+        assert_eq!(empty_unwrap(parse(b"energy")), IntExpr::Func(noarg(IntFuncType::Energy)));
         assert_eq!(
             empty_unwrap(parse(b"2+2")),
             IntExpr::Add(Box::new((IntExpr::Integer(2), IntExpr::Integer(2))))
@@ -734,23 +774,22 @@ mod test {
                 IntExpr::Sub(Box::new((IntExpr::Integer(2), IntExpr::Integer(6))))
             )))
         );
-        assert!(error_contains(parse(b"4294967295"), "Invalid integer literal"));
-        assert!(error_contains(parse(b"5 / 0"), "divide by zero"));
+        assert_error_contains(parse(b"4294967295"), "Invalid integer literal");
         assert!(parse(b"54k").is_err());
     }
 
     #[test]
     fn test_bool_expr() {
-        let mut parser = bool_expr();
-        let mut parse = |text| {
-            parser.parse(s(text))
+        let parser = Parserr::new();
+        let parse = |text| {
+            parser.bool_expr(text)
         };
-        let fun_true = || BoolExpr::Func(BoolFunc::True);
-        let fun_false = || BoolExpr::Func(BoolFunc::False);
+        let fun_true = || BoolExpr::Func(noargb(BoolFuncType::True));
+        let fun_false = || BoolExpr::Func(noargb(BoolFuncType::False));
         assert_eq!(empty_unwrap(parse(b"true")), fun_true());
         assert_eq!(empty_unwrap(parse(b"false")), fun_false());
         assert_eq!(empty_unwrap(parse(b"((true))")), fun_true());
-        assert_eq!(empty_unwrap(parse(b"blind")), BoolExpr::Func(BoolFunc::Blind));
+        assert_eq!(empty_unwrap(parse(b"blind")), BoolExpr::Func(noargb(BoolFuncType::Blind)));
         assert_eq!(
             empty_unwrap(parse(b"true || false")),
             BoolExpr::Or(Box::new((fun_true(), fun_false())))
@@ -802,18 +841,18 @@ mod test {
             )))
         );
 
-        assert_eq!(parse(b"true || false && true").unwrap().1.inner.input.len(), "&& true".len());
+        assert_error_contains(parse(b"true || false && true"), "Conflicting operators");
         parse(b"! true").unwrap_err();
 
         assert_eq!(
             empty_unwrap(parse(b"energy >= 50 && energy < 100")),
             BoolExpr::And(Box::new((
                 BoolExpr::GreaterOrEqual(Box::new((
-                    IntExpr::Func(IntFunc::Energy),
+                    IntExpr::Func(noarg(IntFuncType::Energy)),
                     IntExpr::Integer(50),
                 ))),
                 BoolExpr::LessThan(Box::new((
-                    IntExpr::Func(IntFunc::Energy),
+                    IntExpr::Func(noarg(IntFuncType::Energy)),
                     IntExpr::Integer(100),
                 ))),
             )))
@@ -822,14 +861,23 @@ mod test {
 
     #[test]
     fn test_trig() {
-        let mut parser = int_func();
-        let mut parse = |text| {
-            parser.parse(s(text))
+        let parser = Parserr::new();
+        let parse = |text| {
+            parser.int_func(text)
         };
-        assert_eq!(empty_unwrap(parse(b"sin(5)")), IntFunc::Sin(Box::new(IntExpr::Integer(5))));
+        assert_eq!(
+            empty_unwrap(parse(b"sin(5)")),
+            IntFunc {
+                ty: IntFuncType::Sin,
+                args: Box::new([IntExpr::Integer(5)]),
+            },
+        );
         assert_eq!(
             empty_unwrap(parse(b"cos(frame_count)")),
-            IntFunc::Cos(Box::new(IntExpr::Func(IntFunc::FrameCount))),
+            IntFunc {
+                ty: IntFuncType::Cos,
+                args: Box::new([IntExpr::Func(noarg(IntFuncType::FrameCount))]),
+            },
         );
         parse(b"sin()").unwrap_err();
         parse(b"sin(5, 6)").unwrap_err();
@@ -838,14 +886,17 @@ mod test {
 
     #[test]
     fn test_complex_int_expr() {
-        let mut parser = int_expr();
-        let mut parse = |text| {
-            parser.parse(s(text))
+        let parser = Parserr::new();
+        let parse = |text| {
+            parser.int_expr(text)
         };
         assert_eq!(
             empty_unwrap(parse(b"(sin(hitpoints)) / 2")),
             IntExpr::Div(Box::new((
-                IntExpr::Func(IntFunc::Sin(Box::new(IntExpr::Func(IntFunc::Hitpoints)))),
+                IntExpr::Func(IntFunc {
+                    ty: IntFuncType::Sin,
+                    args: Box::new([IntExpr::Func(noarg(IntFuncType::Hitpoints))]),
+                }),
                 IntExpr::Integer(2),
             )))
         );
@@ -853,17 +904,29 @@ mod test {
 
     #[test]
     fn test_2arg_fn() {
-        let mut parser = int_func();
-        let mut parse = |text| {
-            parser.parse(s(text))
+        let parser = Parserr::new();
+        let parse = |text| {
+            parser.int_func(text)
         };
         assert_eq!(
             empty_unwrap(parse(b"deaths(player, 5)")),
-            IntFunc::Deaths(Box::new((IntExpr::Func(IntFunc::Player), IntExpr::Integer(5)))),
+            IntFunc {
+                ty: IntFuncType::Deaths,
+                args: Box::new([
+                    IntExpr::Func(noarg(IntFuncType::Player)),
+                    IntExpr::Integer(5),
+                ]),
+            },
         );
         assert_eq!(
             empty_unwrap(parse(b"deaths( player, 5  )")),
-            IntFunc::Deaths(Box::new((IntExpr::Func(IntFunc::Player), IntExpr::Integer(5)))),
+            IntFunc {
+                ty: IntFuncType::Deaths,
+                args: Box::new([
+                    IntExpr::Func(noarg(IntFuncType::Player)),
+                    IntExpr::Integer(5),
+                ]),
+            },
         );
     }
 }
