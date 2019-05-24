@@ -65,33 +65,45 @@ struct DefaultEval;
 impl CustomEval for DefaultEval {
     type State = NoCustom;
 
-    fn eval_int(&mut self, _: &parse_expr::Void) -> i32 {
-        0
+    fn eval_int(&mut self, val: &parse_expr::Void) -> i32 {
+        match *val {
+        }
     }
 
-    fn eval_bool(&mut self, _: &parse_expr::Void) -> bool {
-        false
+    fn eval_bool(&mut self, val: &parse_expr::Void) -> bool {
+        match *val {
+        }
     }
 }
 
 impl<E: CustomEval> EvalCtx<E> {
-    fn eval_int(&mut self, expr: &parse_expr::IntExpr<E::State>) -> i32 {
+    pub fn eval_int(&mut self, expr: &CustomIntExpr<E::State>) -> i32 {
+        if expr.required_context.contains(RequiredContext::UNIT) && self.unit.is_none() {
+            return i32::min_value();
+        }
+        if expr.required_context.contains(RequiredContext::GAME) && self.game.is_none() {
+            return i32::min_value();
+        }
+        self.eval_int_r(&expr.ty)
+    }
+
+    fn eval_int_r(&mut self, expr: &parse_expr::IntExpr<E::State>) -> i32 {
         use crate::parse_expr::IntExpr::*;
         use crate::parse_expr::IntFuncType::*;
         match expr {
-            Add(x) => self.eval_int(&x.0).saturating_add(self.eval_int(&x.1)),
-            Sub(x) => self.eval_int(&x.0).saturating_sub(self.eval_int(&x.1)),
-            Mul(x) => self.eval_int(&x.0).saturating_mul(self.eval_int(&x.1)),
+            Add(x) => self.eval_int_r(&x.0).saturating_add(self.eval_int_r(&x.1)),
+            Sub(x) => self.eval_int_r(&x.0).saturating_sub(self.eval_int_r(&x.1)),
+            Mul(x) => self.eval_int_r(&x.0).saturating_mul(self.eval_int_r(&x.1)),
             Div(x) => {
-                self.eval_int(&x.0).checked_div(self.eval_int(&x.1))
+                self.eval_int_r(&x.0).checked_div(self.eval_int_r(&x.1))
                     .unwrap_or(i32::max_value())
             }
             Modulo(x) => {
-                let div = self.eval_int(&x.1);
+                let div = self.eval_int_r(&x.1);
                 if div == 0 {
                     i32::max_value()
                 } else {
-                    self.eval_int(&x.0) % div
+                    self.eval_int_r(&x.0) % div
                 }
             }
             Integer(i) => *i,
@@ -139,19 +151,19 @@ impl<E: CustomEval> EvalCtx<E> {
                         UnitId => (**unit).unit_id as i32,
                         Order => (**unit).order as i32,
                         Sin => {
-                            let val = self.eval_int(&x.args[0]);
+                            let val = self.eval_int_r(&x.args[0]);
                             ((val as f32).to_radians().sin() * 256.0) as i32
                         }
                         Cos => {
-                            let val = self.eval_int(&x.args[0]);
+                            let val = self.eval_int_r(&x.args[0]);
                             ((val as f32).to_radians().cos() * 256.0) as i32
                         }
                         Deaths => {
-                            let player = match self.eval_int(&x.args[0]) {
+                            let player = match self.eval_int_r(&x.args[0]) {
                                 x if x >= 0 && x < 12 => x,
                                 _ => return i32::min_value(),
                             };
-                            let unit = match self.eval_int(&x.args[1]) {
+                            let unit = match self.eval_int_r(&x.args[1]) {
                                 x if x >= 0 && x < unit::NONE.0 as i32 => x,
                                 _ => return i32::min_value(),
                             };
@@ -163,19 +175,29 @@ impl<E: CustomEval> EvalCtx<E> {
         }
     }
 
-    fn eval_bool(&mut self, expr: &parse_expr::BoolExpr<E::State>) -> bool {
+    pub fn eval_bool(&mut self, expr: &CustomBoolExpr<E::State>) -> bool {
+        if expr.required_context.contains(RequiredContext::UNIT) && self.unit.is_none() {
+            return false;
+        }
+        if expr.required_context.contains(RequiredContext::GAME) && self.game.is_none() {
+            return false;
+        }
+        self.eval_bool_r(&expr.ty)
+    }
+
+    fn eval_bool_r(&mut self, expr: &parse_expr::BoolExpr<E::State>) -> bool {
         use crate::parse_expr::BoolExpr::*;
         use crate::parse_expr::BoolFuncType::*;
         match expr {
-            And(x) => self.eval_bool(&x.0) && self.eval_bool(&x.1),
-            Or(x) => self.eval_bool(&x.0) || self.eval_bool(&x.1),
-            LessThan(x) => self.eval_int(&x.0) < self.eval_int(&x.1),
-            LessOrEqual(x) => self.eval_int(&x.0) <= self.eval_int(&x.1),
-            GreaterThan(x) => self.eval_int(&x.0) > self.eval_int(&x.1),
-            GreaterOrEqual(x) => self.eval_int(&x.0) <= self.eval_int(&x.1),
-            EqualInt(x) => self.eval_int(&x.0) == self.eval_int(&x.1),
-            EqualBool(x) => self.eval_bool(&x.0) == self.eval_bool(&x.1),
-            Not(x) => !self.eval_bool(&x),
+            And(x) => self.eval_bool_r(&x.0) && self.eval_bool_r(&x.1),
+            Or(x) => self.eval_bool_r(&x.0) || self.eval_bool_r(&x.1),
+            LessThan(x) => self.eval_int_r(&x.0) < self.eval_int_r(&x.1),
+            LessOrEqual(x) => self.eval_int_r(&x.0) <= self.eval_int_r(&x.1),
+            GreaterThan(x) => self.eval_int_r(&x.0) > self.eval_int_r(&x.1),
+            GreaterOrEqual(x) => self.eval_int_r(&x.0) <= self.eval_int_r(&x.1),
+            EqualInt(x) => self.eval_int_r(&x.0) == self.eval_int_r(&x.1),
+            EqualBool(x) => self.eval_bool_r(&x.0) == self.eval_bool_r(&x.1),
+            Not(x) => !self.eval_bool_r(&x),
             Custom(x) => self.custom.eval_bool(&x),
             Func(x) => {
                 unsafe {
@@ -254,7 +276,7 @@ impl IntExpr {
             game: Some(game),
             custom: DefaultEval,
         };
-        ctx.eval_int(&self.ty)
+        ctx.eval_int(&self)
     }
 }
 
@@ -302,7 +324,7 @@ impl BoolExpr {
             game: Some(game),
             custom: DefaultEval,
         };
-        ctx.eval_bool(&self.ty)
+        ctx.eval_bool(&self)
     }
 }
 
