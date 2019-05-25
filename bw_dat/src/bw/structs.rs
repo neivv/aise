@@ -302,6 +302,57 @@ pub struct Unit {
 }
 
 #[repr(C, packed)]
+pub struct Bullet {
+    pub prev: *mut Bullet,
+    pub next: *mut Bullet,
+    pub hitpoints: i32,
+    pub sprite: *mut Sprite,
+    pub move_target: Point,
+    pub move_target_unit: *mut Unit,
+    pub next_move_waypoint: Point,
+    pub unk_move_waypoint: Point,
+    pub flingy_flags: u8,
+    pub facing_direction: u8,
+    pub flingy_turn_speed: u8,
+    pub movement_direction: u8,
+    pub flingy_id: u16,
+    pub unk_26: u8,
+    pub flingy_movement_type: u8,
+    pub position: Point,
+    pub exact_position: Point32,
+    pub flingy_top_speed: u32,
+    pub current_speed: i32,
+    pub next_speed: i32,
+    pub speed: i32,
+    pub speed2: i32,
+    pub acceleration: u16,
+    pub new_direction: u8,
+    pub target_direction: u8,
+    // Flingy end
+    pub player: u8,
+    pub state: u8,
+    pub order_state: u8,
+    pub order_signal: u8,
+    pub order_fow_unit: u16,
+    pub unused52: u16,
+    pub order_timer: u8,
+    pub ground_cooldown: u8,
+    pub air_cooldown: u8,
+    pub spell_cooldown: u8,
+    pub order_target_pos: Point,
+    pub target: *mut Unit,
+    // Entity end
+    pub weapon_id: u8,
+    pub death_timer: u8,
+    pub flags: u8,
+    pub bounces_remaining: u8,
+    pub parent: *mut Unit,
+    pub previous_bounce_target: *mut Unit,
+    pub spread_seed: u8,
+    pub padding: [u8; 0x3],
+}
+
+#[repr(C, packed)]
 pub struct Pathing {
     pub region_count: u16,
     pub _dc2: [u8; 0x449fa],
@@ -362,6 +413,7 @@ mod test {
         use std::mem;
         assert_eq!(mem::size_of::<Game>(), 0x102f0);
         assert_eq!(mem::size_of::<Unit>(), 0x150);
+        assert_eq!(mem::size_of::<Bullet>(), 0x70);
         assert_eq!(mem::size_of::<Sprite>(), 0x24);
         assert_eq!(mem::size_of::<Image>(), 0x40);
         assert_eq!(mem::size_of::<Pathing>(), 0x97a20);
