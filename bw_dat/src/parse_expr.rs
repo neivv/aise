@@ -113,6 +113,7 @@ decl_funcc!(
     b"sin", Sin(1),
     b"cos", Cos(1),
     b"deaths", Deaths(2),
+    b"upgrade", Upgrade(2),
 );
 
 decl_funcc!(
@@ -138,6 +139,7 @@ decl_funcc!(
     b"cloaked", Cloaked,
     b"under_dweb", UnderDweb,
     b"hallucination", Hallucination,
+    b"tech", Tech(2),
 );
 
 #[derive(Debug, Eq, PartialEq, Hash)]

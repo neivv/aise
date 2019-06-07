@@ -12,7 +12,7 @@ use bitflags::bitflags;
 use crate::game::Game;
 use crate::parse_expr::{self, DefaultParser};
 use crate::unit::{self, Unit};
-use crate::order;
+use crate::{order, upgrade, tech, UpgradeId, TechId};
 
 #[derive(Debug)]
 pub struct Error {
@@ -169,6 +169,17 @@ impl<E: CustomEval> EvalCtx<E> {
                             };
                             (**game).deaths[unit as usize][player as usize] as i32
                         }
+                        Upgrade => {
+                            let player = match self.eval_int_r(&x.args[0]) {
+                                x if x >= 0 && x < 12 => x as u8,
+                                _ => return i32::min_value(),
+                            };
+                            let upgrade = match self.eval_int_r(&x.args[1]) {
+                                x if x >= 0 && x < upgrade::NONE.0 as i32 => x,
+                                _ => return i32::min_value(),
+                            };
+                            game.upgrade_level(player, UpgradeId(upgrade as u16)).into()
+                        }
                     }
                 }
             }
@@ -188,6 +199,7 @@ impl<E: CustomEval> EvalCtx<E> {
     fn eval_bool_r(&mut self, expr: &parse_expr::BoolExpr<E::State>) -> bool {
         use crate::parse_expr::BoolExpr::*;
         use crate::parse_expr::BoolFuncType::*;
+        let game = unsafe { self.game.unwrap_or(Game::from_ptr(16 as *mut _)) };
         match expr {
             And(x) => self.eval_bool_r(&x.0) && self.eval_bool_r(&x.1),
             Or(x) => self.eval_bool_r(&x.0) || self.eval_bool_r(&x.1),
@@ -230,6 +242,17 @@ impl<E: CustomEval> EvalCtx<E> {
                         Cloaked => unit.is_invisible() && !unit.is_burrowed(),
                         UnderDweb => unit.is_under_dweb(),
                         Hallucination => unit.is_hallucination(),
+                        Tech => {
+                            let player = match self.eval_int_r(&x.args[0]) {
+                                x if x >= 0 && x < 12 => x as u8,
+                                _ => return false,
+                            };
+                            let tech = match self.eval_int_r(&x.args[1]) {
+                                x if x >= 0 && x < tech::NONE.0 as i32 => x,
+                                _ => return false,
+                            };
+                            game.tech_researched(player, TechId(tech as u16))
+                        }
                     }
                 }
             }
@@ -364,6 +387,10 @@ fn bool_expr_required_context<C: CustomState>(expr: &parse_expr::BoolExpr<C>) ->
                 InBunker | CarryingPowerup | CarryingMinerals | CarryingGas | Burrowed |
                 Disabled | Completed | SelfCloaked | ArbiterCloaked | Cloaked |
                 UnderDweb | Hallucination => RequiredContext::UNIT,
+            Tech => {
+                int_expr_required_context(&x.args[0]) | int_expr_required_context(&x.args[1]) |
+                    RequiredContext::GAME
+            }
         },
         Custom(_) => RequiredContext::empty(),
     }
@@ -392,7 +419,7 @@ fn int_expr_required_context<C: CustomState>(expr: &parse_expr::IntExpr<C>) -> R
             }
             FrameCount | Tileset => RequiredContext::GAME,
             Sin | Cos => int_expr_required_context(&x.args[0]),
-            Deaths => {
+            Deaths | Upgrade => {
                 int_expr_required_context(&x.args[0]) | int_expr_required_context(&x.args[1]) |
                     RequiredContext::GAME
             }
