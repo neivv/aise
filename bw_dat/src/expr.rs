@@ -206,7 +206,7 @@ impl<E: CustomEval> EvalCtx<E> {
             LessThan(x) => self.eval_int_r(&x.0) < self.eval_int_r(&x.1),
             LessOrEqual(x) => self.eval_int_r(&x.0) <= self.eval_int_r(&x.1),
             GreaterThan(x) => self.eval_int_r(&x.0) > self.eval_int_r(&x.1),
-            GreaterOrEqual(x) => self.eval_int_r(&x.0) <= self.eval_int_r(&x.1),
+            GreaterOrEqual(x) => self.eval_int_r(&x.0) >= self.eval_int_r(&x.1),
             EqualInt(x) => self.eval_int_r(&x.0) == self.eval_int_r(&x.1),
             EqualBool(x) => self.eval_bool_r(&x.0) == self.eval_bool_r(&x.1),
             Not(x) => !self.eval_bool_r(&x),
