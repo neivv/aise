@@ -1492,7 +1492,7 @@ pub unsafe fn add_spending_request_hook(
     unit_id: u16,
     ai_type: u32,
     player: u8,
-    orig: &Fn(u32, *mut libc::c_void, u16, u32, u8),
+    orig: &dyn Fn(u32, *mut libc::c_void, u16, u32, u8),
 ) {
     let mut globals = Globals::get("add_spending_request");
     let unit_id = UnitId(unit_id);
@@ -1513,7 +1513,7 @@ pub unsafe fn add_spending_request_hook(
 pub unsafe fn ai_attack_focus_hook(
     unit: *mut bw::Unit,
     func_param: u32,
-    orig: &Fn(*mut bw::Unit, u32) -> u32,
+    orig: &dyn Fn(*mut bw::Unit, u32) -> u32,
 ) -> u32 {
     if (*unit).player < 8 {
         let globals = Globals::get("ai focus unit hook");
@@ -1525,7 +1525,7 @@ pub unsafe fn ai_attack_focus_hook(
     orig(unit, func_param)
 }
 
-pub unsafe fn unit_name_hook(unit_id: u32, orig: &Fn(u32) -> *const u8) -> *const u8 {
+pub unsafe fn unit_name_hook(unit_id: u32, orig: &dyn Fn(u32) -> *const u8) -> *const u8 {
     let unit = bw::client_selection[0];
     let unit = match Unit::from_ptr(unit) {
         Some(s) => s,
@@ -1748,7 +1748,7 @@ pub unsafe extern fn kills_command(script: *mut bw::AiScript) {
 pub unsafe fn increment_deaths(
     target: *mut bw::Unit,
     attacker_p_id: u8,
-    orig: &Fn(*mut bw::Unit, u8),
+    orig: &dyn Fn(*mut bw::Unit, u8),
 ) {
     let unit_id = (*target).unit_id;
     let amount = 1;
@@ -2290,7 +2290,7 @@ impl ScriptData {
             cont = byte & 0x80 != 0;
             let player = byte & 0x7f;
             match player {
-                x @ 0...11 => result.players[x as usize] = true,
+                x @ 0..=11 => result.players[x as usize] = true,
                 13 => result.players[current_player as usize] = true,
                 // Foes, allies
                 14 | 15 => {
@@ -2753,7 +2753,7 @@ unsafe fn take_bw_allocated_scripts(
 pub unsafe fn ai_spellcast_hook(
     revenge: bool,
     unit: *mut bw::Unit,
-    orig: &Fn(bool, *mut bw::Unit) -> u32,
+    orig: &dyn Fn(bool, *mut bw::Unit) -> u32,
 ) -> u32 {
     let globals = Globals::get("ai spellcast hook");
     let ai_mode = &globals.ai_mode[(*unit).player as usize];
@@ -2774,7 +2774,7 @@ pub unsafe fn update_placement_hook(
     check_vision: u8,
     also_invisible: u8,
     without_vision: u8,
-    orig: &Fn(*mut bw::Unit, u8, u32, u32, u16, u8, u8, u8, u8) -> u32,
+    orig: &dyn Fn(*mut bw::Unit, u8, u32, u32, u16, u8, u8, u8, u8) -> u32,
 ) -> u32 {
     let result = orig(
         builder,
@@ -2796,7 +2796,7 @@ pub unsafe fn choose_building_placement(
     out_pos: *mut bw::Point,
     area_tiles: u32,
     builder: *mut bw::Unit,
-    orig: &Fn(u32, u32, *mut bw::Point, u32, *mut bw::Unit) -> u32,
+    orig: &dyn Fn(u32, u32, *mut bw::Point, u32, *mut bw::Unit) -> u32,
 ) -> u32 {
     let result = orig(unit_id, position_xy, out_pos, area_tiles, builder);
 
