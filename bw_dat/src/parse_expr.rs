@@ -114,6 +114,8 @@ decl_funcc!(
     b"cos", Cos(1),
     b"deaths", Deaths(2),
     b"upgrade", Upgrade(2),
+    b"unit_count_completed", UnitCountCompleted(2),
+    b"unit_count_any", UnitCountAny(2),
 );
 
 decl_funcc!(

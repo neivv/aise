@@ -158,7 +158,7 @@ impl<E: CustomEval> EvalCtx<E> {
                             let val = self.eval_int_r(&x.args[0]);
                             ((val as f32).to_radians().cos() * 256.0) as i32
                         }
-                        Deaths => {
+                        Deaths | UnitCountCompleted | UnitCountAny => {
                             let player = match self.eval_int_r(&x.args[0]) {
                                 x if x >= 0 && x < 12 => x,
                                 _ => return i32::min_value(),
@@ -167,7 +167,17 @@ impl<E: CustomEval> EvalCtx<E> {
                                 x if x >= 0 && x < unit::NONE.0 as i32 => x,
                                 _ => return i32::min_value(),
                             };
-                            (**game).deaths[unit as usize][player as usize] as i32
+                            match x.ty {
+                                Deaths => (**game).deaths[unit as usize][player as usize] as i32,
+                                UnitCountCompleted => game.completed_count(
+                                    player as u8,
+                                    crate::UnitId(unit as u16),
+                                ) as i32,
+                                UnitCountAny | _ => game.unit_count(
+                                    player as u8,
+                                    crate::UnitId(unit as u16),
+                                ) as i32,
+                            }
                         }
                         Upgrade => {
                             let player = match self.eval_int_r(&x.args[0]) {
@@ -419,7 +429,7 @@ fn int_expr_required_context<C: CustomState>(expr: &parse_expr::IntExpr<C>) -> R
             }
             FrameCount | Tileset => RequiredContext::GAME,
             Sin | Cos => int_expr_required_context(&x.args[0]),
-            Deaths | Upgrade => {
+            Deaths | Upgrade | UnitCountCompleted | UnitCountAny => {
                 int_expr_required_context(&x.args[0]) | int_expr_required_context(&x.args[1]) |
                     RequiredContext::GAME
             }
