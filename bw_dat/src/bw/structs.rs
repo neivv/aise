@@ -379,7 +379,78 @@ pub struct Player {
     pub name: [u8; 25],
 }
 
+#[repr(C, packed)]
+pub struct Dialog {
+    pub control: Control,
+}
+
+#[repr(C, packed)]
+pub struct Control {
+    pub next: *mut Control,
+    pub area: Rect,
+    pub image: [u8; 8],
+    pub string: *const u8,
+    pub flags: u32,
+    pub unk1c: [u8; 4],
+    pub id: u16,
+    pub ty: u16,
+    pub misc_u16: u16,
+    pub user_ptr: *mut c_void,
+    pub event_handler: unsafe extern "fastcall" fn(*mut Control, *mut ControlEvent) -> u32,
+    pub draw: unsafe extern "fastcall" fn(*mut Control, i32, i32, *const Rect),
+    pub parent: *mut Dialog,
+}
+
+#[repr(C, packed)]
+pub struct ControlEvent {
+    ext_type: u32,
+    ext_param: u32,
+    param: u32,
+    ty: u16,
+    x: i16,
+    y: i16,
+}
+
 pub mod scr {
+    use libc::c_void;
+    use super::Rect;
+
+    #[repr(C, packed)]
+    pub struct Dialog {
+        pub control: Control,
+    }
+
+    #[repr(C, packed)]
+    pub struct Control {
+        pub next: *mut Control,
+        pub area: Rect,
+        pub image: [u8; 8],
+        pub string: *const u8,
+        pub flags: u32,
+        pub unk1c: [u8; 4],
+        pub unknown: u16,
+        pub id: u16,
+        pub ty: u16,
+        pub misc_u16: u16,
+        pub user_ptr: *mut c_void,
+        pub event_handler: unsafe extern "C" fn(*mut Control, *mut ControlEvent) -> u32,
+        pub draw: unsafe extern "C" fn(*mut Control, i32, i32, *const Rect),
+        pub parent: *mut Dialog,
+    }
+
+    #[repr(C, packed)]
+    pub struct ControlEvent {
+        ext_type: u32,
+        unk4: u32,
+        ext_param: u32,
+        param: u32,
+        ty: u16,
+        x: i16,
+        y: i16,
+        padding: u16,
+        time: u32,
+    }
+
     #[repr(C, packed)]
     pub struct DrawCommands {
         pub commands: [DrawCommand; 0x2000],
@@ -419,6 +490,10 @@ mod test {
         assert_eq!(mem::size_of::<Pathing>(), 0x97a20);
         assert_eq!(mem::size_of::<Region>(), 0x40);
         assert_eq!(mem::size_of::<Player>(), 0x24);
+        assert_eq!(mem::size_of::<ControlEvent>(), 0x12);
+        assert_eq!(mem::size_of::<Control>(), 0x36);
+        assert_eq!(mem::size_of::<scr::ControlEvent>(), 0x1c);
+        assert_eq!(mem::size_of::<scr::Control>(), mem::size_of::<Control>() + 2);
         assert_eq!(mem::size_of::<scr::DrawCommand>(), 0xa0);
     }
 }

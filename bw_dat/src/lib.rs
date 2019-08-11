@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate whack;
 
+pub mod dialog;
 pub mod game;
 pub mod expr;
 pub mod unit;
@@ -15,10 +16,18 @@ pub mod structs {
     pub use crate::bw::structs::*;
 }
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use bitflags::bitflags;
 use serde_derive::{Serialize, Deserialize};
 
 pub use bw::DatTable;
+
+static IS_SCR: AtomicBool = AtomicBool::new(false);
+
+pub fn set_is_scr(value: bool) {
+    IS_SCR.store(value, Ordering::Relaxed);
+}
 
 pub unsafe fn init_1161(patcher: &mut whack::ModulePatcher) {
     bw::init_vars(patcher);
