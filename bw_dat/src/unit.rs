@@ -136,8 +136,16 @@ impl Unit {
         unsafe { (**self).energy }
     }
 
+    pub fn flags(self) -> u32 {
+        unsafe { (**self).flags  }
+    }
+
     pub fn is_air(self) -> bool {
         unsafe { (**self).flags & 0x4 != 0 }
+    }
+
+    pub fn in_bunker(self) -> bool {
+        unsafe { (**self).flags & 0x20 != 0 }
     }
 
     /// Is the unit cloaked or burrowed (So it requires detection)
@@ -201,6 +209,25 @@ impl Unit {
 
     pub fn subunit_linked(self) -> Option<Unit> {
         unsafe { Unit::from_ptr((**self).subunit) }
+    }
+
+    /// Returns the turret unit if unit has it, otherwise itself
+    pub fn subunit_turret(self) -> Unit {
+        if let Some(subunit) = self.subunit_linked() {
+            if subunit.id().is_subunit() {
+                return subunit;
+            }
+        }
+        self
+    }
+
+    /// Returns the turret parent if unit is a turret, otherwise itself
+    pub fn subunit_parent(self) -> Unit {
+        if self.id().is_subunit() {
+            self.subunit_linked().unwrap()
+        } else {
+            self
+        }
     }
 
     pub fn addon(self) -> Option<Unit> {
@@ -336,6 +363,52 @@ impl Unit {
     pub fn resource_amount(self) -> u16 {
         unsafe { (&(**self).unit_specific2[0..]).read_u16::<LE>().unwrap() }
     }
+
+    pub fn has_ai(self) -> bool {
+        unsafe { !(**self).ai.is_null() }
+    }
+
+    pub fn is_enemy(self, game: Game, target: Unit) -> bool {
+        let target_player = if target.player() == 11 {
+            unsafe { (*(**target).sprite).player }
+        } else {
+            target.player()
+        };
+        !game.allied(self.player(), target_player)
+    }
+
+    pub fn related(self) -> Option<Unit> {
+        unsafe { Unit::from_ptr((**self).related) }
+    }
+
+    pub fn is_invisible_hidden_to(self, player: u8) -> bool {
+        let mask = 1 << player;
+        self.is_invisible() && unsafe { (**self).detection_status & mask == 0 }
+    }
+
+    /// Checks sprite visibility, not cloak/burrow
+    pub fn is_visible_to(self, player: u8) -> bool {
+        if player < 8 {
+            let mask = 1 << player;
+            unsafe { (*(**self).sprite).visibility_mask & mask != 0 }
+        } else {
+            false
+        }
+    }
+
+    pub fn halt_distance(self) -> u32 {
+        unsafe {
+            let speed = ((**self).next_speed).max(0) as u32;
+            if speed == 0 || (**self).flingy_movement_type != 0 {
+                0
+            } else {
+                speed.saturating_mul(speed)
+                    .checked_div((**self).acceleration as u32 * 2)
+                    .unwrap_or(0)
+                    .max(0)
+            }
+        }
+    }
 }
 
 unsafe impl Send for Unit {}
@@ -344,12 +417,16 @@ unsafe impl Sync for Unit {}
 pub const MARINE: UnitId = UnitId(0x0);
 pub const GHOST: UnitId = UnitId(0x1);
 pub const VULTURE: UnitId = UnitId(0x2);
+pub const GOLIATH: UnitId = UnitId(0x3);
+pub const GOLIATH_TURRET: UnitId = UnitId(0x4);
 pub const SIEGE_TANK_TANK: UnitId = UnitId(0x5);
 pub const SIEGE_TANK_TURRET: UnitId = UnitId(0x6);
 pub const SCV: UnitId = UnitId(0x7);
 pub const GUI_MONTAG: UnitId = UnitId(0xa);
 pub const SPIDER_MINE: UnitId = UnitId(0xd);
 pub const SARAH_KERRIGAN: UnitId = UnitId(0x10);
+pub const ALAN_SCHEZAR: UnitId = UnitId(0x11);
+pub const SCHEZAR_TURRET: UnitId = UnitId(0x12);
 pub const JIM_RAYNOR_VULTURE: UnitId = UnitId(0x13);
 pub const JIM_RAYNOR_MARINE: UnitId = UnitId(0x14);
 pub const EDMUND_DUKE_TANK: UnitId = UnitId(0x17);
@@ -365,15 +442,20 @@ pub const DRONE: UnitId = UnitId(0x29);
 pub const OVERLORD: UnitId = UnitId(0x2a);
 pub const MUTALISK: UnitId = UnitId(0x2b);
 pub const GUARDIAN: UnitId = UnitId(0x2c);
+pub const QUEEN: UnitId = UnitId(0x2d);
 pub const SCOURGE: UnitId = UnitId(0x2f);
+pub const MATRIARCH: UnitId = UnitId(0x31);
 pub const INFESTED_KERRIGAN: UnitId = UnitId(0x33);
 pub const COCOON: UnitId = UnitId(0x3b);
 pub const DARK_TEMPLAR: UnitId = UnitId(0x3d);
 pub const DEVOURER: UnitId = UnitId(0x3e);
 pub const DARK_ARCHON: UnitId = UnitId(0x3f);
+pub const DRAGOON: UnitId = UnitId(0x42);
 pub const HIGH_TEMPLAR: UnitId = UnitId(0x43);
 pub const ARCHON: UnitId = UnitId(0x44);
+pub const ARBITER: UnitId = UnitId(0x47);
 pub const CARRIER: UnitId = UnitId(0x48);
+pub const FENIX_DRAGOON: UnitId = UnitId(0x4e);
 pub const WARBRINGER: UnitId = UnitId(0x51);
 pub const GANTRITHOR: UnitId = UnitId(0x52);
 pub const REAVER: UnitId = UnitId(0x53);

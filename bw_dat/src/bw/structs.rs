@@ -179,6 +179,14 @@ pub struct Point32 {
 }
 
 #[repr(C, packed)]
+pub struct LoneSprite {
+    pub prev: *mut LoneSprite,
+    pub next: *mut LoneSprite,
+    pub hitpoints: i32,
+    pub sprite: *mut Sprite,
+}
+
+#[repr(C, packed)]
 pub struct Unit {
     pub prev: *mut Unit,
     pub next: *mut Unit,
@@ -355,9 +363,18 @@ pub struct Bullet {
 #[repr(C, packed)]
 pub struct Pathing {
     pub region_count: u16,
-    pub _dc2: [u8; 0x449fa],
+    pub _dc2: [u8; 0xa],
+    pub map_tile_regions: [u16; 0x100 * 0x100],
+    pub split_regions: [SplitRegion; 25000],
     pub regions: [Region; 5000],
     pub _dc92bfc: [u8; 0x4e24],
+}
+
+#[repr(C, packed)]
+pub struct SplitRegion {
+    pub minitile_flags: u16,
+    pub region_false: u16,
+    pub region_true: u16,
 }
 
 #[repr(C, packed)]
@@ -473,6 +490,12 @@ pub mod scr {
         pub blend_mode: u16,
         pub _unk40: [u8; 0x10],
         pub uniforms: [f32; 0x14],
+    }
+}
+
+impl Rect {
+    pub fn overlaps(&self, o: &Rect) -> bool {
+        self.left < o.right && self.right > o.left && self.top < o.bottom && self.bottom > o.top
     }
 }
 

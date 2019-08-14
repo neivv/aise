@@ -16,6 +16,7 @@ pub mod structs {
     pub use crate::bw::structs::*;
 }
 
+use std::num::NonZeroU32;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use bitflags::bitflags;
@@ -88,9 +89,13 @@ pub struct UnitId(pub u16);
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize, Ord, PartialOrd, Hash)]
 pub struct WeaponId(pub u16);
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize, Ord, PartialOrd, Hash)]
+pub struct FlingyId(pub u16);
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize, Ord, PartialOrd, Hash)]
 pub struct UpgradeId(pub u16);
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize, Ord, PartialOrd, Hash)]
 pub struct TechId(pub u16);
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize, Ord, PartialOrd, Hash)]
+pub struct SpriteId(pub u16);
 
 unsafe fn dat_read(dat: *const bw::DatTable, id: u32, field: u32) -> u32 {
     let dat = &*dat.offset(field as isize);
@@ -110,9 +115,13 @@ pub mod weapon {
 
 pub mod upgrade {
     use super::UpgradeId;
+    pub const U_268_SHELLS: UpgradeId = UpgradeId(0x16);
     pub const VENTRAL_SACS: UpgradeId = UpgradeId(0x18);
+    pub const GROOVED_SPINES: UpgradeId = UpgradeId(0x1e);
+    pub const SINGULARITY_CHARGE: UpgradeId = UpgradeId(0x21);
     pub const REAVER_CAPACITY: UpgradeId = UpgradeId(0x24);
     pub const CARRIER_CAPACITY: UpgradeId = UpgradeId(0x2b);
+    pub const CHARON_BOOSTER: UpgradeId = UpgradeId(0x36);
     pub const NONE: UpgradeId = UpgradeId(0x3d);
 }
 
@@ -127,6 +136,7 @@ pub mod order {
     use super::OrderId;
     pub const DIE: OrderId = OrderId(0x0);
     pub const STOP: OrderId = OrderId(0x1);
+    pub const BUNKER_GUARD: OrderId = OrderId(0x5);
     pub const MOVE: OrderId = OrderId(0x6);
     pub const ATTACK: OrderId = OrderId(0x8);
     pub const ATTACK_OBSCURED: OrderId = OrderId(0x9);
@@ -169,6 +179,7 @@ pub mod order {
     pub const ENTER_TRANSPORT: OrderId = OrderId(0x5c);
     pub const SPREAD_CREEP: OrderId = OrderId(0x66);
     pub const ARCHON_WARP: OrderId = OrderId(0x69);
+    pub const HOLD_POSITION: OrderId = OrderId(0x6b);
     pub const CLOAK: OrderId = OrderId(0x6d);
     pub const DECLOAK: OrderId = OrderId(0x6e);
     pub const UNLOAD: OrderId = OrderId(0x6f);
@@ -236,7 +247,11 @@ impl UnitId {
     }
 
     pub fn ai_flags(&self) -> u8 {
-        self.get(15) as u8
+        self.get(21) as u8
+    }
+
+    pub fn attack_unit_order(&self) -> OrderId {
+        OrderId(self.get(15) as u8)
     }
 
     pub fn is_building(&self) -> bool {
@@ -245,6 +260,10 @@ impl UnitId {
 
     pub fn is_worker(&self) -> bool {
         self.flags() & 0x8 != 0
+    }
+
+    pub fn is_subunit(&self) -> bool {
+        self.flags() & 0x10 != 0
     }
 
     pub fn is_hero(&self) -> bool {
@@ -323,8 +342,18 @@ impl UnitId {
         self.get(28) as u8
     }
 
-    pub fn sight_range(&self) -> u32 {
-        self.get(24)
+    pub fn sight_range(&self) -> u8 {
+        self.get(24) as u8
+    }
+
+    pub fn target_acquisition_range(&self) -> u8 {
+        self.get(23) as u8
+    }
+}
+
+impl FlingyId {
+    pub fn get(&self, id: u32) -> u32 {
+        unsafe { crate::dat_read(FLINGY_DAT, self.0 as u32, id) }
     }
 }
 
@@ -372,6 +401,18 @@ impl WeaponId {
 
     pub fn max_range(&self) -> u32 {
         self.get(5)
+    }
+
+    pub fn min_range(&self) -> Option<NonZeroU32> {
+        NonZeroU32::new(self.get(4))
+    }
+
+    pub fn attack_angle(&self) -> u8 {
+        self.get(18) as u8
+    }
+
+    pub fn cooldown(&self) -> u32 {
+        self.get(16)
     }
 }
 
