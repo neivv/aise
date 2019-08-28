@@ -136,7 +136,7 @@ pub unsafe fn init_hooks(patcher: &mut whack::ActivePatcher) {
     exe.hook_opt(redraw_screen, redraw_screen_hook);
 }
 
-fn redraw_screen_hook(orig: &Fn()) {
+fn redraw_screen_hook(orig: &dyn Fn()) {
     orig();
     with_ctx_state_facade(|state, context| {
         if state.draw_skips != 0 {
@@ -167,7 +167,7 @@ unsafe fn string_from_u8_ptr(ptr: *const u8) -> std::borrow::Cow<'static, str> {
     String::from_utf8_lossy(std::slice::from_raw_parts(ptr, length))
 }
 
-fn create_window_hook(orig: &Fn()) {
+fn create_window_hook(orig: &dyn Fn()) {
     use self::bw_ext::*;
     orig();
     unsafe {
@@ -225,7 +225,7 @@ fn create_window_hook(orig: &Fn()) {
 
             storm.hook_opt(SDrawLockSurface, lock_surface_hook);
             storm.hook_opt(SDrawUnlockSurface, unlock_surface_hook);
-            storm.hook_closure(SDrawRealizePalette, |_: &Fn()| {});
+            storm.hook_closure(SDrawRealizePalette, |_: &dyn Fn()| {});
         }
         hook_inputs(*bw_window);
     }
@@ -327,7 +327,7 @@ fn translate_accelerator_hook(
     hwnd: *mut c_void,
     accel: *mut c_void,
     msg: *const MSG,
-    orig: &Fn(*mut c_void, *mut c_void, *const MSG) -> u32,
+    orig: &dyn Fn(*mut c_void, *mut c_void, *const MSG) -> u32,
 ) -> u32 {
     if unsafe { handle_msg((*msg).message, (*msg).wParam, (*msg).lParam) } == UiInput::Handled {
         1
@@ -372,7 +372,7 @@ fn lock_surface_hook(
     out: *mut *mut u8,
     width: *mut u32,
     unused: u32,
-    orig: &Fn(u32, *const bw::Rect32, *mut *mut u8, *mut u32, u32) -> u32,
+    orig: &dyn Fn(u32, *const bw::Rect32, *mut *mut u8, *mut u32, u32) -> u32,
 ) -> u32 {
     unsafe {
         if id != 0 || out.is_null() || width.is_null() {
@@ -397,7 +397,7 @@ fn unlock_surface_hook(
     ptr: *mut u8,
     unused1: u32,
     unused2: u32,
-    orig: &Fn(u32, *mut u8, u32, u32) -> u32,
+    orig: &dyn Fn(u32, *mut u8, u32, u32) -> u32,
 ) -> u32 {
     if id != 0 {
         return orig(id, ptr, unused1, unused2);

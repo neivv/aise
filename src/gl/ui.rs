@@ -470,7 +470,7 @@ impl Ui {
             return UiInput::Handled;
         }
         match value {
-            '0'...'9' => self.input_buffer.push(value),
+            '0'..='9' => self.input_buffer.push(value),
             _ => {
                 self.input_buffer.clear();
             }
