@@ -418,6 +418,16 @@ impl Town {
     pub fn workers(self) -> impl Iterator<Item = *mut bw::WorkerAi> {
         unsafe { ListIter((*self.0).workers) }
     }
+
+    pub fn requests(self) -> impl Iterator<Item = bw::TownReq> {
+        unsafe {
+            (*self.0)
+                .town_units
+                .iter()
+                .cloned()
+                .take_while(|x| x.flags_and_count != 0)
+        }
+    }
 }
 
 unsafe impl Send for Town {}

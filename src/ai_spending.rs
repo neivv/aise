@@ -65,6 +65,7 @@ fn handle_building_morph(
             };
             let mut valid_unit_ids: SmallVec<[UnitId; 4]> = SmallVec::new();
             parent_unit_ids_for_request(reqs, 0, &mut valid_unit_ids);
+            valid_unit_ids.retain(|&mut x| is_usable_unit_id_for_building_request(x, town));
             if valid_unit_ids.iter().any(|x| x.is_building()) {
                 let unit = town
                     .buildings()
@@ -202,7 +203,21 @@ pub unsafe fn can_satisfy_request(
                 // Units return ok on empty reqs, other dats fail
                 None => return Ok(()),
             };
-            can_satisfy_dat_request(game, player, reqs, 0).map_err(RequestSatisfyError::DatReq)
+            can_satisfy_dat_request(game, player, reqs, 0).map_err(RequestSatisfyError::DatReq)?;
+            if request.ty == 3 {
+                let mut parents = SmallVec::new();
+                parent_unit_ids_for_request(reqs, 0, &mut parents);
+                let ok = parents.iter().any(|&unit_id| {
+                    let town = Town(request.val as *mut bw::AiTown);
+                    is_usable_unit_id_for_building_request(unit_id, town)
+                });
+                if !ok {
+                    return Err(RequestSatisfyError::DatReq(vec![
+                        DatReqSatisfyError::NeedUnit(*parents.get(0).unwrap_or(&UnitId(0))),
+                    ]));
+                }
+            }
+            Ok(())
         }
         5 => {
             let upgrade_id = UpgradeId(request.id);
@@ -497,5 +512,32 @@ fn parent_unit_ids_for_request(
                 out.push(*unit);
             }
         }
+    }
+}
+
+fn is_usable_unit_id_for_building_request(unit_id: UnitId, town: Town) -> bool {
+    use bw_dat::unit;
+    let is_vanilla_morphable = match unit_id {
+        unit::CREEP_COLONY | unit::HATCHERY | unit::LAIR | unit::SPIRE => true,
+        _ => false,
+    };
+    // NOTE: using count_town_units is technically wrong since it includes sunkens/spores
+    // as creeps etc, but it'll fail at other parts of the request check if there isn't
+    // a creep when we need one. And hopefully this is just a short-term solution..
+    let count = ai::count_town_units(town, unit_id, true);
+    if !unit_id.is_building() || is_vanilla_morphable {
+        count != 0
+    } else {
+        // Check to not morph, say sunkens away to spores if a mod enables it
+        // but town has no extra sunkens
+        // Morphing creeps away is fine, that's expected by BW.
+        let requested = town
+            .requests()
+            .filter(|x| x.flags_and_count & 0x6 == 0) // Unit
+            .filter(|x| x.id == unit_id.0)
+            .map(|x| (x.flags_and_count & 0xf8) >> 3)
+            .max()
+            .unwrap_or(0);
+        count > requested.into()
     }
 }
