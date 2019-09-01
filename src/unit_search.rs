@@ -40,6 +40,16 @@ impl UnitSearch {
     }
 
     pub fn search_iter<'s>(&'s self, rect: &Rect) -> SearchIter<'s> {
+        if rect.right <= 0 || rect.bottom <= 0 {
+            return SearchIter {
+                search: self,
+                pos: 0,
+                end: 0,
+                left: 0,
+                top: 0,
+                bottom: 0,
+            };
+        }
         let start = lower_bound(
             &self.values,
             rect.left.saturating_sub(self.max_width as i16).max(0) as u16,
@@ -49,8 +59,8 @@ impl UnitSearch {
             search: self,
             pos: start,
             end,
-            left: rect.left as u16,
-            top: rect.top as u16,
+            left: rect.left.max(0) as u16,
+            top: rect.top.max(0) as u16,
             bottom: rect.bottom as u16,
         }
     }
@@ -63,8 +73,19 @@ impl UnitSearch {
         let mut closest_distance = ::std::u32::MAX;
         let mut nearest = None;
         for &(unit, ref rect) in &self.values {
-            if rect.left > pos.x && (rect.left - pos.x) as u32 >= closest_distance {
-                break;
+            // Since values are sorted by rect.left, if rect is on right of point and diff between
+            // point.x and left is greater than best result, we can end the search.
+            if rect.left > pos.x {
+                // That being said, can't just compare `rect.left - pos.x >= closest_distance`,
+                // due to int div rounding errors at small distances, so add a 8 pixel safety
+                // padding.
+                // (Alternatively this function could just return results that can be slightly
+                // wrong in near ties)
+                let is_too_far = ((rect.left as i32 - pos.x as i32) as u32).saturating_sub(8) >=
+                    closest_distance;
+                if is_too_far {
+                    break;
+                }
             }
             let distance = bw::distance(pos, unit.position());
             if distance < closest_distance && filter(unit) {
@@ -119,6 +140,7 @@ impl Rect {
 }
 
 #[cfg(test)]
+#[cfg_attr(rustfmt, rustfmt_skip)]
 mod test {
     use super::*;
 
@@ -212,5 +234,17 @@ mod test {
         let positions = vec![];
         check(&positions, (9, 9, 11, 11), 0);
         check(&positions, (10, 10, 10, 10), 0);
+    }
+
+    #[test]
+    fn negative_coords() {
+        // Negative coords should be accepted as search area, as it's common to offset
+        // them without clamping to 0.
+        let positions = vec![
+            (10, 10, 20, 20),
+            (0, 1535, 255, 1545),
+        ];
+        check(&positions, (-1, -1, 11, 11), 1);
+        check(&positions, (-1, -26613, 163, -24486), 0);
     }
 }
