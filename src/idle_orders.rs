@@ -51,13 +51,17 @@ impl IdleOrders {
         // Yes, it may consider an order ongoing even if the unit is targeting the
         // target for other reasons. Acceptable?
         ongoing.swap_retain(|o| {
-            let mut retain = match o.target {
-                None => o.user.orders().any(|x| x.id == o.order),
-                Some(target) => o
-                    .user
-                    .orders()
-                    .filter_map(|x| x.target)
-                    .any(|x| x == target),
+            let mut retain = if o.user.is_hidden() {
+                false
+            } else {
+                match o.target {
+                    None => o.user.orders().any(|x| x.id == o.order),
+                    Some(target) => o
+                        .user
+                        .orders()
+                        .filter_map(|x| x.target)
+                        .any(|x| x == target),
+                }
             };
             if retain {
                 fn can_personnel_cloak(id: UnitId) -> bool {
@@ -133,7 +137,7 @@ impl IdleOrders {
                     }
                 }
             }
-            if !retain {
+            if !retain && !o.user.is_hidden() {
                 o.user.issue_order_ground(order::MOVE, o.home);
                 if o.cloaked {
                     returning_cloaked.push(ReturningCloaked {
