@@ -606,6 +606,9 @@ unsafe fn get_matching_guard_ai(unit: Unit) -> Option<*mut bw::GuardAi> {
         None
     } else {
         let ai = (*array).first_free;
+        // Free array objects don't have initialized ai_type if the object
+        // has never been used before.
+        (*ai).ai_type = 1;
         assert!(unit.player() < 8);
         let dest = crate::samase::guard_ais().offset(unit.player() as isize);
         ListEntry::move_to(ai, &mut (*array).first_free, &mut (*dest).first);
