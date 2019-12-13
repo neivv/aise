@@ -3315,6 +3315,10 @@ pub unsafe extern fn guard_command(script: *mut bw::AiScript) {
         let guards = samase::guard_ais().add((*script).player as usize);
         let old_first_active = (*guards).first;
         let new_ai = (*(*guards).array).first_free;
+        if new_ai.is_null() {
+            // Guard AI limit
+            break;
+        }
         (*new_ai) = bw::GuardAi {
             next: (*new_ai).next,
             prev: (*new_ai).prev,
