@@ -476,10 +476,11 @@ impl Unit {
     }
 
     pub fn is_building_addon(self) -> bool {
-        if let Some(addon) = self.addon() {
-            self.order() == bw_dat::order::BUILD_ADDON &&
+        let currently_building = unsafe { Unit::from_ptr((*self.0).currently_building) };
+        if let Some(currently_building) = currently_building {
+            self.secondary_order() == bw_dat::order::BUILD_ADDON &&
                 self.is_landed_building() &&
-                !addon.is_completed()
+                !currently_building.is_completed()
         } else {
             false
         }
