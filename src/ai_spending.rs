@@ -74,7 +74,7 @@ fn handle_building_morph(
                     })
                     .find(|&unit| {
                         valid_unit_ids.iter().any(|&y| unit.matches_id(y)) &&
-                            !unit.is_constructing_building() &&
+                            !is_busy(unit) &&
                             unsafe { check_dat_requirements(game, reqs, unit, 0) }
                     });
                 if let Some(unit) = unit {
@@ -309,6 +309,11 @@ fn is_busy(unit: Unit) -> bool {
     if unit.id().is_building() {
         unsafe {
             if (*unit.0).currently_building != null_mut() {
+                return true;
+            }
+            // Currently_building doesn't catch building morph,
+            // so check also for first queued unit
+            if unit.first_queued_unit().is_some() {
                 return true;
             }
             let tech = TechId((*unit.0).unit_specific[0x8] as u16);
