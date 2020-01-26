@@ -1,46 +1,10 @@
 extern crate bw_dat;
 
-#[cfg(debug_assertions)]
-extern crate backtrace;
-extern crate bincode;
-#[macro_use]
-extern crate bitflags;
-extern crate byteorder;
-extern crate chrono;
-extern crate directories;
-extern crate fern;
-extern crate fxhash;
-#[macro_use]
-extern crate lazy_static;
-extern crate libc;
 #[macro_use]
 extern crate log;
-extern crate parking_lot;
-extern crate rand;
-extern crate rand_xorshift;
-#[macro_use]
-extern crate scopeguard;
-extern crate serde;
-#[macro_use]
-extern crate serde_derive;
-extern crate smallvec;
-extern crate thread_local;
-extern crate winapi;
 
 #[macro_use]
 extern crate whack;
-extern crate samase_shim;
-
-#[cfg(feature = "opengl")]
-extern crate cgmath;
-#[cfg(feature = "opengl")]
-extern crate euclid;
-#[cfg(feature = "opengl")]
-extern crate font_kit;
-#[cfg(feature = "opengl")]
-extern crate gl as opengl;
-#[cfg(feature = "opengl")]
-extern crate glium;
 
 #[macro_use]
 mod macros;
@@ -80,7 +44,7 @@ use bw_dat::Unit;
 use crate::globals::Globals;
 use crate::unit::UnitExt;
 
-lazy_static! {
+lazy_static::lazy_static! {
     static ref PATCHER: whack::Patcher = whack::Patcher::new();
 }
 
@@ -179,7 +143,7 @@ static IS_1161: AtomicBool = AtomicBool::new(false);
 #[cfg(debug_assertions)]
 fn feature_disabled(name: &str) -> bool {
     use parking_lot::Mutex;
-    lazy_static! {
+    lazy_static::lazy_static! {
         static ref DISABLED_FEATURES: Mutex<Option<Vec<String>>> = Mutex::new(None);
     }
     let mut disabled_features = DISABLED_FEATURES.lock();
@@ -262,7 +226,7 @@ pub extern fn Initialize() {
             let ctx = samase_shim::init_1161();
             samase::samase_plugin_init(ctx.api());
 
-            let mut active_patcher = ::PATCHER.lock().unwrap();
+            let mut active_patcher = crate::PATCHER.lock().unwrap();
 
             #[cfg(feature = "opengl")]
             gl::init_hooks(&mut active_patcher);

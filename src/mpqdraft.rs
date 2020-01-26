@@ -93,7 +93,7 @@ unsafe extern "stdcall" fn initialize_plugin(
     _plugin: *mut MpqdraftPlugin,
     _mpqdraft: *mut c_void,
 ) -> u32 {
-    ::Initialize();
+    crate::Initialize();
     1
 }
 

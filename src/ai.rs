@@ -2,6 +2,7 @@ use std::mem;
 use std::ptr::null_mut;
 
 use libc::c_void;
+use serde::{Deserialize, Serialize};
 
 use bw_dat::game::{Game, Race};
 use bw_dat::{order, unit, RaceFlags, TechId, Unit, UnitId, UpgradeId};

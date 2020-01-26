@@ -233,8 +233,7 @@ struct TownBuildInfo {
     unit_id: UnitId,
 }
 
-bitflags! {
-    #[derive(Deserialize, Serialize)]
+bitflags::bitflags! {
     struct BuildStatus: u16 {
         // HAS_POWER is ok
         const NOT_OK = 0x7fff;

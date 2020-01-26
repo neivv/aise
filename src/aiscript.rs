@@ -17,21 +17,21 @@ use serde::{self, Deserialize, Deserializer, Serialize, Serializer};
 use bw_dat::{Game, TechId, Unit, UnitId, UpgradeId};
 
 use crate::ai::{self, has_resources};
+use crate::block_alloc::BlockAllocSet;
+use crate::bw;
 use crate::feature_disabled;
-use block_alloc::BlockAllocSet;
-use bw;
-use globals::{
+use crate::globals::{
     self, BankKey, BaseLayout, BuildMax, BunkerCondition, BunkerDecl, Globals, LiftLand,
     LiftLandBuilding, LiftLandStage, Queues, RenameStatus, RevealState, RevealType, UnitQueue,
     UnitReplace,
 };
-use list::ListIter;
-use order::{self, OrderId};
-use rng::Rng;
-use samase;
-use swap_retain::SwapRetain;
-use unit::{self, UnitExt};
-use unit_search::UnitSearch;
+use crate::list::ListIter;
+use crate::order::{self, OrderId};
+use crate::rng::Rng;
+use crate::samase;
+use crate::swap_retain::SwapRetain;
+use crate::unit::{self, UnitExt};
+use crate::unit_search::UnitSearch;
 
 pub fn init_save_mapping() {}
 
@@ -47,7 +47,7 @@ pub fn clear_load_mapping() {}
 // invalidate the cache.
 // Arc for simplicity, but obviously getting the search from thread other than main is
 // pretty much always racy.
-lazy_static! {
+lazy_static::lazy_static! {
     static ref CACHED_UNIT_SEARCH: Mutex<Option<Arc<UnitSearch>>> = Mutex::new(None);
 }
 static CACHED_UNIT_SEARCH_FRAME: AtomicUsize = AtomicUsize::new(0);

@@ -1,16 +1,17 @@
 use std::sync::Arc;
 
 use fxhash::FxHashMap;
+use serde::{Deserialize, Serialize};
 
 use bw_dat::{self, order, Game, OrderId, Unit, UnitId, WeaponId};
 
-use aiscript::{PlayerMatch, Position, ReadModifierType, ScriptData, UnitMatch};
-use bw;
-use globals::Globals;
-use rng::Rng;
-use swap_retain::SwapRetain;
-use unit::{self, HashableUnit, SerializableUnit, UnitExt};
-use unit_search::UnitSearch;
+use crate::aiscript::{PlayerMatch, Position, ReadModifierType, ScriptData, UnitMatch};
+use crate::bw;
+use crate::globals::Globals;
+use crate::rng::Rng;
+use crate::swap_retain::SwapRetain;
+use crate::unit::{self, HashableUnit, SerializableUnit, UnitExt};
+use crate::unit_search::UnitSearch;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct IdleOrders {
@@ -307,7 +308,7 @@ enum Comparision {
     GreaterThan,
 }
 
-bitflags! {
+bitflags::bitflags! {
     #[derive(Deserialize, Serialize)]
     struct TargetingFlags: u8 {
         const CURRENT_UNIT = 0x1;

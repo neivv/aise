@@ -140,7 +140,7 @@ mod test {
 
     use std::mem;
 
-    use bw;
+    use crate::bw;
 
     fn rect_from_tuple(area: (i16, i16, i16, i16)) -> Rect {
         Rect {

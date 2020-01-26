@@ -4,8 +4,9 @@ use byteorder::{WriteBytesExt, LE};
 use rand::distributions::{Distribution, Uniform};
 use rand::SeedableRng;
 use rand_xorshift::XorShiftRng;
+use serde::{Deserialize, Serialize};
 
-use bw;
+use crate::bw;
 
 // Option as this should be tied to bw's seed, but I'm not sure if the seed is set
 // at game init.

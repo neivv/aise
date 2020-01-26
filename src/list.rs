@@ -1,8 +1,8 @@
-use bw;
+use crate::bw;
 
 pub trait ListEntry: Sized {
-    unsafe fn next(*mut Self) -> *mut *mut Self;
-    unsafe fn prev(*mut Self) -> *mut *mut Self;
+    unsafe fn next(x: *mut Self) -> *mut *mut Self;
+    unsafe fn prev(x: *mut Self) -> *mut *mut Self;
 
     // Remove cfg filters if these happen to be needed
     unsafe fn remove(value: *mut Self, list_head: *mut *mut Self) {

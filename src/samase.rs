@@ -235,61 +235,61 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
         ));
     }
 
-    aiscript_opcode(api, 0x00, ::aiscript::goto);
-    aiscript_opcode(api, 0x09, ::aiscript::wait_build);
-    aiscript_opcode(api, 0x0a, ::aiscript::wait_buildstart);
-    aiscript_opcode(api, 0x0c, ::aiscript::attack_add);
-    aiscript_opcode(api, 0x40, ::aiscript::call);
-    aiscript_opcode(api, 0x41, ::aiscript::ret);
-    aiscript_opcode(api, 0x46, ::aiscript::do_morph);
-    aiscript_opcode(api, 0x4c, ::aiscript::train);
-    aiscript_opcode(api, 0x71, ::aiscript::attack_to);
-    aiscript_opcode(api, 0x72, ::aiscript::attack_timeout);
-    aiscript_opcode(api, 0x73, ::aiscript::issue_order);
-    aiscript_opcode(api, 0x74, ::aiscript::deaths);
-    aiscript_opcode(api, 0x75, ::idle_orders::idle_orders);
-    aiscript_opcode(api, 0x76, ::aiscript::if_attacking);
-    aiscript_opcode(api, 0x77, ::aiscript::unstart_campaign);
-    aiscript_opcode(api, 0x78, ::aiscript::max_workers);
-    aiscript_opcode(api, 0x79, ::aiscript::under_attack);
-    aiscript_opcode(api, 0x7a, ::aiscript::aicontrol);
-    aiscript_opcode(api, 0x7b, ::aiscript::bring_jump);
-    aiscript_opcode(api, 0x7c, ::aiscript::create_script);
-    aiscript_opcode(api, 0x7d, ::aiscript::player_jump);
-    aiscript_opcode(api, 0x7e, ::aiscript::kills_command);
-    aiscript_opcode(api, 0x7f, ::aiscript::wait_rand);
-    aiscript_opcode(api, 0x80, ::aiscript::upgrade_jump);
-    aiscript_opcode(api, 0x81, ::aiscript::tech_jump);
-    aiscript_opcode(api, 0x82, ::aiscript::random_call);
-    aiscript_opcode(api, 0x83, ::aiscript::attack_rand);
-    aiscript_opcode(api, 0x84, ::aiscript::supply);
-    aiscript_opcode(api, 0x85, ::aiscript::time_command);
-    aiscript_opcode(api, 0x86, ::aiscript::resources_command);
-    aiscript_opcode(api, 0x87, ::aiscript::set_town_id);
-    aiscript_opcode(api, 0x88, ::aiscript::remove_build);
-    aiscript_opcode(api, 0x89, ::aiscript::guard_command);
-    aiscript_opcode(api, 0x8a, ::aiscript::base_layout_old);
-    aiscript_opcode(api, 0x8b, ::aiscript::print_command);
-    aiscript_opcode(api, 0x8c, ::aiscript::attacking);
-    aiscript_opcode(api, 0x8d, ::aiscript::base_layout);
-    aiscript_opcode(api, 0x8e, ::aiscript::unit_avail);
-    aiscript_opcode(api, 0x8f, ::aiscript::load_bunkers);
-    aiscript_opcode(api, 0x90, ::aiscript::ping);
-    aiscript_opcode(api, 0x91, ::aiscript::reveal_area);
-    aiscript_opcode(api, 0x92, ::aiscript::tech_avail);
-    aiscript_opcode(api, 0x93, ::aiscript::remove_creep);
-    aiscript_opcode(api, 0x94, ::aiscript::save_bank);
-    aiscript_opcode(api, 0x95, ::aiscript::load_bank);
-    aiscript_opcode(api, 0x96, ::aiscript::bank_data_old);
-    aiscript_opcode(api, 0x97, ::aiscript::unit_name);
-    aiscript_opcode(api, 0x98, ::aiscript::bank_data);
-    aiscript_opcode(api, 0x99, ::aiscript::lift_land);
-    aiscript_opcode(api, 0x9a, ::aiscript::queue);
-    aiscript_opcode(api, 0x9b, ::aiscript::aise_debug);
-    aiscript_opcode(api, 0x9c, ::aiscript::replace_requests);
-    aiscript_opcode(api, 0x9d, ::aiscript::defense_command);
-    aiscript_opcode(api, 0x9e, ::aiscript::max_build);
-    aiscript_opcode(api, 0x9f, ::aiscript::attack_to_deaths);
+    aiscript_opcode(api, 0x00, crate::aiscript::goto);
+    aiscript_opcode(api, 0x09, crate::aiscript::wait_build);
+    aiscript_opcode(api, 0x0a, crate::aiscript::wait_buildstart);
+    aiscript_opcode(api, 0x0c, crate::aiscript::attack_add);
+    aiscript_opcode(api, 0x40, crate::aiscript::call);
+    aiscript_opcode(api, 0x41, crate::aiscript::ret);
+    aiscript_opcode(api, 0x46, crate::aiscript::do_morph);
+    aiscript_opcode(api, 0x4c, crate::aiscript::train);
+    aiscript_opcode(api, 0x71, crate::aiscript::attack_to);
+    aiscript_opcode(api, 0x72, crate::aiscript::attack_timeout);
+    aiscript_opcode(api, 0x73, crate::aiscript::issue_order);
+    aiscript_opcode(api, 0x74, crate::aiscript::deaths);
+    aiscript_opcode(api, 0x75, crate::idle_orders::idle_orders);
+    aiscript_opcode(api, 0x76, crate::aiscript::if_attacking);
+    aiscript_opcode(api, 0x77, crate::aiscript::unstart_campaign);
+    aiscript_opcode(api, 0x78, crate::aiscript::max_workers);
+    aiscript_opcode(api, 0x79, crate::aiscript::under_attack);
+    aiscript_opcode(api, 0x7a, crate::aiscript::aicontrol);
+    aiscript_opcode(api, 0x7b, crate::aiscript::bring_jump);
+    aiscript_opcode(api, 0x7c, crate::aiscript::create_script);
+    aiscript_opcode(api, 0x7d, crate::aiscript::player_jump);
+    aiscript_opcode(api, 0x7e, crate::aiscript::kills_command);
+    aiscript_opcode(api, 0x7f, crate::aiscript::wait_rand);
+    aiscript_opcode(api, 0x80, crate::aiscript::upgrade_jump);
+    aiscript_opcode(api, 0x81, crate::aiscript::tech_jump);
+    aiscript_opcode(api, 0x82, crate::aiscript::random_call);
+    aiscript_opcode(api, 0x83, crate::aiscript::attack_rand);
+    aiscript_opcode(api, 0x84, crate::aiscript::supply);
+    aiscript_opcode(api, 0x85, crate::aiscript::time_command);
+    aiscript_opcode(api, 0x86, crate::aiscript::resources_command);
+    aiscript_opcode(api, 0x87, crate::aiscript::set_town_id);
+    aiscript_opcode(api, 0x88, crate::aiscript::remove_build);
+    aiscript_opcode(api, 0x89, crate::aiscript::guard_command);
+    aiscript_opcode(api, 0x8a, crate::aiscript::base_layout_old);
+    aiscript_opcode(api, 0x8b, crate::aiscript::print_command);
+    aiscript_opcode(api, 0x8c, crate::aiscript::attacking);
+    aiscript_opcode(api, 0x8d, crate::aiscript::base_layout);
+    aiscript_opcode(api, 0x8e, crate::aiscript::unit_avail);
+    aiscript_opcode(api, 0x8f, crate::aiscript::load_bunkers);
+    aiscript_opcode(api, 0x90, crate::aiscript::ping);
+    aiscript_opcode(api, 0x91, crate::aiscript::reveal_area);
+    aiscript_opcode(api, 0x92, crate::aiscript::tech_avail);
+    aiscript_opcode(api, 0x93, crate::aiscript::remove_creep);
+    aiscript_opcode(api, 0x94, crate::aiscript::save_bank);
+    aiscript_opcode(api, 0x95, crate::aiscript::load_bank);
+    aiscript_opcode(api, 0x96, crate::aiscript::bank_data_old);
+    aiscript_opcode(api, 0x97, crate::aiscript::unit_name);
+    aiscript_opcode(api, 0x98, crate::aiscript::bank_data);
+    aiscript_opcode(api, 0x99, crate::aiscript::lift_land);
+    aiscript_opcode(api, 0x9a, crate::aiscript::queue);
+    aiscript_opcode(api, 0x9b, crate::aiscript::aise_debug);
+    aiscript_opcode(api, 0x9c, crate::aiscript::replace_requests);
+    aiscript_opcode(api, 0x9d, crate::aiscript::defense_command);
+    aiscript_opcode(api, 0x9e, crate::aiscript::max_build);
+    aiscript_opcode(api, 0x9f, crate::aiscript::attack_to_deaths);
 
     GAME.init(((*api).game)().map(|x| mem::transmute(x)), "Game object");
     AI_REGIONS.init(
@@ -346,19 +346,19 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
         "change_ai_region_state",
     );
     if !crate::feature_disabled("everything_else") {
-        let result = ((*api).hook_step_objects)(::frame_hook, 0);
+        let result = ((*api).hook_step_objects)(crate::frame_hook, 0);
         if result == 0 {
             fatal("Couldn't hook step_objects");
         }
-        let result = ((*api).hook_step_objects)(::frame_hook_after, 1);
+        let result = ((*api).hook_step_objects)(crate::frame_hook_after, 1);
         if result == 0 {
             fatal("Couldn't hook step_objects");
         }
-        let result = ((*api).hook_step_order)(::step_order_hook);
+        let result = ((*api).hook_step_order)(crate::step_order_hook);
         if result == 0 {
             fatal("Couldn't hook step_order");
         }
-        let result = ((*api).hook_step_order_hidden)(::step_order_hidden_hook);
+        let result = ((*api).hook_step_order_hidden)(crate::step_order_hidden_hook);
         if result == 0 {
             fatal("Couldn't hook soi");
         }
@@ -378,12 +378,12 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
     RNG_SEED.0 = Some(mem::transmute(((*api).rng_seed)()));
     let mut result = ((*api).extend_save)(
         "aise\0".as_ptr(),
-        Some(::globals::save),
-        Some(::globals::load),
-        ::globals::init_game,
+        Some(crate::globals::save),
+        Some(crate::globals::load),
+        crate::globals::init_game,
     );
     if result != 0 {
-        result = ((*api).hook_ingame_command)(6, ::globals::wrap_save, None);
+        result = ((*api).hook_ingame_command)(6, crate::globals::wrap_save, None);
     }
     if result != 0 {
         let ptr = ((*api).player_ai_towns)();
@@ -396,5 +396,5 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
     if result == 0 {
         ((*api).warn_unsupported_feature)(b"Saving\0".as_ptr());
     }
-    ::init();
+    crate::init();
 }

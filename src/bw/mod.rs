@@ -6,7 +6,7 @@ use std::sync::atomic::Ordering;
 
 use bw_dat::{OrderId, TechId, UnitId, UpgradeId};
 
-use samase;
+use crate::samase;
 
 pub mod structs;
 
@@ -122,7 +122,7 @@ pub fn change_ai_region_state(region: *mut AiRegion, state: u32) {
     samase::change_ai_region_state(region, state);
 }
 
-lazy_static! {
+lazy_static::lazy_static! {
     static ref SAMASE_AISCRIPT_BIN: usize =
         samase::read_file("scripts\\aiscript.bin").unwrap().0 as usize;
     static ref SAMASE_BWSCRIPT_BIN: usize =

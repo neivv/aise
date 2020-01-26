@@ -2,6 +2,9 @@ use std::ffi::CString;
 use std::ptr::null_mut;
 use std::slice;
 
+use scopeguard::defer;
+use serde::{Deserialize, Serialize};
+
 use bw_dat::{Unit, UnitId};
 
 use crate::ai::GuardState;
@@ -16,7 +19,7 @@ use crate::rng::Rng;
 use crate::swap_retain::SwapRetain;
 use crate::unit::{self, SerializableUnit};
 
-lazy_static! {
+lazy_static::lazy_static! {
     static ref GLOBALS: Mutex<Globals> = Mutex::new(Globals::new());
     static ref SAVE_STATE: Mutex<Option<SaveState>> = Default::default();
 }

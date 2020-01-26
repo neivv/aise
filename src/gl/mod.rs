@@ -1,6 +1,6 @@
 macro_rules! compile_program {
     ($facade:expr, $vertex:expr, $fragment:expr) => {
-        ::gl::compile_program(
+        crate::gl::compile_program(
             $facade,
             $vertex,
             include_str!(concat!("shaders/", $vertex)),
@@ -29,10 +29,10 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::SystemTime;
 
+use gl as opengl;
 use glium::backend::{Context, Facade};
 use glium::implement_vertex;
 use libc::c_void;
-use opengl;
 use winapi::um::libloaderapi::{FreeLibrary, GetProcAddress};
 use winapi::um::wingdi::{
     wglCreateContext, wglDeleteContext, wglGetCurrentContext, wglGetProcAddress, wglMakeCurrent,
