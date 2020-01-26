@@ -6,10 +6,10 @@ use byteorder::{ReadBytesExt, LE};
 use fxhash::FxHashMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use bw;
-use bw_dat::{tech, upgrade};
-use game::Game;
-use order::OrderId;
+use bw_dat::{tech, upgrade, Game};
+
+use crate::bw;
+use crate::order::OrderId;
 
 pub use bw_dat::unit as id;
 pub use bw_dat::UnitId;

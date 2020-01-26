@@ -3,11 +3,11 @@ use std::ptr::null_mut;
 
 use libc::c_void;
 
+use bw_dat::game::{Game, Race};
 use bw_dat::{order, unit, RaceFlags, TechId, UnitId, UpgradeId};
 
 use crate::aiscript::Town;
 use crate::bw;
-use crate::game::{Game, Race};
 use crate::globals::RegionIdCycle;
 use crate::list::{ListEntry, ListIter};
 use crate::unit::{active_units, Unit};
@@ -505,7 +505,7 @@ impl GuardState {
 
 pub unsafe fn update_guard_needs(game: Game, guards: &mut GuardState) {
     let guard_array = (*bw::guard_array()).ais.as_mut_ptr();
-    let seconds = (*game.0).elapsed_seconds;
+    let seconds = (**game).elapsed_seconds;
     for player in 0..8 {
         let ai = PlayerAi::get(player);
         let ai_regions = bw::ai_regions(player as u32);
@@ -1093,7 +1093,7 @@ unsafe fn add_worker_ai(game: Game, unit: Unit, town: Town) {
         (*ai).target_resource = 0x1;
         (*ai).reassign_count = 0;
         (*ai).wait_timer = 0;
-        (*ai).last_update_second = (*game.0).elapsed_seconds;
+        (*ai).last_update_second = (**game).elapsed_seconds;
         (*unit.0).ai = ai as *mut c_void;
         (*town.0).worker_count = (*town.0).worker_count.saturating_add(1);
     }

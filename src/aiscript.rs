@@ -14,13 +14,12 @@ use directories::UserDirs;
 use parking_lot::Mutex;
 use serde::{self, Deserialize, Deserializer, Serialize, Serializer};
 
-use bw_dat::{TechId, UnitId, UpgradeId};
+use bw_dat::{Game, TechId, UnitId, UpgradeId};
 
 use crate::ai::{self, has_resources};
 use crate::feature_disabled;
 use block_alloc::BlockAllocSet;
 use bw;
-use game::Game;
 use globals::{
     self, BankKey, BaseLayout, BuildMax, BunkerCondition, BunkerDecl, Globals, LiftLand,
     LiftLandBuilding, LiftLandStage, Queues, RenameStatus, RevealState, RevealType, UnitQueue,
@@ -124,11 +123,11 @@ pub unsafe extern fn attack_to_deaths(script: *mut bw::AiScript) {
     if feature_disabled("attack_to") {
         return;
     }
-    let game = Game::get();
-    let group_x = (*game.0).deaths[grouping_x_unit as usize][grouping_x_player as usize];
-    let group_y = (*game.0).deaths[grouping_y_unit as usize][grouping_y_player as usize];
-    let target_x = (*game.0).deaths[target_x_unit as usize][target_x_player as usize];
-    let target_y = (*game.0).deaths[target_y_unit as usize][target_y_player as usize];
+    let game = bw::game();
+    let group_x = (**game).deaths[grouping_x_unit as usize][grouping_x_player as usize];
+    let group_y = (**game).deaths[grouping_y_unit as usize][grouping_y_player as usize];
+    let target_x = (**game).deaths[target_x_unit as usize][target_x_player as usize];
+    let target_y = (**game).deaths[target_y_unit as usize][target_y_player as usize];
     let grouping = bw::Point {
         x: group_x as i16,
         y: group_y as i16,
@@ -166,7 +165,7 @@ pub unsafe extern fn attack_timeout(script: *mut bw::AiScript) {
 }
 
 pub unsafe fn attack_timeouts_frame_hook(globals: &mut Globals, game: Game) {
-    let seconds = (*game.0).elapsed_seconds;
+    let seconds = (**game).elapsed_seconds;
     for i in 0..8 {
         let player_ai = bw::player_ai(i as u32);
         let last_attack_second = (*player_ai).last_attack_second;
@@ -234,7 +233,7 @@ pub unsafe extern fn issue_order(script: *mut bw::AiScript) {
         bw_print!("Aiscript issue_order: Unknown flags 0x{:x}", flags);
         return;
     }
-    let game = Game::get();
+    let game = bw::game();
     let search = aiscript_unit_search(game);
     let units = search
         .search_iter(&src.area)
@@ -598,8 +597,9 @@ pub unsafe extern fn under_attack(script: *mut bw::AiScript) {
 }
 
 unsafe fn subtract_cost(game: Game, id: UnitId, player: u8) {
-    (*game.0).minerals[player as usize] -= &ai::unit_cost(id).minerals;
-    (*game.0).gas[player as usize] -= &ai::unit_cost(id).gas;
+    let cost = ai::unit_cost(id);
+    game.reduce_minerals(player, cost.minerals);
+    game.reduce_gas(player, cost.gas);
 }
 
 pub unsafe fn queues_frame_hook(queues: &mut Queues, unit_search: &UnitSearch, game: Game) {
@@ -760,19 +760,6 @@ pub unsafe fn lift_land_hook(lift_lands: &mut LiftLand, search: &UnitSearch, gam
     }
 }
 
-impl bw::Rect {
-    pub fn from_point(point: bw::Point) -> bw::Rect {
-        let x = point.x;
-        let y = point.y;
-        bw::Rect {
-            left: x,
-            right: x.saturating_add(1),
-            top: y,
-            bottom: y.saturating_add(1),
-        }
-    }
-}
-
 pub unsafe fn bunker_fill_hook(
     bunker_states: &mut BunkerCondition,
     picked_unit: Unit,
@@ -926,7 +913,7 @@ pub unsafe extern fn do_morph(script: *mut bw::AiScript) {
     let globals = Globals::get("ais do_morph");
     let unit_id = globals.unit_replace.replace_check(unit_id); // replace_requests
     let player = (*script).player as u8;
-    if ai::count_units(player, unit_id, Game::get()) < u32::from(amount) {
+    if ai::count_units(player, unit_id, bw::game()) < u32::from(amount) {
         let ai = ai::PlayerAi::get(player);
         (*ai.0).train_unit_id = unit_id.0 + 1;
     }
@@ -939,7 +926,7 @@ pub unsafe extern fn train(script: *mut bw::AiScript) {
     let globals = Globals::get("ais train");
     let unit_id = globals.unit_replace.replace_check(unit_id); // replace_requests
     let player = (*script).player as u8;
-    if ai::count_units(player, unit_id, Game::get()) < u32::from(amount) {
+    if ai::count_units(player, unit_id, bw::game()) < u32::from(amount) {
         let ai = ai::PlayerAi::get(player);
         (*ai.0).train_unit_id = unit_id.0 + 1;
         (*script).pos -= 4;
@@ -1044,7 +1031,7 @@ pub unsafe extern fn supply(script: *mut bw::AiScript) {
     }
     let old_pos = (*script).pos - 1;
     let mut globals = Globals::get("ais supply");
-    let game = Game::get();
+    let game = bw::game();
     let mut read = ScriptData::new(script);
     let players = read.read_player_match(game);
     let modifier = read.read_modifier();
@@ -1100,7 +1087,7 @@ pub unsafe extern fn supply(script: *mut bw::AiScript) {
                         };
                         if race_matches {
                             for player in players.players() {
-                                let supplies = &((*game.0).supplies[race_id]);
+                                let supplies = &((**game).supplies[race_id]);
                                 let amount = match supply_type {
                                     SupplyType::Provided => supplies.provided[player as usize],
                                     SupplyType::Used => supplies.used[player as usize],
@@ -1131,7 +1118,7 @@ pub unsafe extern fn supply(script: *mut bw::AiScript) {
             };
             if supply_type == SupplyType::Max {
                 for player in players.players() {
-                    let supply_val = (*game.0).supplies[race_i].max.get_mut(player as usize);
+                    let supply_val = (**game).supplies[race_i].max.get_mut(player as usize);
                     if let Some(supply_val) = supply_val {
                         *supply_val = write.apply(*supply_val, amount, &mut globals.rng);
                     }
@@ -1151,7 +1138,7 @@ pub unsafe extern fn resources_command(script: *mut bw::AiScript) {
         Gas,
     }
     let old_pos = (*script).pos - 1;
-    let game = Game::get();
+    let game = bw::game();
     let mut globals = Globals::get("ais resources");
     let mut read = ScriptData::new(script);
     let players = read.read_player_match(game);
@@ -1194,8 +1181,8 @@ pub unsafe extern fn resources_command(script: *mut bw::AiScript) {
             for player in players.players() {
                 for &res in resources_to_check {
                     let resources = match res {
-                        Resource::Ore => (*game.0).minerals.get_mut(player as usize),
-                        Resource::Gas => (*game.0).gas.get_mut(player as usize),
+                        Resource::Ore => (**game).minerals.get_mut(player as usize),
+                        Resource::Gas => (**game).gas.get_mut(player as usize),
                     };
                     if let Some(resources) = resources {
                         *resources = write.apply(*resources, amount, &mut globals.rng);
@@ -1223,7 +1210,7 @@ unsafe extern fn reveal(game: Game, area: bw::Rect, players: PlayerMatch, reveal
     let tile_y = area.top / 32;
     let limit_x = area.right / 32;
     let limit_y = area.bottom / 32;
-    let map_width = (*game.0).map_width_tiles;
+    let map_width = game.map_width_tiles();
     for player in players.players().filter(|&x| x < 8) {
         for i in tile_x..=limit_x {
             for j in tile_y..=limit_y {
@@ -1246,7 +1233,7 @@ pub unsafe extern fn reveal_area(script: *mut bw::AiScript) {
         return;
     }
     let mut read = ScriptData::new(script);
-    let game = Game::get();
+    let game = bw::game();
     let mut globals = Globals::get("ais reveal_area");
     let players = read.read_player_match(game);
     let mut src = read.read_position();
@@ -1444,7 +1431,7 @@ pub unsafe extern fn time_command(script: *mut bw::AiScript) {
         Minutes,
     }
     let old_pos = (*script).pos - 1;
-    let game = Game::get();
+    let game = bw::game();
     let mut read = ScriptData::new(script);
     let modifier = read.read_modifier();
     let amount = read.read_u32();
@@ -1565,7 +1552,7 @@ pub unsafe extern fn unit_name(script: *mut bw::AiScript) {
         Enable,
         Disable,
     }
-    let game = Game::get();
+    let game = bw::game();
     let mut read = ScriptData::new(script);
     let players = read.read_player_match(game);
     let unit = read.read_u16();
@@ -1638,7 +1625,7 @@ pub unsafe extern fn wait_buildstart(script: *mut bw::AiScript) {
 
 pub unsafe extern fn deaths(script: *mut bw::AiScript) {
     let old_pos = (*script).pos - 1;
-    let game = Game::get();
+    let game = bw::game();
     // deaths(player, modifier, amount, unit, dest)
     let mut read = ScriptData::new(script);
     let players = read.read_player_match(game);
@@ -1659,7 +1646,7 @@ pub unsafe extern fn deaths(script: *mut bw::AiScript) {
                     players
                         .players()
                         .map(|player| {
-                            (*game.0)
+                            (**game)
                                 .deaths
                                 .get_mut(unit_id.0 as usize)
                                 .and_then(|x| x.get_mut(player as usize))
@@ -1674,7 +1661,7 @@ pub unsafe extern fn deaths(script: *mut bw::AiScript) {
         ModifierType::Write(write) => {
             for unit_id in units.iter_flatten_groups() {
                 for player in players.players() {
-                    let deaths = (*game.0)
+                    let deaths = (**game)
                         .deaths
                         .get_mut(unit_id.0 as usize)
                         .and_then(|x| x.get_mut(player as usize));
@@ -1700,7 +1687,7 @@ pub unsafe extern fn wait_rand(script: *mut bw::AiScript) {
 
 pub unsafe extern fn kills_command(script: *mut bw::AiScript) {
     let old_pos = (*script).pos - 1;
-    let game = Game::get();
+    let game = bw::game();
     // kills(player1, player2, modifier, amount, unit, dest)
     let mut read = ScriptData::new(script);
     let player1 = read.read_player_match(game);
@@ -1825,7 +1812,7 @@ pub unsafe extern fn player_jump(script: *mut bw::AiScript) {
 
 pub unsafe extern fn upgrade_jump(script: *mut bw::AiScript) {
     let old_pos = (*script).pos - 1;
-    let game = Game::get();
+    let game = bw::game();
     let mut read = ScriptData::new(script);
     let players = read.read_player_match(game);
     let modifier = read.read_modifier();
@@ -1892,7 +1879,7 @@ pub unsafe extern fn load_bunkers(script: *mut bw::AiScript) {
 
 pub unsafe extern fn unit_avail(script: *mut bw::AiScript) {
     let old_pos = (*script).pos - 1;
-    let game = Game::get();
+    let game = bw::game();
     let mut globals = Globals::get("ais unit_avail");
     let mut read = ScriptData::new(script);
     let players = read.read_player_match(game);
@@ -1936,7 +1923,7 @@ pub unsafe extern fn unit_avail(script: *mut bw::AiScript) {
 
 pub unsafe extern fn tech_jump(script: *mut bw::AiScript) {
     let old_pos = (*script).pos - 1;
-    let game = Game::get();
+    let game = bw::game();
     let mut read = ScriptData::new(script);
     let players = read.read_player_match(game);
     let modifier = read.read_modifier();
@@ -1970,7 +1957,7 @@ pub unsafe extern fn tech_jump(script: *mut bw::AiScript) {
 
 pub unsafe extern fn tech_avail(script: *mut bw::AiScript) {
     let old_pos = (*script).pos - 1;
-    let game = Game::get();
+    let game = bw::game();
     let mut read = ScriptData::new(script);
     let players = read.read_player_match(game);
     let modifier = read.read_modifier();
@@ -2058,7 +2045,7 @@ unsafe fn add_to_attack_force(globals: &Globals, player: u8, unit: UnitId, amoun
 
 pub unsafe extern fn bring_jump(script: *mut bw::AiScript) {
     let old_pos = (*script).pos - 1;
-    let game = Game::get();
+    let game = bw::game();
     let mut read = ScriptData::new(script);
     let players = read.read_player_match(game);
     let modifier = read.read_modifier();
@@ -2318,7 +2305,7 @@ impl ScriptData {
                 18 | 19 | 20 | 21 => {
                     // Forces are 1-based
                     let force = 1 + player - 18;
-                    for player in (0..8).filter(|&x| (*game.0).player_forces[x as usize] == force) {
+                    for player in (0..8).filter(|&x| (**game).player_forces[x as usize] == force) {
                         result.players[player as usize] = true;
                     }
                 }
@@ -2828,7 +2815,7 @@ pub unsafe fn choose_building_placement(
     let globals = Globals::get("place building hook");
     let unit_search = UnitSearch::from_bw();
     if let Some(town_id) = globals.town_ids.iter().find(|x| x.town.0 == town) {
-        let game = Game::get();
+        let game = bw::game();
         let layouts = globals
             .base_layouts
             .layouts
@@ -2897,8 +2884,8 @@ unsafe fn check_placement(
     y_tile: i16,
     unit_id: UnitId,
 ) -> bool {
-    let map_width = (*game.0).map_width_tiles;
-    let map_height = (*game.0).map_height_tiles;
+    let map_width = game.map_width_tiles();
+    let map_height = game.map_height_tiles();
     let zerg = unit_id.group_flags() & 0x1 != 0;
     let require_creep = unit_id.require_creep();
     let forbid_creep = !require_creep && !zerg;

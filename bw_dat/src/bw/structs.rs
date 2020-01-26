@@ -510,6 +510,57 @@ pub mod scr {
 }
 
 impl Rect {
+    pub fn from_point(point: Point) -> Rect {
+        let x = point.x;
+        let y = point.y;
+        Rect {
+            left: x,
+            right: x.saturating_add(1),
+            top: y,
+            bottom: y.saturating_add(1),
+        }
+    }
+
+    pub fn from_point_radius(point: Point, radius: i16) -> Rect {
+        Rect {
+            left: point.x.saturating_sub(radius).max(0),
+            right: point.x.saturating_add(radius),
+            top: point.y.saturating_sub(radius).max(0),
+            bottom: point.y.saturating_add(radius),
+        }
+    }
+
+    pub fn top_left(&self) -> Point {
+        Point {
+            x: self.left,
+            y: self.top,
+        }
+    }
+
+    /// Note: Inclusive
+    pub fn top_right(&self) -> Point {
+        Point {
+            x: self.right - 1,
+            y: self.top,
+        }
+    }
+
+    /// Note: Inclusive
+    pub fn bottom_left(&self) -> Point {
+        Point {
+            x: self.left,
+            y: self.bottom - 1,
+        }
+    }
+
+    /// Note: Inclusive
+    pub fn bottom_right(&self) -> Point {
+        Point {
+            x: self.right - 1,
+            y: self.bottom - 1,
+        }
+    }
+
     pub fn overlaps(&self, o: &Rect) -> bool {
         self.left < o.right && self.right > o.left && self.top < o.bottom && self.bottom > o.top
     }

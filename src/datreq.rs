@@ -1,7 +1,6 @@
 use smallvec::SmallVec;
 
-use bw_dat::{self, tech, unit, upgrade, TechId, UnitId};
-use game::Game;
+use bw_dat::{self, tech, unit, upgrade, Game, TechId, UnitId};
 use unit::Unit;
 
 impl DatReq {

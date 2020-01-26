@@ -168,4 +168,12 @@ impl Game {
     pub fn allied(self, player: u8, other: u8) -> bool {
         unsafe { (**self).alliances[player as usize][other as usize] != 0 }
     }
+
+    pub fn map_width_tiles(self) -> u16 {
+        unsafe { (**self).map_width_tiles }
+    }
+
+    pub fn map_height_tiles(self) -> u16 {
+        unsafe { (**self).map_height_tiles }
+    }
 }

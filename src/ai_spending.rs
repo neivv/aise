@@ -2,13 +2,12 @@ use std::ptr::null_mut;
 
 use smallvec::SmallVec;
 
-use bw_dat::{self, order, TechId, UnitId, UpgradeId};
+use bw_dat::{self, order, Game, TechId, UnitId, UpgradeId};
 
 use crate::ai::{self, has_resources, Cost, PlayerAi};
 use crate::aiscript::{AiMode, Town};
 use crate::bw;
 use crate::datreq::{check_dat_requirements, DatReq, ReadDatReqs};
-use crate::game::Game;
 use crate::list::ListIter;
 use crate::unit::{self, Unit};
 use crate::unit_search::UnitSearch;

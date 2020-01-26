@@ -5,11 +5,10 @@ use cgmath::{vec4, Matrix4};
 use glium::backend::Facade;
 use glium::{uniform, Surface};
 
-use bw_dat::{unit, UnitId};
+use bw_dat::{unit, Game, UnitId};
 
 use crate::aiscript::Town;
 use crate::bw;
-use crate::game::Game;
 use crate::unit::Unit;
 use crate::unit_search::UnitSearch;
 
@@ -53,7 +52,7 @@ impl AiBuildView {
         }
         page.push(format!("Placement for {}", unit_name(self.unit_id)));
 
-        let game = Game::get();
+        let game = bw::game();
         let town_array = bw::town_array();
         unsafe {
             let town_id = (town as usize - town_array as usize) / mem::size_of::<bw::AiTown>();
@@ -500,63 +499,11 @@ fn test_point_direction() {
     assert_eq!(point_direction(p(50, 50), p(100, 100)), 96);
 }
 
-impl bw::Rect {
-    fn from_point_radius(point: bw::Point, radius: i16) -> bw::Rect {
-        bw::Rect {
-            left: point.x.saturating_sub(radius).max(0),
-            right: point.x.saturating_add(radius),
-            top: point.y.saturating_sub(radius).max(0),
-            bottom: point.y.saturating_add(radius),
-        }
-    }
-
-    fn top_left(&self) -> bw::Point {
-        bw::Point {
-            x: self.left,
-            y: self.top,
-        }
-    }
-
-    /// Note: Inclusive
-    fn top_right(&self) -> bw::Point {
-        bw::Point {
-            x: self.right - 1,
-            y: self.top,
-        }
-    }
-
-    /// Note: Inclusive
-    fn bottom_left(&self) -> bw::Point {
-        bw::Point {
-            x: self.left,
-            y: self.bottom - 1,
-        }
-    }
-
-    /// Note: Inclusive
-    fn bottom_right(&self) -> bw::Point {
-        bw::Point {
-            x: self.right - 1,
-            y: self.bottom - 1,
-        }
-    }
-}
-
 fn unit_region_group(unit: Unit) -> u16 {
     unsafe {
         let region = bw::get_region(unit.position()).unwrap_or(0);
         let pathing = bw::pathing();
         (*pathing).regions[region as usize].group
-    }
-}
-
-impl Game {
-    pub fn map_width_tiles(self) -> u16 {
-        unsafe { (*self.0).map_width_tiles }
-    }
-
-    pub fn map_height_tiles(self) -> u16 {
-        unsafe { (*self.0).map_height_tiles }
     }
 }
 

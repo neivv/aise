@@ -133,12 +133,6 @@ fn lower_bound(slice: &[(Unit, Rect)], val: u16) -> usize {
     crate::lower_bound_by_key(slice, val, |x| x.1.left as u16)
 }
 
-impl Rect {
-    pub fn overlaps(&self, o: &Rect) -> bool {
-        self.left < o.right && self.right > o.left && self.top < o.bottom && self.bottom > o.top
-    }
-}
-
 #[cfg(test)]
 #[cfg_attr(rustfmt, rustfmt_skip)]
 mod test {

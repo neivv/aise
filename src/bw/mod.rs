@@ -11,6 +11,7 @@ use samase;
 pub mod structs;
 
 pub use self::structs::*;
+pub use bw_dat::structs::*;
 
 pub fn is_scr() -> bool {
     crate::IS_1161.load(Ordering::Acquire) == false
@@ -37,34 +38,32 @@ pub fn get_region(pos: Point) -> Option<u16> {
         x,
         y,
     } = pos;
-    unsafe {
-        let game = game();
-        let bounds = ((*game).map_width_tiles * 32, (*game).map_height_tiles * 32);
-        if bounds.0 as i16 <= x || bounds.1 as i16 <= y {
-            None
-        } else {
-            Some(samase::get_region(x as u32, y as u32) as u16)
-        }
+    let game = game();
+    let bounds = (game.map_width_tiles() * 32, game.map_height_tiles() * 32);
+    if bounds.0 as i16 <= x || bounds.1 as i16 <= y {
+        None
+    } else {
+        Some(samase::get_region(x as u32, y as u32) as u16)
     }
 }
 
-pub fn game() -> *mut Game {
-    samase::game()
+pub fn game() -> bw_dat::Game {
+    unsafe { bw_dat::Game::from_ptr(samase::game()) }
 }
 
 pub fn rng_seed() -> u32 {
     samase::rng_seed().unwrap_or_else(|| {
         // Oh well, rng.rs only uses this for the initial seed
-        unsafe { (*game()).frame_count.wrapping_add(1234) }
+        game().frame_count().wrapping_add(1234)
     })
 }
 
 pub fn elapsed_seconds() -> u32 {
-    unsafe { (*game()).elapsed_seconds }
+    unsafe { (**game()).elapsed_seconds }
 }
 
 pub fn location(location: u8) -> Location {
-    unsafe { (*game()).locations[location as usize] }
+    unsafe { (**game()).locations[location as usize] }
 }
 
 pub fn point_from_rect(rect: Rect) -> Point {

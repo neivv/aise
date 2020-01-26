@@ -2,13 +2,12 @@ use std::mem;
 
 use libc::c_void;
 
-use bw_dat::{tech, unit, upgrade, TechId, UnitId, UpgradeId};
+use bw_dat::{tech, unit, upgrade, Game, TechId, UnitId, UpgradeId};
 
 use crate::ai::{self, PlayerAi};
 use crate::ai_spending::{DatReqSatisfyError, RequestSatisfyError};
 use crate::aiscript::Town;
 use crate::bw;
-use crate::game::Game;
 use crate::globals::Globals;
 use crate::list::ListIter;
 use crate::unit::{active_units, Unit};
@@ -39,7 +38,7 @@ impl MilitaryRequests {
     pub fn draw_page(&mut self, page: &mut Page, globals: &Globals) {
         page.clear();
 
-        let game = Game::get();
+        let game = bw::game();
         let player_ai = PlayerAi::get(self.player);
         page.push(format!("Player {}", self.player));
         unsafe {
@@ -382,7 +381,7 @@ impl TownRequests {
             None => return,
         };
 
-        let game = Game::get();
+        let game = bw::game();
         let town_array = bw::town_array();
         unsafe {
             let player_ai = PlayerAi::get((*town).player);

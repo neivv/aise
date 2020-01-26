@@ -3,11 +3,10 @@ use std::sync::Arc;
 
 use fxhash::FxHashMap;
 
-use bw_dat::{self, order, OrderId, UnitId, WeaponId};
+use bw_dat::{self, order, Game, OrderId, UnitId, WeaponId};
 
 use aiscript::{PlayerMatch, Position, ReadModifierType, ScriptData, UnitMatch};
 use bw;
-use game::Game;
 use globals::Globals;
 use rng::Rng;
 use swap_retain::SwapRetain;
@@ -40,7 +39,7 @@ impl IdleOrders {
                 (*ai).spell_cooldown = 250;
             }
         }
-        let game = Game::get();
+        let game = bw::game();
         let current_frame = game.frame_count();
         let deathrattles = &self.deathrattles;
         let ongoing = &mut self.ongoing;
@@ -476,7 +475,7 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
                         let modifier = read.read_u8();
                         let value = read.read_u16();
                         let range = read.read_u16();
-                        let game = Game::get();
+                        let game = bw::game();
                         let players = read.read_player_match(game);
                         let modifier = match modifier {
                             0 => ReadModifierType::AtLeast,
@@ -989,7 +988,7 @@ impl IdleOrderFlags {
                 }
             }
             if self.tiles_required != 0 || self.tiles_not != 0 {
-                let map_width = (*game.0).map_width_tiles;
+                let map_width = game.map_width_tiles();
                 let tile = *(*bw::tile_flags).offset(
                     (unit.position().x as u16 / 32) as isize +
                         (map_width * (unit.position().y as u16 / 32)) as isize,

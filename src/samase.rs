@@ -6,11 +6,10 @@ use winapi::um::processthreadsapi::{GetCurrentProcess, TerminateProcess};
 
 use samase_shim::PluginApi;
 
-use bw;
-use bw_dat;
-use order::OrderId;
-use unit::UnitId;
-use windows;
+use crate::bw;
+use crate::order::OrderId;
+use crate::unit::UnitId;
+use crate::windows;
 
 struct GlobalFunc<T: Copy>(Option<T>);
 

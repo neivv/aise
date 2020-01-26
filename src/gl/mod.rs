@@ -124,7 +124,6 @@ impl DrawState {
 
 static OPENGL32_DLL: AtomicUsize = AtomicUsize::new(0);
 static OLD_WINDOW_PROC: AtomicUsize = AtomicUsize::new(0);
-static IS_SCR: AtomicBool = AtomicBool::new(false);
 
 pub unsafe fn init_hooks(patcher: &mut whack::ActivePatcher) {
     use self::bw_ext::*;

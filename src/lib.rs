@@ -57,7 +57,6 @@ mod aiscript;
 mod block_alloc;
 mod bw;
 mod datreq;
-mod game;
 mod globals;
 mod idle_orders;
 mod list;
@@ -76,7 +75,6 @@ use libc::c_void;
 
 use winapi::um::processthreadsapi::{GetCurrentProcess, TerminateProcess};
 
-use crate::game::Game;
 use crate::globals::Globals;
 use crate::unit::Unit;
 
@@ -297,7 +295,7 @@ unsafe extern fn frame_hook() {
     let search = unit_search::UnitSearch::from_bw();
     let mut globals = Globals::get("frame hook");
     let globals = &mut *globals;
-    let game = game::Game::get();
+    let game = bw::game();
     aiscript::claim_bw_allocated_scripts(globals);
     ai::update_region_safety(&mut globals.region_safety_pos, game, &search);
     aiscript::attack_timeouts_frame_hook(globals, game);
@@ -379,7 +377,7 @@ unsafe extern fn step_order_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_v
     if FIRST_STEP_ORDER_OF_FRAME.load(Ordering::Relaxed) {
         FIRST_STEP_ORDER_OF_FRAME.store(false, Ordering::Relaxed);
         let globals = Globals::get("step order hook (start)");
-        let game = Game::get();
+        let game = bw::game();
         // TODO Init lazily
         let unit_search = unit_search::UnitSearch::from_bw();
         ai_spending::frame_hook(game, &unit_search, &globals.ai_mode);
@@ -400,7 +398,7 @@ unsafe extern fn step_order_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_v
                     // Handle trains here instead of letting BW to handle them with
                     // stupid guard-related behaviour.
                     let ai = ai::PlayerAi::get(player);
-                    ai.check_train(unit, game::Game::get());
+                    ai.check_train(unit, bw::game());
                 }
             }
         }
