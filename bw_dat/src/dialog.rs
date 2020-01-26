@@ -22,3 +22,23 @@ impl Control {
         }
     }
 }
+
+pub struct Event(NonNull<bw::ControlEvent>);
+
+impl Event {
+    pub unsafe fn new(pointer: *mut bw::ControlEvent) -> Event {
+        Event(NonNull::new(pointer).unwrap())
+    }
+
+    pub fn mouse_pos(self) -> (i16, i16) {
+        unsafe {
+            if crate::is_scr() {
+                let ptr = self.0.as_ptr() as *mut bw::scr::ControlEvent;
+                ((*ptr).x, (*ptr).y)
+            } else {
+                let ptr = self.0.as_ptr();
+                ((*ptr).x, (*ptr).y)
+            }
+        }
+    }
+}

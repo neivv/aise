@@ -30,6 +30,10 @@ pub fn set_is_scr(value: bool) {
     IS_SCR.store(value, Ordering::Relaxed);
 }
 
+fn is_scr() -> bool {
+    IS_SCR.load(Ordering::Relaxed) == true
+}
+
 pub unsafe fn init_1161(patcher: &mut whack::ModulePatcher) {
     bw::init_vars(patcher);
 }

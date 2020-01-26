@@ -436,12 +436,12 @@ pub struct Control {
 
 #[repr(C, packed)]
 pub struct ControlEvent {
-    ext_type: u32,
-    ext_param: u32,
-    param: u32,
-    ty: u16,
-    x: i16,
-    y: i16,
+    pub ext_type: u32,
+    pub ext_param: u32,
+    pub param: u32,
+    pub ty: u16,
+    pub x: i16,
+    pub y: i16,
 }
 
 pub mod scr {
@@ -473,15 +473,15 @@ pub mod scr {
 
     #[repr(C, packed)]
     pub struct ControlEvent {
-        ext_type: u32,
-        unk4: u32,
-        ext_param: u32,
-        param: u32,
-        ty: u16,
-        x: i16,
-        y: i16,
-        padding: u16,
-        time: u32,
+        pub ext_type: u32,
+        pub unk4: u32,
+        pub ext_param: u32,
+        pub param: u32,
+        pub ty: u16,
+        pub x: i16,
+        pub y: i16,
+        pub padding: u16,
+        pub time: u32,
     }
 
     #[repr(C, packed)]
@@ -521,7 +521,7 @@ mod test {
     #[test]
     fn test_sizes() {
         use std::mem;
-        assert_eq!(mem::size_of::<Game>(), 0x102f0);
+        assert_eq!(mem::size_of::<Game>(), 0x17700);
         assert_eq!(mem::size_of::<Unit>(), 0x150);
         assert_eq!(mem::size_of::<Bullet>(), 0x70);
         assert_eq!(mem::size_of::<Sprite>(), 0x24);
