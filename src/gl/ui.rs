@@ -128,7 +128,7 @@ fn default_fonts() -> Vec<Font> {
     debug!("Loading fonts");
     let mut font_cache = cached_fonts();
     let mut font_cache_changed = false;
-    let source = font_kit::source::SystemSource::new();
+    let mut source = None;
     let mut fonts = Vec::new();
     let names = [
         "Lucida Console",
@@ -140,8 +140,9 @@ fn default_fonts() -> Vec<Font> {
             let &(_, ref path, index) = &font_cache[pos];
             font_kit::handle::Handle::from_path(path.clone(), index)
         } else {
-            let result =
-                source.select_best_match(&[FamilyName::Title(name.into())], &Default::default());
+            let result = source
+                .get_or_insert_with(|| font_kit::source::SystemSource::new())
+                .select_best_match(&[FamilyName::Title(name.into())], &Default::default());
             match result {
                 Ok(o) => {
                     match o {
@@ -169,7 +170,9 @@ fn default_fonts() -> Vec<Font> {
         }
     }
     if fonts.is_empty() {
-        let result = source.select_best_match(&[FamilyName::Monospace], &Default::default());
+        let result = source
+            .get_or_insert_with(|| font_kit::source::SystemSource::new())
+            .select_best_match(&[FamilyName::Monospace], &Default::default());
         let handle = match result {
             Ok(o) => o,
             Err(_) => return vec![],
@@ -573,9 +576,9 @@ impl<'a> TextDrawContext<'a> {
             let coords = self.font_data.atlas.place_char(c);
             if coords.width_px != 0 && coords.height_px != 0 {
                 let glyph_x = x + coords.offset_x as f32;
-                let glyph_y = y + coords.offset_y as f32 - coords.height_px as f32;
+                let glyph_y = y + coords.offset_y as f32;
                 let glyph_r = glyph_x + coords.width_px as f32;
-                let glyph_b = y + coords.offset_y as f32;
+                let glyph_b = glyph_y + coords.height_px as f32;
                 let i = self.vertices.len() as u32;
                 self.vertices.push(TexCoordVertex {
                     position: [glyph_x, glyph_y],

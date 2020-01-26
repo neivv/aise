@@ -4,6 +4,8 @@
 use std::ptr::{null, null_mut};
 use std::sync::atomic::Ordering;
 
+use libc::c_void;
+
 use bw_dat::{OrderId, TechId, UnitId, UpgradeId};
 
 use crate::samase;
@@ -226,7 +228,7 @@ whack_hooks!(stdcall, 0x00400000,
     0x004A13C0 => ai_spellcast(bool, @eax *mut Unit) -> u32;
     0x0047B090 => get_unit_name(@ecx u32) -> *const u8;
     0x0043FCF0 => ai_focus_unit_check(@ecx *mut Unit, @edx u32) -> u32;
-    0x00447980 => add_spending_request(u32,*mut libc::c_void,@eax u16, @ecx u32, @edx u8);
+    0x00447980 => add_spending_request(u32, *mut c_void, @eax u16, @ecx u32, @edx u8);
 );
 
 whack_funcs!(stdcall, init_funcs, 0x00400000,
@@ -248,5 +250,4 @@ whack_vars!(init_vars, 0x00400000,
     0x0057F0B4 => is_multiplayer: u8;
     0x006D1260 => tile_flags: *mut u32;
     0x00597208 => client_selection: [*mut Unit; 0xc];
-
 );

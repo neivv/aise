@@ -36,6 +36,7 @@ use std::ptr::null_mut;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use libc::c_void;
+use parking_lot::Mutex;
 
 use winapi::um::processthreadsapi::{GetCurrentProcess, TerminateProcess};
 
@@ -45,7 +46,7 @@ use crate::globals::Globals;
 use crate::unit::UnitExt;
 
 lazy_static::lazy_static! {
-    static ref PATCHER: whack::Patcher = whack::Patcher::new();
+    static ref PATCHER: Mutex<whack::Patcher> = Mutex::new(whack::Patcher::new());
 }
 
 fn init() {
@@ -142,7 +143,6 @@ static IS_1161: AtomicBool = AtomicBool::new(false);
 
 #[cfg(debug_assertions)]
 fn feature_disabled(name: &str) -> bool {
-    use parking_lot::Mutex;
     lazy_static::lazy_static! {
         static ref DISABLED_FEATURES: Mutex<Option<Vec<String>>> = Mutex::new(None);
     }
@@ -226,7 +226,7 @@ pub extern fn Initialize() {
             let ctx = samase_shim::init_1161();
             samase::samase_plugin_init(ctx.api());
 
-            let mut active_patcher = crate::PATCHER.lock().unwrap();
+            let mut active_patcher = crate::PATCHER.lock();
 
             #[cfg(feature = "opengl")]
             gl::init_hooks(&mut active_patcher);

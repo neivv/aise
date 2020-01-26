@@ -28,7 +28,7 @@ macro_rules! ome2_thread_local {
         lazy_static::lazy_static!(static ref $name: ::thread_local::CachedThreadLocal<$ty> =
             ::thread_local::CachedThreadLocal::new(););
         fn $fun() -> &'static $ty {
-            $name.get_or(|| Box::new($expr))
+            $name.get_or(|| $expr)
         }
     );
 }

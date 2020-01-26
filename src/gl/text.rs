@@ -4,6 +4,7 @@ use std::rc::Rc;
 use font_kit::canvas::{self, Canvas, RasterizationOptions};
 use font_kit::font::Font;
 use font_kit::hinting::HintingOptions;
+use font_kit::loader::FontTransform;
 use fxhash::FxHashMap;
 use glium::backend::Facade;
 use glium::texture::{ClientFormat, RawImage2d, Texture2d};
@@ -154,9 +155,11 @@ impl State {
     }
 
     pub fn place_glyph(&mut self, font: &Font, c: char, glyph: u32) -> BufferCoord {
+        let transform = FontTransform::identity();
         let bounds = font.raster_bounds(
             glyph,
             self.point_size,
+            &transform,
             &euclid::Point2D::new(0.0, 0.0),
             HintingOptions::None,
             RasterizationOptions::Bilevel,
@@ -209,7 +212,8 @@ impl State {
             &mut canvas,
             glyph,
             self.point_size,
-            &euclid::Point2D::new(0.0, 0.0),
+            &transform,
+            &euclid::Point2D::new(0.0 - bounds.min_x() as f32, 0.0 - bounds.min_y() as f32),
             HintingOptions::None,
             RasterizationOptions::Bilevel,
         );
@@ -228,8 +232,8 @@ impl State {
             y: pos.1 as u16,
             width_px: glyph_width as u8,
             height_px: glyph_height as u8,
-            offset_x: 0,
-            offset_y: 0 - bounds.min_y() as i8,
+            offset_x: bounds.min_x() as i8,
+            offset_y: bounds.min_y() as i8,
         };
         self.placed_chars.insert(c, coord);
         self.dirty = true;

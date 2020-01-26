@@ -125,7 +125,7 @@ impl DrawState {
 static OPENGL32_DLL: AtomicUsize = AtomicUsize::new(0);
 static OLD_WINDOW_PROC: AtomicUsize = AtomicUsize::new(0);
 
-pub unsafe fn init_hooks(patcher: &mut whack::ActivePatcher) {
+pub unsafe fn init_hooks(patcher: &mut whack::Patcher) {
     use self::bw_ext::*;
     let mut exe = patcher.patch_exe(0x00400000);
     init_sc_vars(&mut exe);
@@ -135,8 +135,10 @@ pub unsafe fn init_hooks(patcher: &mut whack::ActivePatcher) {
     exe.hook_opt(redraw_screen, redraw_screen_hook);
 }
 
-fn redraw_screen_hook(orig: &dyn Fn()) {
-    orig();
+fn redraw_screen_hook(orig: unsafe extern fn()) {
+    unsafe {
+        orig();
+    }
     with_ctx_state_facade(|state, context| {
         if state.draw_skips != 0 {
             state.draw_skips -= 1;
@@ -166,10 +168,10 @@ unsafe fn string_from_u8_ptr(ptr: *const u8) -> std::borrow::Cow<'static, str> {
     String::from_utf8_lossy(std::slice::from_raw_parts(ptr, length))
 }
 
-fn create_window_hook(orig: &dyn Fn()) {
+fn create_window_hook(orig: unsafe extern fn()) {
     use self::bw_ext::*;
-    orig();
     unsafe {
+        orig();
         let context = match create_wgl_context(*bw_ext::bw_window) {
             Ok(o) => o,
             Err(e) => {
@@ -204,7 +206,7 @@ fn create_window_hook(orig: &dyn Fn()) {
         });
 
         // Hook these here since wmode would otherwise overwrite this.
-        let mut patcher = crate::PATCHER.lock().unwrap();
+        let mut patcher = crate::PATCHER.lock();
         {
             let mut exe = patcher.patch_exe(0x00400000);
 
@@ -224,7 +226,7 @@ fn create_window_hook(orig: &dyn Fn()) {
 
             storm.hook_opt(SDrawLockSurface, lock_surface_hook);
             storm.hook_opt(SDrawUnlockSurface, unlock_surface_hook);
-            storm.hook_closure(SDrawRealizePalette, |_: &dyn Fn()| {});
+            storm.hook_closure(SDrawRealizePalette, |_| {});
         }
         hook_inputs(*bw_window);
     }
@@ -326,12 +328,14 @@ fn translate_accelerator_hook(
     hwnd: *mut c_void,
     accel: *mut c_void,
     msg: *const MSG,
-    orig: &dyn Fn(*mut c_void, *mut c_void, *const MSG) -> u32,
+    orig: unsafe extern fn(*mut c_void, *mut c_void, *const MSG) -> u32,
 ) -> u32 {
-    if unsafe { handle_msg((*msg).message, (*msg).wParam, (*msg).lParam) } == UiInput::Handled {
-        1
-    } else {
-        orig(hwnd, accel, msg)
+    unsafe {
+        if handle_msg((*msg).message, (*msg).wParam, (*msg).lParam) == UiInput::Handled {
+            1
+        } else {
+            orig(hwnd, accel, msg)
+        }
     }
 }
 
@@ -371,7 +375,7 @@ fn lock_surface_hook(
     out: *mut *mut u8,
     width: *mut u32,
     unused: u32,
-    orig: &dyn Fn(u32, *const bw::Rect32, *mut *mut u8, *mut u32, u32) -> u32,
+    orig: unsafe extern fn(u32, *const bw::Rect32, *mut *mut u8, *mut u32, u32) -> u32,
 ) -> u32 {
     unsafe {
         if id != 0 || out.is_null() || width.is_null() {
@@ -391,12 +395,12 @@ fn lock_surface_hook(
     }
 }
 
-fn unlock_surface_hook(
+unsafe fn unlock_surface_hook(
     id: u32,
     ptr: *mut u8,
     unused1: u32,
     unused2: u32,
-    orig: &dyn Fn(u32, *mut u8, u32, u32) -> u32,
+    orig: unsafe extern fn(u32, *mut u8, u32, u32) -> u32,
 ) -> u32 {
     if id != 0 {
         return orig(id, ptr, unused1, unused2);
