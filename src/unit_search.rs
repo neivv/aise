@@ -1,9 +1,9 @@
 use std::iter::FromIterator;
 
-use bw_dat;
+use bw_dat::Unit;
 
-use bw::{self, Point, Rect};
-use unit::{self, Unit};
+use crate::bw::{self, Point, Rect};
+use crate::unit;
 
 pub struct UnitSearch {
     values: Vec<(Unit, Rect)>,
@@ -165,7 +165,9 @@ mod test {
             .iter()
             .enumerate()
             .map(|(i, tuple)| {
-                let unit = Unit(units.as_mut_ptr().wrapping_offset(i as isize));
+                let unit = unsafe {
+                    Unit::from_ptr(units.as_mut_ptr().wrapping_offset(i as isize)).unwrap()
+                };
                 (unit, rect_from_tuple(*tuple))
             })
             .collect::<UnitSearch>();
@@ -175,7 +177,7 @@ mod test {
         assert_eq!(results.len(), count, "Area {:?}", area);
         for (i, unit) in units.iter_mut().enumerate() {
             let ptr = unit as *mut bw::Unit;
-            if results.iter().any(|x| x.0 == ptr) {
+            if results.iter().any(|&x| *x == ptr) {
                 assert!(
                     rect_overlaps(cboxes[i], &area),
                     "Cbox {:?} didn't overlap {:?}",

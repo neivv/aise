@@ -334,11 +334,15 @@ impl Unit {
         }
     }
 
+    pub fn currently_building(self) -> Option<Unit> {
+        unsafe { Unit::from_ptr((**self).currently_building) }
+    }
+
     pub fn is_building_addon(self) -> bool {
-        if let Some(addon) = self.addon() {
-            self.order() == crate::order::BUILD_ADDON &&
+        if let Some(currently_building) = self.currently_building() {
+            self.secondary_order() == crate::order::BUILD_ADDON &&
                 self.is_landed_building() &&
-                !addon.is_completed()
+                !currently_building.is_completed()
         } else {
             false
         }

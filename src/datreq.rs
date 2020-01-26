@@ -1,7 +1,6 @@
 use smallvec::SmallVec;
 
-use bw_dat::{self, tech, unit, upgrade, Game, TechId, UnitId};
-use unit::Unit;
+use bw_dat::{self, tech, unit, upgrade, Game, TechId, Unit, UnitId};
 
 impl DatReq {
     unsafe fn read(pos: &mut *const u16) -> DatReq {
@@ -209,9 +208,7 @@ pub unsafe fn check_dat_requirements(
                 DatReq::BwOnly => true, // w/e
                 DatReq::IsTransport => unit.is_transport(game),
                 DatReq::IsNotBusy => {
-                    let current_build_unit =
-                        UnitId((*unit.0).build_queue[(*unit.0).current_build_slot as usize]);
-                    current_build_unit == unit::NONE &&
+                    unit.first_queued_unit().is_none() &&
                         !unit.is_building_addon() &&
                         unit.upgrade_in_progress() == upgrade::NONE &&
                         unit.tech_in_progress() == tech::NONE
@@ -222,7 +219,7 @@ pub unsafe fn check_dat_requirements(
                 DatReq::IsNotUpgrading => unit.upgrade_in_progress() == upgrade::NONE,
                 DatReq::IsLifted => unit.id().is_building() && !unit.is_landed_building(),
                 DatReq::IsNotLifted => unit.is_landed_building(),
-                DatReq::HasNoNydusExit => *((*unit.0).unit_specific2.as_ptr() as *const u32) == 0,
+                DatReq::HasNoNydusExit => *((**unit).unit_specific2.as_ptr() as *const u32) == 0,
                 DatReq::NotBurrowedOnly => !unit.is_burrowed(),
                 DatReq::BurrowedOnly => unit.is_burrowed(),
                 DatReq::NotLandedBuildingOnly => !unit.is_landed_building(),

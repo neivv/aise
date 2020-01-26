@@ -5,11 +5,10 @@ use cgmath::{vec4, Matrix4};
 use glium::backend::Facade;
 use glium::{uniform, Surface};
 
-use bw_dat::{unit, Game, UnitId};
+use bw_dat::{unit, Game, Unit, UnitId};
 
 use crate::aiscript::Town;
 use crate::bw;
-use crate::unit::Unit;
 use crate::unit_search::UnitSearch;
 
 use super::draw_shapes::{self, DrawShapes};
@@ -289,7 +288,7 @@ impl TownBuildInfo {
             unit_id,
         };
         info.check_tile_flags(tile_flags);
-        if let Some(main_building) = Unit::from_ptr(unsafe { (*town.0).main_building }) {
+        if let Some(main_building) = unsafe { Unit::from_ptr((*town.0).main_building) } {
             info.add_mineral_line(search, main_building);
         }
         if unit_id.require_psi() {

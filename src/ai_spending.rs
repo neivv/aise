@@ -1,15 +1,13 @@
-use std::ptr::null_mut;
-
 use smallvec::SmallVec;
 
-use bw_dat::{self, order, Game, TechId, UnitId, UpgradeId};
+use bw_dat::{self, order, Game, TechId, Unit, UnitId, UpgradeId};
 
 use crate::ai::{self, has_resources, Cost, PlayerAi};
 use crate::aiscript::{AiMode, Town};
 use crate::bw;
 use crate::datreq::{check_dat_requirements, DatReq, ReadDatReqs};
 use crate::list::ListIter;
-use crate::unit::{self, Unit};
+use crate::unit::{self, UnitExt};
 use crate::unit_search::UnitSearch;
 
 pub unsafe fn frame_hook(game: Game, unit_search: &UnitSearch, ai_mode: &[AiMode; 8]) {
@@ -68,8 +66,8 @@ fn handle_building_morph(
             if valid_unit_ids.iter().any(|x| x.is_building()) {
                 let unit = town
                     .buildings()
-                    .map(|x| {
-                        Unit::from_ptr(unsafe { (*x).parent }).expect("Parentless building ai")
+                    .map(|x| unsafe {
+                        Unit::from_ptr((*x).parent).expect("Parentless building ai")
                     })
                     .find(|&unit| {
                         valid_unit_ids.iter().any(|&y| unit.matches_id(y)) &&
@@ -104,8 +102,8 @@ fn handle_training(
             let mut valid_unit_ids: SmallVec<[UnitId; 4]> = SmallVec::new();
             parent_unit_ids_for_request(reqs, 0, &mut valid_unit_ids);
             let unit = unit::active_units()
-                .filter(|x| x.player() == player && x.first_queued_unit().is_none())
-                .filter(|x| unsafe { !(*x.0).ai.is_null() })
+                .filter(|&x| x.player() == player && x.first_queued_unit().is_none())
+                .filter(|&x| unsafe { !(**x).ai.is_null() })
                 .find(|&unit| {
                     valid_unit_ids.iter().any(|&y| unit.matches_id(y)) &&
                         unsafe { check_dat_requirements(game, reqs, unit, 0) }
@@ -123,7 +121,7 @@ fn handle_training(
                 start_unit_building(game, unit, unit_id, &cost)?;
                 if let Some(ai) = unit.building_ai() {
                     unsafe {
-                        let slot = (*unit.0).current_build_slot as usize;
+                        let slot = (**unit).current_build_slot as usize;
                         (*ai).train_queue_types[slot] = request.ty;
                         (*ai).train_queue_values[slot] = request.val;
                     }
@@ -136,8 +134,8 @@ fn handle_training(
                                 let ai = request.val as *mut bw::GuardAi;
                                 assert!(!ai.is_null());
                                 (*ai).home = (*ai).other_home;
-                                (*unit.0).ai = ai as *mut _;
-                                (*ai).parent = unit.0;
+                                (**unit).ai = ai as *mut _;
+                                (*ai).parent = *unit;
                             } else {
                                 assert_eq!(request.ty, 1);
                                 let region = request.val as *mut bw::AiRegion;
@@ -307,7 +305,7 @@ impl MatchRequirement {
 fn is_busy(unit: Unit) -> bool {
     if unit.id().is_building() {
         unsafe {
-            if (*unit.0).currently_building != null_mut() {
+            if unit.currently_building().is_some() {
                 return true;
             }
             // Currently_building doesn't catch building morph,
@@ -315,8 +313,8 @@ fn is_busy(unit: Unit) -> bool {
             if unit.first_queued_unit().is_some() {
                 return true;
             }
-            let tech = TechId((*unit.0).unit_specific[0x8] as u16);
-            let upgrade = UpgradeId((*unit.0).unit_specific[0x9] as u16);
+            let tech = TechId((**unit).unit_specific[0x8] as u16);
+            let upgrade = UpgradeId((**unit).unit_specific[0x9] as u16);
             tech != bw_dat::tech::NONE || upgrade != bw_dat::upgrade::NONE
         }
     } else {
@@ -491,7 +489,7 @@ fn start_unit_building(game: Game, unit: Unit, unit_id: UnitId, cost: &Cost) -> 
         return Err(());
     }
     unsafe {
-        (*unit.0).build_queue[slot] = unit_id.0;
+        (**unit).build_queue[slot] = unit_id.0;
     }
     game.reduce_minerals(player, cost.minerals);
     game.reduce_gas(player, cost.gas);

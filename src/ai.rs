@@ -4,13 +4,13 @@ use std::ptr::null_mut;
 use libc::c_void;
 
 use bw_dat::game::{Game, Race};
-use bw_dat::{order, unit, RaceFlags, TechId, UnitId, UpgradeId};
+use bw_dat::{order, unit, RaceFlags, TechId, Unit, UnitId, UpgradeId};
 
 use crate::aiscript::Town;
 use crate::bw;
 use crate::globals::RegionIdCycle;
 use crate::list::{ListEntry, ListIter};
-use crate::unit::{active_units, Unit};
+use crate::unit::{active_units, UnitExt};
 use crate::unit_search::UnitSearch;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -324,9 +324,7 @@ pub fn count_units(player: u8, unit_id: UnitId, game: Game) -> u32 {
         .filter(|x| x.player() == player)
         .map(|unit| match unit.id() {
             unit::EGG | unit::COCOON | unit::LURKER_EGG => {
-                let morph_unit =
-                    unsafe { UnitId((*unit.0).build_queue[(*unit.0).current_build_slot as usize]) };
-                if morph_unit == unit_id {
+                if unit.first_queued_unit() == Some(unit_id) {
                     birth_multiplier
                 } else {
                     0
@@ -562,19 +560,19 @@ pub unsafe fn continue_incomplete_buildings() {
         for town in ListIter(bw::first_active_ai_town(i)) {
             let regions = bw::ai_regions(u32::from((*town).player));
             let free_scvs = ListIter((*town).workers)
-                .map(|x| Unit((*x).parent))
+                .filter_map(|x| Unit::from_ptr((*x).parent))
                 .filter(|x| x.id() == unit::SCV && x.order() == order::COMPUTER_AI);
             let incomplete_buildings = ListIter((*town).buildings)
-                .map(|x| Unit((*x).parent))
+                .filter_map(|x| Unit::from_ptr((*x).parent))
                 .filter(|&x| {
                     !x.is_completed() &&
-                        (*x.0).related.is_null() &&
+                        (**x).related.is_null() &&
                         x.id().group_flags() & 0x2 != 0 &&
                         is_building_safe(x, regions)
                 });
             for (scv, building) in free_scvs.zip(incomplete_buildings) {
                 scv.issue_order_unit(order::CONSTRUCTING_BUILDING, building);
-                (*building.0).related = scv.0;
+                (**building).related = *scv;
             }
         }
     }
@@ -619,19 +617,19 @@ unsafe fn get_matching_guard_ai(unit: Unit) -> Option<*mut bw::GuardAi> {
 /// Uses an existing needed or creates a new guard ai for the unit.
 /// Usually likely creates since there isn't one at precisely where the unit stands.
 pub unsafe fn add_guard_ai(unit: Unit) {
-    assert!((*unit.0).ai.is_null());
+    assert!(!unit.has_ai());
     // Ai flag for "don't become guard"
     if unit.id().ai_flags() & 0x2 != 0 {
         return;
     }
     assert!(!unit.id().is_building());
     if let Some(ai) = get_matching_guard_ai(unit) {
-        (*ai).parent = unit.0;
+        (*ai).parent = *unit;
         (*ai).unit_id = unit.id().0;
         (*ai).home = unit.position();
         (*ai).other_home = unit.position();
         (*ai).times_died = 0;
-        (*unit.0).ai = ai as *mut c_void;
+        (**unit).ai = ai as *mut c_void;
     } else {
         warn!("Guard ai limit");
     }
@@ -640,7 +638,7 @@ pub unsafe fn add_guard_ai(unit: Unit) {
 /// NOTE: Differs from bw function in that it doesn't immediatly do one frame step.
 /// If this is called somewhere else than just zerg birth order, it should be done afterwards.
 pub unsafe fn add_military_ai(unit: Unit, region: *mut bw::AiRegion, always_this_region: bool) {
-    assert!((*unit.0).ai.is_null());
+    assert!(!unit.has_ai());
     let region = if !always_this_region && (*region).state == 3 {
         let regions = bw::ai_regions(unit.player() as u32);
         ai_region(regions, unit.position()).expect("Unit out of bounds??")
@@ -656,9 +654,9 @@ pub unsafe fn add_military_ai(unit: Unit, region: *mut bw::AiRegion, always_this
     }
     ListEntry::move_to(ai, &mut (*array).first_free, &mut (*region).military.first);
     (*ai).ai_type = 4; // Unnecessary?
-    (*ai).parent = unit.0;
+    (*ai).parent = *unit;
     (*ai).region = region;
-    (*unit.0).ai = ai as *mut c_void;
+    (**unit).ai = ai as *mut c_void;
     if unit.is_air() {
         (*region).needed_air_strength = (*region).needed_air_strength.saturating_add(1); // Why?
     }
@@ -680,15 +678,15 @@ unsafe fn update_slowest_unit_in_region(region: *mut bw::AiRegion) {
     if let Some(unit) = Unit::from_ptr((*region).slowest_military) {
         if unit.is_air() {
             slowest_air = Some(unit);
-            air_speed = (*unit.0).flingy_top_speed;
+            air_speed = (**unit).flingy_top_speed;
         } else {
             slowest_ground = Some(unit);
-            ground_speed = (*unit.0).flingy_top_speed;
+            ground_speed = (**unit).flingy_top_speed;
         }
     }
     for ai in ListIter((*region).military.first) {
         let unit = Unit::from_ptr((*ai).parent).expect("Parentless military ai");
-        let speed = (*unit.0).flingy_top_speed;
+        let speed = (**unit).flingy_top_speed;
         if unit.is_air() {
             if speed < air_speed {
                 air_speed = speed;
@@ -703,7 +701,7 @@ unsafe fn update_slowest_unit_in_region(region: *mut bw::AiRegion) {
     }
     (*region).slowest_military = slowest_ground
         .or(slowest_air)
-        .map(|x| x.0)
+        .map(|x| *x)
         .unwrap_or(null_mut());
 }
 
@@ -780,16 +778,16 @@ unsafe fn remove_from_ai_structs(
         // Region 0 is not used?
         for j in 1..region_count {
             let region = ai_regions.add(j as usize);
-            if (*region).air_target == unit.0 {
+            if (*region).air_target == *unit {
                 (*region).air_target = null_mut();
             }
-            if (*region).ground_target == unit.0 {
+            if (*region).ground_target == *unit {
                 (*region).ground_target = null_mut();
             }
-            if (*region).slowest_military == unit.0 {
+            if (*region).slowest_military == *unit {
                 (*region).slowest_military = null_mut();
             }
-            if (*region).detector == unit.0 {
+            if (*region).detector == *unit {
                 (*region).detector = null_mut();
             }
         }
@@ -831,7 +829,7 @@ unsafe fn remove_from_ai_structs(
         }
         let array = (*region).military.array;
         ListEntry::move_to(ai, &mut (*region).military.first, &mut (*array).first_free);
-        (*unit.0).ai = null_mut();
+        (**unit).ai = null_mut();
     }
 }
 
@@ -861,11 +859,11 @@ unsafe fn remove_worker_or_building_ai(
 ) {
     if unit.id().is_resource_container() {
         for town in (0..8).flat_map(|player| ListIter(bw::first_active_ai_town(player))) {
-            if (*town).mineral == unit.0 {
+            if (*town).mineral == *unit {
                 (*town).mineral = null_mut();
             }
             for gas in (*town).gas_buildings.iter_mut() {
-                if *gas == unit.0 {
+                if *gas == *unit {
                     *gas = null_mut();
                 }
             }
@@ -881,8 +879,8 @@ unsafe fn remove_worker_or_building_ai(
             &mut (*(*town).free_workers).first_free,
         );
         (*town).worker_count = (*town).worker_count.saturating_sub(1);
-        (*unit.0).ai = null_mut();
-        if (*town).building_scv == unit.0 {
+        (**unit).ai = null_mut();
+        if (*town).building_scv == *unit {
             (*town).building_scv = null_mut();
         }
     }
@@ -894,8 +892,8 @@ unsafe fn remove_worker_or_building_ai(
             &mut (*town).buildings,
             &mut (*(*town).free_buildings).first_free,
         );
-        (*unit.0).ai = null_mut();
-        if (*town).main_building == unit.0 {
+        (**unit).ai = null_mut();
+        if (*town).main_building == *unit {
             (*town).main_building = null_mut();
         }
     }
@@ -914,7 +912,7 @@ unsafe fn check_town_delete(game: Game, player_ai: &PlayerAi, town: Town) {
     for unit in active_units() {
         if unit.id().is_resource_container() {
             // Resarea for resources
-            (*unit.0).unit_specific2[0x9] = 0;
+            (**unit).unit_specific2[0x9] = 0;
         }
     }
     if (*town.0).resource_area != 0 {
@@ -974,7 +972,7 @@ unsafe fn add_building_ai(
     unit: Unit,
     town: Town,
 ) {
-    assert!((*unit.0).ai.is_null());
+    assert!(!unit.has_ai());
     let array = (*town.0).free_buildings;
     if (*array).first_free.is_null() {
         warn!("Building ai limit");
@@ -983,12 +981,12 @@ unsafe fn add_building_ai(
 
     let ai = (*array).first_free;
     ListEntry::move_to(ai, &mut (*array).first_free, &mut (*town.0).buildings);
-    (*ai).parent = unit.0;
+    (*ai).parent = *unit;
     (*ai).town = town.0;
     (*ai).ai_type = 0x3;
     (*ai).train_queue_types = [0; 5];
     (*ai).train_queue_values = [null_mut(); 5];
-    (*unit.0).ai = ai as *mut c_void;
+    (**unit).ai = ai as *mut c_void;
     match unit.id() {
         unit::HATCHERY | unit::LAIR | unit::HIVE | unit::CREEP_COLONY => {
             // Bw only does hatch/lair/hive, but might as well do creep colony as
@@ -1020,10 +1018,10 @@ unsafe fn add_building_ai(
         (*town.0).gas_buildings = [null_mut(); 3];
     }
     if unit.id().is_town_hall() {
-        (*town.0).main_building = unit.0;
+        (*town.0).main_building = *unit;
     } else if is_gas_building(unit.id()) {
         if let Some(slot) = (*town.0).gas_buildings.iter_mut().find(|x| x.is_null()) {
-            *slot = unit.0;
+            *slot = *unit;
         }
         if (*town.0).resource_area != 0 {
             (*town.0).resource_units_not_set = 1;
@@ -1080,21 +1078,21 @@ pub fn is_gas_building(unit_id: UnitId) -> bool {
 }
 
 unsafe fn add_worker_ai(game: Game, unit: Unit, town: Town) {
-    assert!((*unit.0).ai.is_null());
+    assert!(!unit.has_ai());
     let array = (*town.0).free_workers;
     if (*array).first_free.is_null() {
         warn!("Worker ai limit");
     } else {
         let ai = (*array).first_free;
         ListEntry::move_to(ai, &mut (*array).first_free, &mut (*town.0).workers);
-        (*ai).parent = unit.0;
+        (*ai).parent = *unit;
         (*ai).town = town.0;
         (*ai).ai_type = 0x2;
         (*ai).target_resource = 0x1;
         (*ai).reassign_count = 0;
         (*ai).wait_timer = 0;
         (*ai).last_update_second = (**game).elapsed_seconds;
-        (*unit.0).ai = ai as *mut c_void;
+        (**unit).ai = ai as *mut c_void;
         (*town.0).worker_count = (*town.0).worker_count.saturating_add(1);
     }
 }
@@ -1110,16 +1108,16 @@ pub fn remove_unit_ai(game: Game, unit_search: &UnitSearch, unit: Unit, was_kill
             // Just do what bw does and let the guard ai hooks notice this.
             // And yes, += 1 even if it wasn't killed
             (*ai).times_died += 1;
-            (*unit.0).ai = null_mut();
+            (**unit).ai = null_mut();
         }
-        if (*player_ai.0).free_medic == unit.0 {
+        if (*player_ai.0).free_medic == *unit {
             (*player_ai.0).free_medic = active_units()
                 .filter(|x| x.player() == unit.player())
-                .find(|x| x.id() == unit::MEDIC && !(*x.0).ai.is_null())
-                .map(|x| x.0)
+                .find(|x| x.id() == unit::MEDIC && x.has_ai())
+                .map(|x| *x)
                 .unwrap_or_else(null_mut);
         }
-        assert!((*unit.0).ai.is_null());
+        assert!(!unit.has_ai());
     }
 }
 

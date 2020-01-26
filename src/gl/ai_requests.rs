@@ -2,7 +2,7 @@ use std::mem;
 
 use libc::c_void;
 
-use bw_dat::{tech, unit, upgrade, Game, TechId, UnitId, UpgradeId};
+use bw_dat::{tech, unit, upgrade, Game, TechId, Unit, UnitId, UpgradeId};
 
 use crate::ai::{self, PlayerAi};
 use crate::ai_spending::{DatReqSatisfyError, RequestSatisfyError};
@@ -10,7 +10,7 @@ use crate::aiscript::Town;
 use crate::bw;
 use crate::globals::Globals;
 use crate::list::ListIter;
-use crate::unit::{active_units, Unit};
+use crate::unit::{active_units, UnitExt};
 
 use super::support::UiList;
 use super::ui::Page;
@@ -251,7 +251,7 @@ pub unsafe fn missing_attack_force_units(ai: &PlayerAi, region: *mut bw::AiRegio
                 (*building_ai).train_queue_values[i] == region as *mut c_void;
             if matching {
                 let unit = Unit::from_ptr((*building_ai).parent).expect("Broken building ai");
-                let unit_id = UnitId((*unit.0).build_queue[i]);
+                let unit_id = UnitId((**unit).build_queue[i]);
                 if let Some(pos) = attack_force.iter().position(|&x| unit_id == x) {
                     attack_force.swap_remove(pos);
                 }
@@ -311,7 +311,7 @@ fn is_request_satisfied(game: Game, town: Town, req: &TownRequest) -> RequestSat
                         // Shows working on lower levels as "not working on", I guess
                         // that makes most sense.
                         let time_remaining = unsafe {
-                            ((*unit.0).unit_specific.as_ptr().add(6) as *const u16).read_unaligned()
+                            ((**unit).unit_specific.as_ptr().add(6) as *const u16).read_unaligned()
                         };
                         let time = upgrade_id.time();
                         let completion = time
@@ -338,7 +338,7 @@ fn is_request_satisfied(game: Game, town: Town, req: &TownRequest) -> RequestSat
                     // Upgrades/techs aren't really associated with a town
                     // so don't report WorkingElsewhere
                     let time_remaining = unsafe {
-                        ((*unit.0).unit_specific.as_ptr().add(6) as *const u16).read_unaligned()
+                        ((**unit).unit_specific.as_ptr().add(6) as *const u16).read_unaligned()
                     };
                     let time = tech_id.time();
                     let completion = time

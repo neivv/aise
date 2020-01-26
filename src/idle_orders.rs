@@ -1,16 +1,15 @@
-use std::ptr::null_mut;
 use std::sync::Arc;
 
 use fxhash::FxHashMap;
 
-use bw_dat::{self, order, Game, OrderId, UnitId, WeaponId};
+use bw_dat::{self, order, Game, OrderId, Unit, UnitId, WeaponId};
 
 use aiscript::{PlayerMatch, Position, ReadModifierType, ScriptData, UnitMatch};
 use bw;
 use globals::Globals;
 use rng::Rng;
 use swap_retain::SwapRetain;
-use unit::{self, HashableUnit, Unit};
+use unit::{self, HashableUnit, SerializableUnit, UnitExt};
 use unit_search::UnitSearch;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -23,12 +22,16 @@ pub struct IdleOrders {
 
 impl IdleOrders {
     pub fn unit_removed(&mut self, unit: Unit) {
-        for x in self.ongoing.iter().filter(|x| x.target == Some(unit)) {
-            x.user.issue_order_ground(order::MOVE, x.home);
+        for x in self
+            .ongoing
+            .iter()
+            .filter(|x| x.target.map(|x| x.0) == Some(unit))
+        {
+            x.user.0.issue_order_ground(order::MOVE, x.home);
         }
         self.ongoing
-            .swap_retain(|x| unit != x.user && Some(unit) != x.target);
-        self.returning_cloaked.swap_retain(|x| unit != x.unit);
+            .swap_retain(|x| unit != x.user.0 && Some(unit) != x.target.map(|x| x.0));
+        self.returning_cloaked.swap_retain(|x| unit != x.unit.0);
     }
 
     pub unsafe fn step_frame(&mut self, rng: &mut Rng, units: &UnitSearch) {
@@ -50,16 +53,17 @@ impl IdleOrders {
         // Yes, it may consider an order ongoing even if the unit is targeting the
         // target for other reasons. Acceptable?
         ongoing.swap_retain(|o| {
-            let mut retain = if o.user.is_hidden() {
+            let user = o.user.0;
+            let mut retain = if user.is_hidden() {
                 false
             } else {
                 match o.target {
-                    None => o.user.orders().any(|x| x.id == o.order),
+                    None => user.orders().any(|x| x.id == o.order),
                     Some(target) => o
                         .user
                         .orders()
                         .filter_map(|x| x.target)
-                        .any(|x| x == target),
+                        .any(|x| x == target.0),
                 }
             };
             if retain {
@@ -72,27 +76,27 @@ impl IdleOrders {
                     }
                 }
 
-                if o.user.health() < o.panic_health {
+                if user.health() < o.panic_health {
                     for decl in deathrattles {
                         let mut ctx =
-                            decl.target_validation_context(game, units, &mut cache, Some(o.user));
-                        if decl.unit_valid(o.user, &[], CheckTargetingFlags::Yes, &ctx) {
-                            let panic_target = find_target(o.user, &decl, &[], &mut ctx);
+                            decl.target_validation_context(game, units, &mut cache, Some(user));
+                        if decl.unit_valid(user, &[], CheckTargetingFlags::Yes, &ctx) {
+                            let panic_target = find_target(user, &decl, &[], &mut ctx);
                             if let Some((target, distance)) = panic_target {
                                 if distance < decl.radius as u32 {
-                                    let (target, pos) = target_pos(&target, decl);
+                                    let (target, pos) = target_pos(target, decl);
                                     // Prevent panicing in future
                                     o.panic_health = 0;
-                                    o.target = target;
+                                    o.target = target.map(SerializableUnit);
                                     o.decl = decl.clone();
                                     o.order = decl.order;
-                                    o.user.issue_order(decl.order, pos, target);
+                                    user.issue_order(decl.order, pos, target);
                                 }
                             }
                         }
                     }
                 } else {
-                    if can_personnel_cloak(o.user.id()) {
+                    if can_personnel_cloak(user.id()) {
                         step_cloak(o, game);
                     }
                     // Check every 32 frames if target is still valid, pick something
@@ -106,10 +110,10 @@ impl IdleOrders {
                             // Maybe should also not recheck target order? Depends a lot on
                             // the order though.
                             let flags_valid = o.decl.target_flags.match_status(
-                                target,
+                                target.0,
                                 o.decl.player,
                                 CheckTargetingFlags::No,
-                                Some(o.user),
+                                Some(user),
                                 game,
                                 units,
                             );
@@ -118,9 +122,9 @@ impl IdleOrders {
                                     game,
                                     units,
                                     &mut cache,
-                                    Some(o.user),
+                                    Some(user),
                                 );
-                                new_target = find_target(o.user, &o.decl, &[], &mut ctx);
+                                new_target = find_target(user, &o.decl, &[], &mut ctx);
                                 // Drop the order unless new target is Some and good distance.
                                 retain = false;
                             }
@@ -128,20 +132,20 @@ impl IdleOrders {
                         if let Some((new_target, distance)) = new_target {
                             if distance < o.decl.radius as u32 {
                                 retain = true;
-                                let (target, pos) = target_pos(&new_target, &o.decl);
-                                o.target = target;
-                                o.user.issue_order(o.order, pos, target);
+                                let (target, pos) = target_pos(new_target, &o.decl);
+                                o.target = target.map(SerializableUnit);
+                                user.issue_order(o.order, pos, target);
                             }
                         }
                     }
                 }
             }
-            if !retain && !o.user.is_hidden() {
-                o.user.issue_order_ground(order::MOVE, o.home);
+            if !retain && !user.is_hidden() {
+                user.issue_order_ground(order::MOVE, o.home);
                 if o.cloaked {
                     returning_cloaked.push(ReturningCloaked {
-                        unit: o.user,
-                        start_point: o.user.position(),
+                        unit: SerializableUnit(user),
+                        start_point: user.position(),
                     });
                 }
             }
@@ -149,17 +153,18 @@ impl IdleOrders {
         });
         // Decloak units that are far enough from target.
         returning_cloaked.swap_retain(|ret| {
+            let unit = ret.unit.0;
             // No accessing inside dropships, so keep the unit as is
-            if ret.unit.is_hidden() {
+            if unit.is_hidden() {
                 return true;
             }
-            if !ret.unit.is_invisible() {
+            if !unit.is_invisible() {
                 return false;
             }
-            let pos = ret.unit.position();
+            let pos = unit.position();
             let distance = bw::distance(pos, ret.start_point);
-            if distance > 32 * 12 || ((*ret.unit.0).move_target == pos && distance > 32 * 2) {
-                ret.unit.issue_secondary_order(bw_dat::order::DECLOAK);
+            if distance > 32 * 12 || ((**unit).move_target == pos && distance > 32 * 2) {
+                unit.issue_secondary_order(bw_dat::order::DECLOAK);
                 false
             } else {
                 true
@@ -170,20 +175,20 @@ impl IdleOrders {
             if state.next_frame <= current_frame {
                 let pair = find_user_target_pair(&decl, &ongoing, game, units, &mut cache);
                 if let Some((user, target)) = pair {
-                    let (order_target, pos) = target_pos(&target, &decl);
+                    let (order_target, pos) = target_pos(target, &decl);
                     let home = match user.order() {
-                        order::MOVE => (*user.0).order_target_pos,
+                        order::MOVE => (**user).order_target_pos,
                         _ => user.position(),
                     };
                     user.issue_order(decl.order, pos, order_target);
                     ongoing.push(OngoingOrder {
-                        user,
+                        user: SerializableUnit(user),
                         start_frame: game.frame_count(),
-                        target: order_target,
+                        target: order_target.map(SerializableUnit),
                         decl: decl.clone(),
                         home,
                         order: decl.order,
-                        panic_health: panic_health(&user),
+                        panic_health: panic_health(user),
                         cloaked: false,
                     });
                     // Round to multiple of decl.rate so that priority is somewhat useful.
@@ -209,7 +214,8 @@ impl IdleOrders {
 }
 
 unsafe fn step_cloak(order: &mut OngoingOrder, game: Game) {
-    if !order.cloaked && !order.user.is_invisible() {
+    let user = order.user.0;
+    if !order.cloaked && !user.is_invisible() {
         let tech = bw_dat::tech::PERSONNEL_CLOAKING;
         let order_energy = order.order.tech().map(|x| x.energy_cost()).unwrap_or(0);
         let min_energy = tech
@@ -217,13 +223,12 @@ unsafe fn step_cloak(order: &mut OngoingOrder, game: Game) {
             .saturating_add(25)
             .saturating_add(order_energy)
             .saturating_mul(256);
-        if order.user.energy() as u32 > min_energy {
-            let has_tech =
-                game.tech_researched(order.user.player(), tech) || order.user.id().is_hero();
+        if user.energy() as u32 > min_energy {
+            let has_tech = game.tech_researched(user.player(), tech) || user.id().is_hero();
             if has_tech {
-                let distance = bw::distance(order.user.position(), (*order.user.0).move_target);
+                let distance = bw::distance(user.position(), (**user).move_target);
                 if distance < 32 * 24 {
-                    order.user.issue_secondary_order(bw_dat::order::CLOAK);
+                    user.issue_secondary_order(bw_dat::order::CLOAK);
                     order.cloaked = true;
                 }
             }
@@ -233,14 +238,14 @@ unsafe fn step_cloak(order: &mut OngoingOrder, game: Game) {
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 struct ReturningCloaked {
-    unit: Unit,
+    unit: SerializableUnit,
     start_point: bw::Point,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 struct OngoingOrder {
-    user: Unit,
-    target: Option<Unit>,
+    user: SerializableUnit,
+    target: Option<SerializableUnit>,
     decl: Arc<IdleOrder>,
     start_frame: u32,
     home: bw::Point,
@@ -659,7 +664,7 @@ impl IdleOrder {
                 ctx.game,
                 ctx.units,
             ) &&
-            !ongoing.iter().any(|x| x.user == user)
+            !ongoing.iter().any(|x| x.user.0 == user)
     }
 
     fn target_validation_context<'a>(
@@ -736,7 +741,7 @@ impl IdleOrder {
         }
         if !accept_invisible {
             let fail = unsafe {
-                unit.is_invisible() && (*unit.0).detection_status & player_mask as u32 == 0
+                unit.is_invisible() && (**unit).detection_status & player_mask as u32 == 0
             };
             if fail {
                 return false;
@@ -750,7 +755,9 @@ impl IdleOrder {
         let already_targeted_count = ongoing
             .iter()
             .filter(|x| {
-                x.target == Some(unit) && x.order == self.order && x.user.player() == player as u8
+                x.target.map(|x| x.0) == Some(unit) &&
+                    x.order == self.order &&
+                    x.user.player() == player as u8
             })
             .count();
         already_targeted_count < self.limit as usize
@@ -765,16 +772,16 @@ struct IdleOrderTargetContext<'a> {
     current_unit: Option<Unit>,
 }
 
-fn target_pos(target: &Unit, decl: &IdleOrder) -> (Option<Unit>, bw::Point) {
+fn target_pos(target: Unit, decl: &IdleOrder) -> (Option<Unit>, bw::Point) {
     let pos = target.position();
     let no_detection = unsafe {
-        target.is_invisible() && (*target.0).detection_status & (1 << decl.player) as u32 == 0
+        target.is_invisible() && (**target).detection_status & (1 << decl.player) as u32 == 0
     };
-    let order_target = if no_detection { null_mut() } else { target.0 };
-    (Unit::from_ptr(order_target), pos)
+    let order_target = if no_detection { None } else { Some(target) };
+    (order_target, pos)
 }
 
-fn panic_health(unit: &Unit) -> i32 {
+fn panic_health(unit: Unit) -> i32 {
     let id = unit.id();
     let max_health = id.hitpoints().saturating_add(id.shields());
     (max_health / 4).min(unit.health() / 2)
@@ -961,15 +968,15 @@ impl IdleOrderFlags {
 
             #[cfg_attr(rustfmt, rustfmt_skip)]
             let status_ok = if self.status_required != 0 || self.status_not != 0 {
-                let flags = (if (*unit.0).ensnare_timer != 0 { 1 } else { 0 } << 0) |
-                    (if (*unit.0).plague_timer != 0 { 1 } else { 0 } << 1) |
-                    (if (*unit.0).lockdown_timer != 0 { 1 } else { 0 } << 2) |
-                    (if (*unit.0).irradiate_timer != 0 { 1 } else { 0 } << 3) |
-                    (if (*unit.0).parasited_by_players != 0 { 1 } else { 0 } << 4) |
-                    (if (*unit.0).is_blind != 0 { 1 } else { 0 } << 5) |
-                    (if (*unit.0).matrix_timer != 0 { 1 } else { 0 } << 6) |
-                    (if (*unit.0).maelstrom_timer != 0 { 1 } else { 0 } << 7) |
-                    (if (*unit.0).stim_timer != 0 { 1 } else { 0 } << 8);
+                let flags = (if (**unit).ensnare_timer != 0 { 1 } else { 0 } << 0) |
+                    (if (**unit).plague_timer != 0 { 1 } else { 0 } << 1) |
+                    (if (**unit).lockdown_timer != 0 { 1 } else { 0 } << 2) |
+                    (if (**unit).irradiate_timer != 0 { 1 } else { 0 } << 3) |
+                    (if (**unit).parasited_by_players != 0 { 1 } else { 0 } << 4) |
+                    (if (**unit).is_blind != 0 { 1 } else { 0 } << 5) |
+                    (if (**unit).matrix_timer != 0 { 1 } else { 0 } << 6) |
+                    (if (**unit).maelstrom_timer != 0 { 1 } else { 0 } << 7) |
+                    (if (**unit).stim_timer != 0 { 1 } else { 0 } << 8);
                 self.status_required & flags == self.status_required &&
                     self.status_not & flags == 0
             } else {
@@ -1107,7 +1114,7 @@ impl InCombatCache {
                         .map(|target| (target, targeter))
                 })
                 .collect::<Vec<_>>();
-            targeting_units.sort_unstable_by_key(|x| (x.0).0 as usize);
+            targeting_units.sort_unstable_by_key(|x| *(x.0) as usize);
             InCombatCacheInited {
                 targeting_units,
                 results: FxHashMap::with_capacity_and_hasher(32, Default::default()),
@@ -1127,7 +1134,7 @@ impl InCombatCache {
         }
 
         fn has_cooldown_active(unit: Unit) -> bool {
-            unsafe { (*unit.0).ground_cooldown > 0 || (*unit.0).air_cooldown > 0 }
+            unsafe { (**unit).ground_cooldown > 0 || (**unit).air_cooldown > 0 }
         }
 
         fn is_unit_in_combat(unit: Unit, target: Unit) -> bool {
@@ -1155,7 +1162,7 @@ impl InCombatCache {
         let entry = inner.results.entry(HashableUnit(unit));
         let targeting_units = &inner.targeting_units;
         *entry.or_insert_with(|| {
-            let first = crate::lower_bound_by_key(targeting_units, unit.0, |x| (x.0).0);
+            let first = crate::lower_bound_by_key(targeting_units, *unit, |x| *(x.0));
             let mut units = targeting_units
                 .iter()
                 .skip(first)

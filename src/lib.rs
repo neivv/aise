@@ -75,8 +75,10 @@ use libc::c_void;
 
 use winapi::um::processthreadsapi::{GetCurrentProcess, TerminateProcess};
 
+use bw_dat::Unit;
+
 use crate::globals::Globals;
-use crate::unit::Unit;
+use crate::unit::UnitExt;
 
 lazy_static! {
     static ref PATCHER: whack::Patcher = whack::Patcher::new();
@@ -341,13 +343,13 @@ unsafe extern fn frame_hook() {
         if let Some(ai) = unit.guard_ai() {
             // Guard ai share bug, just make this a military then.
             // Should happen for cocoons/lurker eggs, but do it for any just-in-case
-            if (*ai).parent != unit.0 {
+            if (*ai).parent != *unit {
                 debug!(
                     "Guard AI share for unit 0x{:x} at {:?}",
                     unit.id().0,
                     unit.position()
                 );
-                (*unit.0).ai = null_mut();
+                (**unit).ai = null_mut();
                 let ai_regions = bw::ai_regions(unit.player() as u32);
                 let region =
                     ai::ai_region(ai_regions, unit.position()).expect("Unit out of bounds??");
@@ -383,7 +385,7 @@ unsafe extern fn step_order_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_v
         ai_spending::frame_hook(game, &unit_search, &globals.ai_mode);
     }
 
-    let unit = unit::Unit(u as *mut bw::Unit);
+    let unit = Unit::from_ptr(u as *mut bw::Unit).unwrap();
     let prev_order = unit.order();
     let mut temp_ai = None;
     match unit.order() {
@@ -394,7 +396,7 @@ unsafe extern fn step_order_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_v
         order::id::COMPUTER_AI => {
             if let Some(_) = unit.building_ai() {
                 let player = unit.player();
-                if (*unit.0).order_timer == 0 && player < 8 {
+                if (**unit).order_timer == 0 && player < 8 {
                     // Handle trains here instead of letting BW to handle them with
                     // stupid guard-related behaviour.
                     let ai = ai::PlayerAi::get(player);
@@ -405,10 +407,10 @@ unsafe extern fn step_order_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_v
         order::id::ZERG_BIRTH => {
             // See below for unit morph.
             // Make ai temporarily null so bw doesn't try to use it if it's not building.
-            let ai = (*unit.0).ai as *mut bw::BuildingAi;
+            let ai = (**unit).ai as *mut bw::BuildingAi;
             if ai != null_mut() && (*ai).ai_type != 3 && (*ai).ai_type != 2 {
                 temp_ai = Some(ai as *mut c_void);
-                (*unit.0).ai = null_mut();
+                (**unit).ai = null_mut();
             }
         }
         _ => (),
@@ -430,14 +432,14 @@ unsafe extern fn step_order_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_v
             };
             if !should_have_building_ai(unit) {
                 if let Some(building_ai) = unit.building_ai() {
-                    let pos = (*unit.0).current_build_slot as usize;
+                    let pos = (**unit).current_build_slot as usize;
                     let value = (*building_ai).train_queue_values[pos];
                     let ty = (*building_ai).train_queue_types[pos];
 
                     let town = (*building_ai).town;
                     let first_free = &mut (*(*town).free_buildings).first_free;
                     list::ListEntry::move_to(building_ai, &mut (*town).buildings, first_free);
-                    (*unit.0).ai = null_mut();
+                    (**unit).ai = null_mut();
 
                     match ty {
                         // Military
@@ -449,9 +451,9 @@ unsafe extern fn step_order_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_v
                             // this is to not regress over bw.
                             // Cocoons/lurker eggs shouldn't have building ai and not reach here.
                             if (*guard).parent.is_null() {
-                                (*guard).parent = unit.0;
+                                (*guard).parent = *unit;
                                 (*guard).home = (*guard).other_home;
-                                (*unit.0).ai = guard as *mut c_void;
+                                (**unit).ai = guard as *mut c_void;
                             } else {
                                 let ai_regions = bw::ai_regions(unit.player() as u32);
                                 let region = ai::ai_region(ai_regions, unit.position())
@@ -468,14 +470,14 @@ unsafe extern fn step_order_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_v
         _ => (),
     }
     if let Some(ai) = temp_ai {
-        (*unit.0).ai = ai;
+        (**unit).ai = ai;
         // Add ai for dual birthed units
         if unit.id().flags() & 0x400 != 0 {
             // Bw inserts shown units at second pos for some reason..
             if let Some(other) = unit::active_units().nth(1) {
                 // This gets actually checked several times since the birth order lasts a few
                 // frames, but it should be fine.
-                if other.id() == unit.id() && (*other.0).ai.is_null() {
+                if other.id() == unit.id() && !other.has_ai() {
                     if other.player() == unit.player() {
                         let ai_regions = bw::ai_regions(other.player() as u32);
                         let region = ai::ai_region(ai_regions, other.position())
@@ -489,7 +491,7 @@ unsafe extern fn step_order_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_v
 }
 
 unsafe extern fn step_order_hidden_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_void)) {
-    let unit = unit::Unit(u as *mut bw::Unit);
+    let unit = Unit::from_ptr(u as *mut bw::Unit).unwrap();
     match unit.order() {
         order::id::DIE => {
             let mut globals = Globals::get("step order hidden hook (die)");

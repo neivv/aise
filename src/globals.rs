@@ -2,21 +2,19 @@ use std::ffi::CString;
 use std::ptr::null_mut;
 use std::slice;
 
-use bincode;
+use bw_dat::{Unit, UnitId};
 
-use bw_dat::UnitId;
-
-use ai::GuardState;
-use aiscript::{
+use crate::ai::GuardState;
+use crate::aiscript::{
     self, AiMode, AttackTimeoutState, MaxWorkers, PlayerMatch, Town, TownId, UnitMatch,
 };
-use block_alloc::BlockAllocSet;
-use bw;
-use idle_orders::IdleOrders;
-use recurse_checked_mutex::{Mutex, MutexGuard};
-use rng::Rng;
-use swap_retain::SwapRetain;
-use unit::{self, Unit};
+use crate::block_alloc::BlockAllocSet;
+use crate::bw;
+use crate::idle_orders::IdleOrders;
+use crate::recurse_checked_mutex::{Mutex, MutexGuard};
+use crate::rng::Rng;
+use crate::swap_retain::SwapRetain;
+use crate::unit::{self, SerializableUnit};
 
 lazy_static! {
     static ref GLOBALS: Mutex<Globals> = Mutex::new(Globals::new());
@@ -190,7 +188,7 @@ impl BuildMaxSet {
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq)]
 pub struct LiftLandState {
-    pub unit: Unit,
+    pub unit: SerializableUnit,
     pub stage: LiftLandStage,
     pub is_returning: bool,
     pub target: bw::Point,
@@ -218,7 +216,7 @@ impl LiftLandBuilding {
 
     pub fn init_state(&mut self, unit: Unit) {
         self.state = Some(LiftLandState {
-            unit: unit,
+            unit: SerializableUnit(unit),
             stage: LiftLandStage::LiftOff_Start,
             is_returning: false,
             target: bw::Point {
@@ -256,7 +254,7 @@ impl LiftLand {
         for liftland in &mut self.structures {
             let state = liftland.state;
             if let Some(state) = state {
-                if state.unit == unit {
+                if state.unit.0 == unit {
                     liftland.state = None;
                 }
             }
@@ -339,16 +337,17 @@ pub struct BunkerState {
 
 impl BunkerState {
     pub fn add_targeter(&mut self, targeter: Unit, bunker: Unit) {
+        let targeter = SerializableUnit(targeter);
         match self
             .single_bunker_states
             .iter_mut()
-            .position(|x| x.bunker == bunker)
+            .position(|x| x.bunker.0 == bunker)
         {
             Some(s) => self.single_bunker_states[s].associated_units.push(targeter),
             None => {
                 self.single_bunker_states.push(SingleBunkerState {
                     associated_units: vec![targeter],
-                    bunker,
+                    bunker: SerializableUnit(bunker),
                 });
             }
         }
@@ -356,30 +355,30 @@ impl BunkerState {
 
     fn unit_removed(&mut self, unit: Unit) {
         self.single_bunker_states
-            .swap_retain(|x| x.bunker.0 != unit.0);
+            .swap_retain(|x| x.bunker.0 != unit);
         for link in &mut self.single_bunker_states {
-            link.associated_units.swap_retain(|x| x.0 != unit.0);
+            link.associated_units.swap_retain(|x| x.0 != unit);
         }
     }
 
     pub fn count_associated_units(&self, bunker: Unit) -> Option<u8> {
         self.single_bunker_states
             .iter()
-            .find(|link| link.bunker == bunker)
+            .find(|link| link.bunker.0 == bunker)
             .map(|link| link.associated_units.len() as u8)
     }
 
     pub fn in_list(&self, unit: Unit) -> bool {
         self.single_bunker_states
             .iter()
-            .any(|state| state.associated_units.iter().any(|&x| x == unit))
+            .any(|state| state.associated_units.iter().any(|&x| x.0 == unit))
     }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 pub struct SingleBunkerState {
-    pub associated_units: Vec<Unit>,
-    pub bunker: Unit,
+    pub associated_units: Vec<SerializableUnit>,
+    pub bunker: SerializableUnit,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]

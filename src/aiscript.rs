@@ -14,7 +14,7 @@ use directories::UserDirs;
 use parking_lot::Mutex;
 use serde::{self, Deserialize, Deserializer, Serialize, Serializer};
 
-use bw_dat::{Game, TechId, UnitId, UpgradeId};
+use bw_dat::{Game, TechId, Unit, UnitId, UpgradeId};
 
 use crate::ai::{self, has_resources};
 use crate::feature_disabled;
@@ -30,7 +30,7 @@ use order::{self, OrderId};
 use rng::Rng;
 use samase;
 use swap_retain::SwapRetain;
-use unit::{self, Unit};
+use unit::{self, UnitExt};
 use unit_search::UnitSearch;
 
 pub fn init_save_mapping() {}
@@ -294,7 +294,7 @@ pub unsafe extern fn issue_order(script: *mut bw::AiScript) {
         match order {
             order::id::PLACE_ADDON | order::id::BUILD_ADDON => {
                 let unit_id = target_misc.get_one();
-                (&mut (*unit.0).unit_specific[4..])
+                (&mut (**unit).unit_specific[4..])
                     .write_u16::<LE>(unit_id.0)
                     .unwrap();
             }
@@ -307,7 +307,7 @@ pub unsafe extern fn issue_order(script: *mut bw::AiScript) {
             order::id::TRAIN_FIGHTER |
             order::id::BUILD_NYDUS_EXIT => {
                 let unit_id = target_misc.get_one();
-                (*unit.0).build_queue[(*unit.0).current_build_slot as usize] = unit_id.0;
+                (**unit).build_queue[(**unit).current_build_slot as usize] = unit_id.0;
             }
             _ => (),
         }
@@ -407,7 +407,7 @@ impl Town {
     }
 
     pub fn has_building(self, unit: Unit) -> bool {
-        unsafe { self.buildings().any(|x| (*x).parent == unit.0) }
+        unsafe { self.buildings().any(|x| (*x).parent == *unit) }
     }
 
     pub fn buildings(self) -> impl Iterator<Item = *mut bw::BuildingAi> {
@@ -607,17 +607,17 @@ pub unsafe fn queues_frame_hook(queues: &mut Queues, unit_search: &UnitSearch, g
     use bw_dat::unit::{ARCHON, DARK_ARCHON};
     queues.queue.swap_retain(|x| x.current_quantity > 0);
     for queue in &mut queues.queue {
-        let mut units = unit_search
+        let units = unit_search
             .search_iter(&queue.pos)
             .filter(|x| queue.can_train(*x))
             .collect::<Vec<_>>();
-        for u in &mut units {
+        for u in units {
             if has_resources(game, u.player(), &ai::unit_cost(queue.unit_id)) {
                 queue.current_quantity = queue.current_quantity.saturating_sub(1);
                 match u.id().is_building() {
                     true => {
                         u.issue_secondary_order(TRAIN);
-                        (*u.0).build_queue[(*u.0).current_build_slot as usize] = queue.unit_id.0;
+                        (**u).build_queue[(**u).current_build_slot as usize] = queue.unit_id.0;
                         subtract_cost(game, queue.unit_id, queue.player);
                     }
                     false => {
@@ -628,17 +628,17 @@ pub unsafe fn queues_frame_hook(queues: &mut Queues, unit_search: &UnitSearch, g
                                     _ => DARK_ARCHON_MELD,
                                 };
                                 let find_pair = unit_search.find_nearest(u.position(), |x| {
-                                    x != *u && x.id() == u.id() && x.order() != order
+                                    x != u && x.id() == u.id() && x.order() != order
                                 });
                                 if let Some((unit, _distance)) = find_pair {
-                                    unit.issue_order_unit(order, *u);
+                                    unit.issue_order_unit(order, u);
                                     u.issue_order_unit(order, unit);
                                     //archons have no cost
                                 }
                             }
                             _ => {
                                 u.issue_order(UNIT_MORPH, u.position(), None);
-                                (*u.0).build_queue[0] = queue.unit_id.0;
+                                (**u).build_queue[0] = queue.unit_id.0;
                                 subtract_cost(game, queue.unit_id, queue.player);
                             }
                         }
@@ -668,7 +668,7 @@ pub unsafe fn lift_land_hook(lift_lands: &mut LiftLand, search: &UnitSearch, gam
         }
 
         if let Some(ref mut state) = lift_land.state {
-            let unit = state.unit;
+            let unit = state.unit.0;
             let target_area = match state.is_returning {
                 false => lift_land.tgt,
                 true => lift_land.src,
@@ -743,8 +743,8 @@ pub unsafe fn lift_land_hook(lift_lands: &mut LiftLand, search: &UnitSearch, gam
                                     let new_town = lift_land.town_tgt.0;
                                     if old_town != new_town {
                                         if unit.building_ai().is_some() {
-                                            bw::remove_unit_ai(unit.0, 0);
-                                            bw::add_town_unit_ai(unit.0, new_town);
+                                            bw::remove_unit_ai(*unit, 0);
+                                            bw::add_town_unit_ai(*unit, new_town);
                                         }
                                     }
                                     state.stage = LiftLandStage::End;
@@ -781,7 +781,7 @@ pub unsafe fn bunker_fill_hook(
             let units = search.search_iter(&decl.pos).filter(|u| {
                 u.player() == decl.player &&
                     decl.bunker_id.matches(u) &&
-                    u.player() == (*picked_unit.0).player
+                    u.player() == picked_unit.player()
             });
             let mut used_bunkers = 0;
             for bunker in units {
@@ -2029,6 +2029,7 @@ pub unsafe extern fn attack_add(script: *mut bw::AiScript) {
     let globals = Globals::get("ais attack_rand");
     add_to_attack_force(&globals, (*script).player as u8, UnitId(unit), amount);
 }
+
 unsafe fn add_to_attack_force(globals: &Globals, player: u8, unit: UnitId, amount: u32) {
     let unit = globals.unit_replace.replace_check(unit);
     let ai = ai::PlayerAi::get(player);
@@ -2847,7 +2848,7 @@ pub unsafe fn choose_building_placement(
                         let mut workers = (*town).workers;
                         while workers != null_mut() {
                             let current = (*workers).parent;
-                            if current != builder.0 {
+                            if current != *builder {
                                 if (*current).order_target_pos.x == i * 32 &&
                                     (*current).order_target_pos.y == j * 32
                                 {

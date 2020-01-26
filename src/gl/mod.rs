@@ -26,7 +26,7 @@ use std::mem;
 use std::path::{Path, PathBuf};
 use std::ptr::null_mut;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::SystemTime;
 
 use glium::backend::{Context, Facade};
