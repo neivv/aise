@@ -294,8 +294,19 @@ fn is_request_satisfied(game: Game, town: Town, req: &TownRequest) -> RequestSat
             if count >= req.count as u32 {
                 return RequestSatisfied::Yes;
             }
-            let incomplete_current_town = ai::count_town_units(town, unit_id, false) -
-                ai::count_town_units(town, unit_id, true);
+            let incomplete_current_town = if unit_id.is_building() {
+                ai::count_town_units(town, unit_id, false) -
+                    ai::count_town_units(town, unit_id, true)
+            } else {
+                // Non-building units don't have ai so ai::count_town_units
+                // won't find them. They can be found by looking at building's queue though.
+                let buildings =
+                    unsafe { town.buildings().flat_map(|x| Unit::from_ptr((*x).parent)) };
+                let incomplete = buildings
+                    .filter(|x| x.first_queued_unit() == Some(unit_id))
+                    .count() as u32;
+                incomplete
+            };
             if count + incomplete_current_town >= req.count as u32 {
                 RequestSatisfied::WorkingHere(None)
             } else if req.only_if_needed && game.unit_count(player, unit_id) >= req.count as u32 {
