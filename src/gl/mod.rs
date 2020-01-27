@@ -288,7 +288,7 @@ where
 fn handle_msg(msg: u32, wparam: usize, _lparam: isize) -> UiInput {
     use winapi::um::winuser::{VK_F1, WM_CHAR, WM_KEYDOWN};
 
-    with_ctx_state(|state| {
+    let result = with_ctx_state(|state| {
         let mut input_borrow = ui::InputBorrow {
             ai_scripts: &mut state.ai_scripts,
             ai_requests: &mut state.ai_requests,
@@ -321,7 +321,14 @@ fn handle_msg(msg: u32, wparam: usize, _lparam: isize) -> UiInput {
             _ => UiInput::NotHandled,
         }
     })
-    .unwrap_or_else(|| UiInput::NotHandled)
+    .unwrap_or_else(|| UiInput::NotHandled);
+    if result == UiInput::Handled {
+        // Force redraw if game was paused
+        // A bit hacky?
+        let globals = Globals::get("gl/input");
+        new_frame(&globals);
+    }
+    result
 }
 
 fn translate_accelerator_hook(
