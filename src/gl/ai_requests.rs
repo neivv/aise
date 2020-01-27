@@ -169,6 +169,13 @@ unsafe fn town_request_line(
         val: town.0 as *mut c_void,
     };
     request_line(page, game, player_ai, globals, (*town.0).player, &request);
+    let is_worker = match req.ty {
+        RequestType::Unit(u) => u.is_worker(),
+        _ => false,
+    };
+    if is_worker && (*town.0).worker_count >= (*town.0).worker_limit {
+        page.push("Worker limit reached for town");
+    }
 }
 
 unsafe fn request_line(
