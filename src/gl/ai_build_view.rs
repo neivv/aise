@@ -15,7 +15,7 @@ use super::draw_shapes::{self, DrawShapes};
 use super::gl_common::GlCommon;
 use super::support::UiList;
 use super::ui::{Page, Ui};
-use super::{screen_rect, unit_name, Program, UiInput};
+use super::{center_screen, screen_rect, unit_name, Program, UiInput};
 
 pub struct AiBuildView {
     towns: UiList<*mut bw::AiTown>,
@@ -92,6 +92,12 @@ impl AiBuildView {
             }
             's' => {
                 ui.request_input('s', "Unit id (hex)");
+                UiInput::Handled
+            }
+            'c' => {
+                if let Some(&town) = self.towns.current() {
+                    center_screen(Town(town).position());
+                }
                 UiInput::Handled
             }
             _ => UiInput::NotHandled,

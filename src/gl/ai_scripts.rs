@@ -7,7 +7,7 @@ use crate::list::ListEntry;
 
 use super::support::UiList;
 use super::ui::Page;
-use super::{tech_name, unit_name, upgrade_name, UiInput};
+use super::{center_screen, tech_name, unit_name, upgrade_name, UiInput};
 
 pub struct AiScripts {
     scripts: UiList<*mut bw::AiScript>,
@@ -76,6 +76,17 @@ impl AiScripts {
             }
             'w' => {
                 self.scripts.page_forward(1);
+                UiInput::Handled
+            }
+            'c' => {
+                if let Some(&script) = self.scripts.current() {
+                    unsafe {
+                        center_screen(bw::Point {
+                            x: (*script).center.x as i16,
+                            y: (*script).center.y as i16,
+                        })
+                    }
+                }
                 UiInput::Handled
             }
             _ => UiInput::NotHandled,

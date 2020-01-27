@@ -80,6 +80,7 @@ mod bw_ext {
     whack_funcs!(init_sc_funcs, 0x00400000,
         0x004C36F0 => get_stat_txt_string(@ecx u32) -> *const u8;
         0x004D1140 => is_outside_game_screen(@ecx u32, @eax u32) -> u32;
+        0x0049C440 => move_screen(@eax u32, @ecx u32);
     );
 }
 
@@ -748,5 +749,24 @@ fn screen_rect() -> bw::Rect {
             right: left as i16 + 640,
             bottom: top as i16 + 480,
         }
+    }
+}
+
+impl crate::aiscript::Town {
+    fn position(self) -> bw::Point {
+        unsafe { (*self.0).position }
+    }
+}
+
+fn center_screen(pos: bw::Point) {
+    let game = bw::game();
+    let min_x = 640 / 2;
+    let max_x = game.map_width_tiles() as i16 * 32 - 640 / 2;
+    let min_y = 480 / 2;
+    let max_y = game.map_height_tiles() as i16 * 32 - 480 / 2;
+    let x = pos.x.max(min_x).min(max_x);
+    let y = pos.y.max(min_y).min(max_y);
+    unsafe {
+        bw_ext::move_screen(x as u32 - 640 / 2, y as u32 - 480 / 2);
     }
 }

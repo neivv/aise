@@ -14,7 +14,7 @@ use crate::unit::{active_units, UnitExt};
 
 use super::support::UiList;
 use super::ui::Page;
-use super::{tech_name, unit_name, upgrade_name, UiInput};
+use super::{center_screen, tech_name, unit_name, upgrade_name, UiInput};
 
 pub struct MilitaryRequests {
     player: u8,
@@ -469,6 +469,12 @@ impl TownRequests {
             }
             'w' => {
                 self.towns.page_forward(1);
+                UiInput::Handled
+            }
+            'c' => {
+                if let Some(&town) = self.towns.current() {
+                    center_screen(Town(town).position());
+                }
                 UiInput::Handled
             }
             _ => UiInput::NotHandled,
