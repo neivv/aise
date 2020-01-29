@@ -1,6 +1,3 @@
-#[macro_use]
-extern crate whack;
-
 pub mod dialog;
 pub mod game;
 pub mod expr;
@@ -32,24 +29,6 @@ pub fn set_is_scr(value: bool) {
 
 fn is_scr() -> bool {
     IS_SCR.load(Ordering::Relaxed) == true
-}
-
-pub unsafe fn init_1161(patcher: &mut whack::ModulePatcher) {
-    bw::init_vars(patcher);
-}
-
-// Split like this since patcheer is lazy and won't apply the var inits immediatly..
-pub unsafe fn init_1161_post() {
-    init_units(&bw::units_dat[0]);
-    init_weapons(&bw::weapons_dat[0]);
-    init_flingy(&bw::flingy_dat[0]);
-    init_upgrades(&bw::upgrades_dat[0]);
-    init_techdata(&bw::techdata_dat[0]);
-    init_orders(&bw::orders_dat[0]);
-    init_sprites(&bw::sprites_dat[0]);
-    init_images(&bw::images_dat[0]);
-    init_sfxdata(&bw::sfxdata_dat[0]);
-    init_portdata(&bw::portdata_dat[0]);
 }
 
 macro_rules! init_fns {
