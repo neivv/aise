@@ -1,3 +1,4 @@
+use std::mem;
 use std::ptr::{NonNull};
 
 use byteorder::{ReadBytesExt, LE};
@@ -502,6 +503,25 @@ impl UnitArray {
             Some(unit)
         } else {
             None
+        }
+    }
+
+    pub fn to_unique_id_opt(&self, unit: Option<Unit>) -> u32 {
+        unit.map(|x| self.to_unique_id(x)).unwrap_or(0)
+    }
+
+    pub fn to_unique_id(&self, unit: Unit) -> u32 {
+        unsafe {
+            let long_id = self.length > 1700;
+            let index =
+                ((*unit as usize - self.start as usize) / mem::size_of::<bw::Unit>()) as u32;
+            if long_id {
+                assert!(index < (1 << 0xd));
+                (index + 1) | (((**unit).minor_unique_index as u32) << 0xd)
+            } else {
+                assert!(index < (1 << 0xb));
+                (index + 1) | (((**unit).minor_unique_index as u32) << 0xb)
+            }
         }
     }
 }
