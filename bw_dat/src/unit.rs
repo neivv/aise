@@ -6,10 +6,16 @@ use crate::bw;
 use crate::game::Game;
 use crate::tech;
 use crate::upgrade;
-use crate::{UnitId, TechId, OrderId, UpgradeId};
+use crate::{UnitId, TechId, OrderId, UpgradeId, RaceFlags};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct Unit(NonNull<bw::Unit>);
+
+#[derive(Copy, Clone, Debug)]
+pub struct UnitArray {
+    start: *mut bw::Unit,
+    length: usize,
+}
 
 impl std::ops::Deref for Unit {
     type Target = *mut bw::Unit;
@@ -104,8 +110,40 @@ impl Unit {
         if self.id() == OVERLORD && game.upgrade_level(self.player(), upgrade) == 0 {
             false
         } else {
-            self.id().cargo_space_provided() > 0
+            self.id().cargo_space_provided() > 0 && !self.is_hallucination()
         }
+    }
+
+    pub fn can_load_unit(self, game: Game, units: &UnitArray, target: Unit) -> bool {
+        if !self.is_transport(game) || self.is_disabled() {
+            return false;
+        }
+        let space_needed = target.id().cargo_space_used();
+        if self.id().is_building() {
+            if !target.id().races().intersects(RaceFlags::TERRAN) || space_needed != 1 {
+                return false;
+            }
+        }
+        let used_space = self.loaded_units(units)
+            .map(|unit| unit.id().cargo_space_used() as u32)
+            .sum::<u32>();
+        used_space + space_needed as u32 <= self.id().cargo_space_provided()
+    }
+
+    pub fn loaded_units(self, units: &UnitArray) -> impl Iterator<Item = Unit> {
+        let high_bits = match units.len() > 1700 {
+            true => unsafe { (**self).scr_carried_unit_high_bits },
+            false => 0,
+        };
+        let units = units.clone();
+        (0usize..8).filter_map(move |i| {
+            let id = unsafe {
+                let low = (**self).loaded_units[i] as u32;
+                let high = (high_bits >> (i * 2)) as u32 & 0x3;
+                low | (high << 16)
+            };
+            units.get_by_unique_id(id)
+        })
     }
 
     pub fn has_nuke(self) -> bool {
@@ -413,6 +451,59 @@ impl Unit {
             }
         }
     }
+
+    pub fn is_carrying_powerup(self) -> bool {
+        unsafe {
+            (**self).carried_powerup_flags != 0 && (**self).carried_powerup_flags & 3 == 0
+        }
+    }
+
+    pub fn is_carrying_minerals(self) -> bool {
+        unsafe {
+            (**self).carried_powerup_flags & 0x2 != 0
+        }
+    }
+
+    pub fn is_carrying_gas(self) -> bool {
+        unsafe {
+            (**self).carried_powerup_flags & 0x1 != 0
+        }
+    }
+}
+
+impl UnitArray {
+    pub unsafe fn new(start: *mut bw::Unit, length: usize) -> UnitArray {
+        UnitArray {
+            start,
+            length,
+        }
+    }
+
+    pub fn ptr(&self) -> *mut bw::Unit {
+        self.start
+    }
+
+    pub fn len(&self) -> usize {
+        self.length
+    }
+
+    pub fn get_by_unique_id(&self, id: u32) -> Option<Unit> {
+        let long_id = self.length > 1700;
+        let (index, minor) = if long_id {
+            ((id & 0x1fff) as usize, (id >> 0xd) as u8)
+        } else {
+            ((id & 0x7ff) as usize, (id >> 0xb) as u8)
+        };
+        if index > self.length || index == 0 {
+            return None;
+        }
+        let unit = unsafe { Unit::from_ptr(self.start.add(index - 1))? };
+        if unsafe { (**unit).minor_unique_index == minor } {
+            Some(unit)
+        } else {
+            None
+        }
+    }
 }
 
 unsafe impl Send for Unit {}
@@ -494,6 +585,12 @@ pub const MINERAL_FIELD_1: UnitId = UnitId(0xb0);
 pub const MINERAL_FIELD_2: UnitId = UnitId(0xb1);
 pub const MINERAL_FIELD_3: UnitId = UnitId(0xb2);
 pub const VESPENE_GEYSER: UnitId = UnitId(0xbc);
+pub const ZERG_BEACON: UnitId = UnitId(0xc2);
+pub const TERRAN_BEACON: UnitId = UnitId(0xc3);
+pub const PROTOSS_BEACON: UnitId = UnitId(0xc4);
+pub const ZERG_FLAG_BEACON: UnitId = UnitId(0xc5);
+pub const TERRAN_FLAG_BEACON: UnitId = UnitId(0xc6);
+pub const PROTOSS_FLAG_BEACON: UnitId = UnitId(0xc7);
 pub const DARK_SWARM: UnitId = UnitId(0xca);
 pub const LEFT_UPPER_LEVEL_DOOR: UnitId = UnitId(0xcd);
 pub const RIGHT_UPPER_LEVEL_DOOR: UnitId = UnitId(0xce);

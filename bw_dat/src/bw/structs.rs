@@ -320,7 +320,8 @@ pub struct Unit {
     pub _unk125: u8,
     pub acid_spore_count: u8,
     pub acid_spore_timers: [u8; 0x9],
-    pub _dc130: [u8; 0x4],
+    pub bullet_spread_seed: u16,
+    pub scr_carried_unit_high_bits: u16,
     pub ai: *mut c_void,
     pub _dc138: [u8; 0x18],
 }
@@ -563,6 +564,11 @@ impl Rect {
 
     pub fn overlaps(&self, o: &Rect) -> bool {
         self.left < o.right && self.right > o.left && self.top < o.bottom && self.bottom > o.top
+    }
+
+    pub fn contains_point(&self, point: &Point) -> bool {
+        point.x >= self.left && point.x < self.right &&
+            point.y >= self.top && point.y < self.bottom
     }
 }
 

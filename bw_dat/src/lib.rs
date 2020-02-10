@@ -7,7 +7,7 @@ mod bw;
 mod parse_expr;
 
 pub use crate::game::Game;
-pub use crate::unit::Unit;
+pub use crate::unit::{Unit, UnitArray};
 
 pub mod structs {
     pub use crate::bw::structs::*;
@@ -128,10 +128,13 @@ pub mod order {
     pub const ATTACK_MOVE: OrderId = OrderId(0xe);
     pub const TOWER_ATTACK: OrderId = OrderId(0x13);
     pub const SUBUNIT_ATTACK: OrderId = OrderId(0x16);
+    pub const NOTHING: OrderId = OrderId(0x17);
     pub const DRONE_BUILD: OrderId = OrderId(0x19);
+    pub const INFEST: OrderId = OrderId(0x1b);
     pub const SCV_BUILD: OrderId = OrderId(0x1e);
     pub const PROBE_BUILD: OrderId = OrderId(0x1f);
     pub const CONSTRUCTING_BUILDING: OrderId = OrderId(0x21);
+    pub const REPAIR: OrderId = OrderId(0x22);
     pub const PLACE_ADDON: OrderId = OrderId(0x24);
     pub const BUILD_ADDON: OrderId = OrderId(0x25);
     pub const TRAIN: OrderId = OrderId(0x26);
@@ -141,6 +144,7 @@ pub mod order {
     pub const UNIT_MORPH: OrderId = OrderId(0x2a);
     pub const BUILDING_MORPH: OrderId = OrderId(0x2b);
     pub const BUILD_NYDUS_EXIT: OrderId = OrderId(0x2e);
+    pub const FOLLOW: OrderId = OrderId(0x31);
     pub const CARRIER_ATTACK: OrderId = OrderId(0x35);
     pub const CARRIER_ATTACK_OBSCURED: OrderId = OrderId(0x36);
     pub const CARRIER_ATTACK_UNIT: OrderId = OrderId(0x38);
@@ -155,11 +159,14 @@ pub mod order {
     pub const LIFTOFF: OrderId = OrderId(0x48);
     pub const UPGRADE: OrderId = OrderId(0x4c);
     pub const SPAWNING_LARVA: OrderId = OrderId(0x4e);
+    pub const HARVEST_GAS_MOVE: OrderId = OrderId(0x51);
     pub const HARVEST_GAS: OrderId = OrderId(0x53);
     pub const RETURN_GAS: OrderId = OrderId(0x54);
+    pub const HARVEST_MINERALS_MOVE: OrderId = OrderId(0x55);
     pub const HARVEST_MINERALS: OrderId = OrderId(0x57);
     pub const RETURN_MINERALS: OrderId = OrderId(0x5a);
     pub const ENTER_TRANSPORT: OrderId = OrderId(0x5c);
+    pub const LOAD_UNIT_TRANSPORT: OrderId = OrderId(0x5e);
     pub const SPREAD_CREEP: OrderId = OrderId(0x66);
     pub const ARCHON_WARP: OrderId = OrderId(0x69);
     pub const HOLD_POSITION: OrderId = OrderId(0x6b);
@@ -196,15 +203,15 @@ impl UnitId {
         }
     }
 
-    pub fn get(&self, id: u32) -> u32 {
+    pub fn get(self, id: u32) -> u32 {
         unsafe { crate::dat_read(UNITS_DAT, self.0 as u32, id) }
     }
 
-    pub fn hitpoints(&self) -> i32 {
+    pub fn hitpoints(self) -> i32 {
         self.get(8) as i32
     }
 
-    pub fn shields(&self) -> i32 {
+    pub fn shields(self) -> i32 {
         if self.has_shields() {
             // Yeah, it is stored as displayed
             self.get(7) as i32 * 256
@@ -213,95 +220,111 @@ impl UnitId {
         }
     }
 
-    pub fn has_shields(&self) -> bool {
+    pub fn has_shields(self) -> bool {
         self.get(6) != 0
     }
 
-    pub fn ground_weapon(&self) -> Option<WeaponId> {
+    pub fn ground_weapon(self) -> Option<WeaponId> {
         WeaponId::optional(self.get(17))
     }
 
-    pub fn air_weapon(&self) -> Option<WeaponId> {
+    pub fn air_weapon(self) -> Option<WeaponId> {
         WeaponId::optional(self.get(19))
     }
 
-    pub fn flags(&self) -> u32 {
+    pub fn flags(self) -> u32 {
         self.get(22)
     }
 
-    pub fn ai_flags(&self) -> u8 {
+    pub fn ai_flags(self) -> u8 {
         self.get(21) as u8
     }
 
-    pub fn attack_unit_order(&self) -> OrderId {
+    pub fn return_to_idle_order(self) -> OrderId {
+        OrderId(self.get(14) as u8)
+    }
+
+    pub fn attack_unit_order(self) -> OrderId {
         OrderId(self.get(15) as u8)
     }
 
-    pub fn is_building(&self) -> bool {
+    pub fn is_building(self) -> bool {
         self.flags() & 0x1 != 0
     }
 
-    pub fn is_worker(&self) -> bool {
+    pub fn is_worker(self) -> bool {
         self.flags() & 0x8 != 0
     }
 
-    pub fn is_subunit(&self) -> bool {
+    pub fn is_subunit(self) -> bool {
         self.flags() & 0x10 != 0
     }
 
-    pub fn is_hero(&self) -> bool {
+    pub fn is_hero(self) -> bool {
         self.flags() & 0x40 != 0
     }
 
-    pub fn require_psi(&self) -> bool {
+    pub fn is_powerup(self) -> bool {
+        self.flags() & 0x800 != 0
+    }
+
+    pub fn is_organic(self) -> bool {
+        self.flags() & 0x10000 != 0
+    }
+
+    pub fn require_psi(self) -> bool {
         self.flags() & 0x80000 != 0
     }
 
-    pub fn require_creep(&self) -> bool {
+    pub fn require_creep(self) -> bool {
         self.flags() & 0x20000 != 0
     }
 
-    pub fn is_town_hall(&self) -> bool {
+    pub fn is_town_hall(self) -> bool {
         self.flags() & 0x1000 != 0
     }
 
-    pub fn is_resource_container(&self) -> bool {
+    pub fn is_resource_container(self) -> bool {
         self.flags() & 0x2000 != 0
     }
 
-    pub fn group_flags(&self) -> u32 {
+    pub fn is_mechanical(self) -> bool {
+        self.flags() & 0x4000_0000 != 0
+    }
+
+    pub fn group_flags(self) -> u32 {
         self.get(44)
     }
 
-    pub fn races(&self) -> RaceFlags {
+    pub fn races(self) -> RaceFlags {
         RaceFlags::from_bits_truncate((self.group_flags() as u8) & 0x7)
     }
 
-    pub fn armor(&self) -> u32 {
+    pub fn armor(self) -> u32 {
         self.get(27)
     }
 
-    pub fn armor_upgrade(&self) -> Option<UpgradeId> {
+    pub fn armor_upgrade(self) -> Option<UpgradeId> {
         UpgradeId::optional(self.get(25))
     }
 
-    pub fn mineral_cost(&self) -> u32 {
+    pub fn mineral_cost(self) -> u32 {
         self.get(40)
     }
 
-    pub fn gas_cost(&self) -> u32 {
+    pub fn gas_cost(self) -> u32 {
         self.get(41)
     }
 
-    pub fn build_time(&self) -> u32 {
+    pub fn build_time(self) -> u32 {
         self.get(42)
     }
 
-    pub fn supply_cost(&self) -> u32 {
+    pub fn supply_cost(self) -> u32 {
         self.get(46)
     }
 
-    pub fn placement(&self) -> PlacementBox {
+    pub fn placement(self) -> PlacementBox {
         unsafe {
             let dat = &*UNITS_DAT.offset(36);
             assert!(dat.entries > u32::from(self.0));
@@ -309,11 +332,15 @@ impl UnitId {
         }
     }
 
-    pub fn cargo_space_provided(&self) -> u32 {
+    pub fn cargo_space_used(self) -> u32 {
+        self.get(47)
+    }
+
+    pub fn cargo_space_provided(self) -> u32 {
         self.get(48)
     }
 
-    pub fn dimensions(&self) -> Rect {
+    pub fn dimensions(self) -> Rect {
         unsafe {
             let dat = &*UNITS_DAT.offset(38);
             assert!(dat.entries > u32::from(self.0));
@@ -321,16 +348,33 @@ impl UnitId {
         }
     }
 
-    pub fn rclick_action(&self) -> u8 {
+    pub fn rclick_action(self) -> u8 {
         self.get(28) as u8
     }
 
-    pub fn sight_range(&self) -> u8 {
+    pub fn sight_range(self) -> u8 {
         self.get(24) as u8
     }
 
-    pub fn target_acquisition_range(&self) -> u8 {
+    pub fn target_acquisition_range(self) -> u8 {
         self.get(23) as u8
+    }
+
+    pub fn is_beacon(self) -> bool {
+        match self {
+            unit::ZERG_BEACON | unit::TERRAN_BEACON | unit::PROTOSS_BEACON |
+                unit::ZERG_FLAG_BEACON | unit::TERRAN_FLAG_BEACON |
+                unit::PROTOSS_FLAG_BEACON => true,
+            _ => false,
+        }
+    }
+
+    /// If the unit is a gas building (not geyser)
+    pub fn is_gas_building(self) -> bool {
+        match self {
+            unit::REFINERY | unit::EXTRACTOR | unit::ASSIMILATOR => true,
+            _ => false,
+        }
     }
 }
 
