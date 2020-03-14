@@ -130,6 +130,7 @@ pub mod order {
     pub const SUBUNIT_ATTACK: OrderId = OrderId(0x16);
     pub const NOTHING: OrderId = OrderId(0x17);
     pub const DRONE_BUILD: OrderId = OrderId(0x19);
+    pub const DRONE_BUILD2: OrderId = OrderId(0x1a);
     pub const INFEST: OrderId = OrderId(0x1b);
     pub const SCV_BUILD: OrderId = OrderId(0x1e);
     pub const PROBE_BUILD: OrderId = OrderId(0x1f);
