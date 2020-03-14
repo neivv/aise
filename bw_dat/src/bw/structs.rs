@@ -432,8 +432,8 @@ pub struct Control {
     pub ty: u16,
     pub misc_u16: u16,
     pub user_ptr: *mut c_void,
-    pub event_handler: unsafe extern "fastcall" fn(*mut Control, *mut ControlEvent) -> u32,
-    pub draw: unsafe extern "fastcall" fn(*mut Control, i32, i32, *const Rect),
+    pub event_handler: Option<unsafe extern "fastcall" fn(*mut Control, *mut ControlEvent) -> u32>,
+    pub draw: Option<unsafe extern "fastcall" fn(*mut Control, i32, i32, *const Rect)>,
     pub parent: *mut Dialog,
 }
 
@@ -471,8 +471,8 @@ pub mod scr {
         pub ty: u16,
         pub misc_u16: u16,
         pub user_ptr: *mut c_void,
-        pub event_handler: unsafe extern "C" fn(*mut Control, *mut ControlEvent) -> u32,
-        pub draw: unsafe extern "C" fn(*mut Control, i32, i32, *const Rect),
+        pub event_handler: Option<unsafe extern "C" fn(*mut Control, *mut ControlEvent) -> u32>,
+        pub draw: Option<unsafe extern "C" fn(*mut Control, i32, i32, *const Rect)>,
         pub parent: *mut Dialog,
     }
 
