@@ -572,6 +572,35 @@ impl Rect {
     }
 }
 
+impl Point {
+    /// Assuming that `self` and `rect` are in same coordinates, returns
+    /// a point that is equicaled to `self` in coordinates relative to the
+    /// rect's topleft position.
+    ///
+    /// If the point is outside rect bounds, it is clamped to be inside rect
+    /// (Rect right/bottom are not inside rect bounds).
+    pub fn relative_to_rect_clamped(&self, rect: &Rect) -> Point {
+        let x = if self.x < rect.left {
+            0
+        } else if self.x >= rect.right {
+            rect.right.saturating_sub(1)
+        } else {
+            self.x - rect.left
+        };
+        let y = if self.y < rect.top {
+            0
+        } else if self.y >= rect.bottom {
+            rect.bottom.saturating_sub(1)
+        } else {
+            self.y - rect.top
+        };
+        Point {
+            x,
+            y,
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
