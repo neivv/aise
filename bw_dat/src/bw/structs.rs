@@ -416,6 +416,8 @@ pub struct Player {
 #[repr(C, packed)]
 pub struct Dialog {
     pub control: Control,
+    pub unk36: [u8; 0xc],
+    pub first_child: *mut Control,
 }
 
 #[repr(C, packed)]
@@ -426,7 +428,7 @@ pub struct Control {
     pub string: *const u8,
     pub flags: u32,
     pub unk1c: [u8; 4],
-    pub id: u16,
+    pub id: i16,
     pub ty: u16,
     pub misc_u16: u16,
     pub user_ptr: *mut c_void,
@@ -452,6 +454,8 @@ pub mod scr {
     #[repr(C, packed)]
     pub struct Dialog {
         pub control: Control,
+        pub unk50: [u8; 0xc],
+        pub first_child: *mut Control,
     }
 
     #[repr(C, packed)]
@@ -459,17 +463,25 @@ pub mod scr {
         pub next: *mut Control,
         pub area: Rect,
         pub image: [u8; 8],
-        pub string: *const u8,
+        pub string: BwString,
         pub flags: u32,
-        pub unk1c: [u8; 4],
+        pub unk34: [u8; 4],
         pub unknown: u16,
-        pub id: u16,
+        pub id: i16,
         pub ty: u16,
         pub misc_u16: u16,
         pub user_ptr: *mut c_void,
         pub event_handler: unsafe extern "C" fn(*mut Control, *mut ControlEvent) -> u32,
         pub draw: unsafe extern "C" fn(*mut Control, i32, i32, *const Rect),
         pub parent: *mut Dialog,
+    }
+
+    #[repr(C)]
+    pub struct BwString {
+        pub data: *const u8,
+        pub length: usize,
+        pub capacity: usize,
+        pub inline_buffer: [u8; 0x10],
     }
 
     #[repr(C, packed)]
@@ -617,8 +629,11 @@ mod test {
         assert_eq!(mem::size_of::<Player>(), 0x24);
         assert_eq!(mem::size_of::<ControlEvent>(), 0x12);
         assert_eq!(mem::size_of::<Control>(), 0x36);
+        assert_eq!(mem::size_of::<Dialog>(), 0x46);
         assert_eq!(mem::size_of::<scr::ControlEvent>(), 0x1c);
-        assert_eq!(mem::size_of::<scr::Control>(), mem::size_of::<Control>() + 2);
+        assert_eq!(mem::size_of::<scr::Control>(), 0x50);
+        assert_eq!(mem::size_of::<scr::Dialog>(), 0x60);
         assert_eq!(mem::size_of::<scr::DrawCommand>(), 0xa0);
+        assert_eq!(mem::size_of::<scr::BwString>(), 0x1c);
     }
 }
