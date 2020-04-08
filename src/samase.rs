@@ -226,6 +226,7 @@ unsafe fn aiscript_opcode(
 
 #[no_mangle]
 pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
+    bw_dat::set_is_scr(crate::is_scr());
     let required_version = 12;
     if (*api).version < required_version {
         fatal(&format!(

@@ -135,20 +135,20 @@ pub struct Iscript {
 pub struct Sprite {
     pub prev: *mut Sprite,
     pub next: *mut Sprite,
-    pub sprite_id: u16,
-    pub player: u8,
-    pub selection_index: u8,
-    pub visibility_mask: u8,
-    pub elevation_level: u8,
-    pub flags: u8,
-    pub selection_flash_timer: u8,
-    pub index: u16,
-    pub width: u8,
-    pub height: u8,
-    pub position: Point,
-    pub main_image: *mut Image,
-    pub first_image: *mut Image,
-    pub last_image: *mut Image,
+    pub(crate) sprite_id: u16,
+    pub(crate) player: u8,
+    pub(crate) selection_index: u8,
+    pub(crate) visibility_mask: u8,
+    pub(crate) elevation_level: u8,
+    pub(crate) flags: u8,
+    pub(crate) selection_flash_timer: u8,
+    pub(crate) index: u16,
+    pub(crate) width: u8,
+    pub(crate) height: u8,
+    pub(crate) position: Point,
+    pub(crate) main_image: *mut Image,
+    pub(crate) first_image: *mut Image,
+    pub(crate) last_image: *mut Image,
 }
 
 #[repr(C, packed)]
@@ -449,7 +449,7 @@ pub struct ControlEvent {
 
 pub mod scr {
     use libc::c_void;
-    use super::Rect;
+    use super::{Image, Rect};
 
     #[repr(C, packed)]
     pub struct Dialog {
@@ -519,6 +519,27 @@ pub mod scr {
         pub blend_mode: u16,
         pub _unk40: [u8; 0x10],
         pub uniforms: [f32; 0x14],
+    }
+
+    #[repr(C, packed)]
+    pub struct Sprite {
+        pub prev: *mut Sprite,
+        pub next: *mut Sprite,
+        pub(crate) sprite_id: u16,
+        pub(crate) player: u8,
+        pub(crate) selection_index: u8,
+        pub(crate) visibility_mask: u8,
+        pub(crate) elevation_level: u8,
+        pub(crate) flags: u8,
+        pub(crate) selection_flash_timer: u8,
+        pub(crate) index: u16,
+        pub(crate) width: u8,
+        pub(crate) height: u8,
+        pub(crate) pos_x: u32,
+        pub(crate) pos_y: u32,
+        pub(crate) main_image: *mut Image,
+        pub(crate) first_image: *mut Image,
+        pub(crate) last_image: *mut Image,
     }
 }
 
@@ -635,5 +656,6 @@ mod test {
         assert_eq!(mem::size_of::<scr::Dialog>(), 0x60);
         assert_eq!(mem::size_of::<scr::DrawCommand>(), 0xa0);
         assert_eq!(mem::size_of::<scr::BwString>(), 0x1c);
+        assert_eq!(mem::size_of::<scr::Sprite>(), 0x28);
     }
 }

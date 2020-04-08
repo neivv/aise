@@ -7,6 +7,7 @@ use crate::bw;
 use crate::game::Game;
 use crate::tech;
 use crate::upgrade;
+use crate::sprite::Sprite;
 use crate::{UnitId, TechId, OrderId, UpgradeId, RaceFlags};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -30,6 +31,10 @@ impl std::ops::Deref for Unit {
 impl Unit {
     pub unsafe fn from_ptr(ptr: *mut bw::Unit) -> Option<Unit> {
         NonNull::new(ptr).map(Unit)
+    }
+
+    pub fn sprite(self) -> Option<Sprite> {
+        unsafe { Sprite::from_ptr((**self).sprite) }
     }
 
     pub fn player(self) -> u8 {
@@ -354,7 +359,7 @@ impl Unit {
     }
 
     pub fn is_hidden(self) -> bool {
-        unsafe { (*(**self).sprite).flags & 0x20 != 0 }
+        self.sprite().map(|s| s.is_hidden()).unwrap_or(true)
     }
 
     pub fn empty_build_slot(self) -> Option<u8> {
@@ -413,7 +418,10 @@ impl Unit {
 
     pub fn is_enemy(self, game: Game, target: Unit) -> bool {
         let target_player = if target.player() == 11 {
-            unsafe { (*(**target).sprite).player }
+            match target.sprite() {
+                Some(s) => s.player(),
+                _ => return false,
+            }
         } else {
             target.player()
         };
@@ -433,7 +441,11 @@ impl Unit {
     pub fn is_visible_to(self, player: u8) -> bool {
         if player < 8 {
             let mask = 1 << player;
-            unsafe { (*(**self).sprite).visibility_mask & mask != 0 }
+            if let Some(sprite) = self.sprite() {
+                sprite.visibility_mask() & mask != 0
+            } else {
+                false
+            }
         } else {
             false
         }

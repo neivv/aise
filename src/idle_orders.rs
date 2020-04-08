@@ -731,11 +731,10 @@ impl IdleOrder {
             return false;
         }
         if !accept_unseen {
-            let unseen = unsafe {
-                unit.sprite()
-                    .map(|s| (*s).visibility_mask & player_mask == 0)
-                    .unwrap_or(true)
-            };
+            let unseen = unit
+                .sprite()
+                .map(|s| s.visibility_mask() & player_mask == 0)
+                .unwrap_or(true);
             if unseen {
                 return false;
             }

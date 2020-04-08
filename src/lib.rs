@@ -141,6 +141,10 @@ fn init() {
 
 static IS_1161: AtomicBool = AtomicBool::new(false);
 
+fn is_scr() -> bool {
+    IS_1161.load(Ordering::Relaxed) == false
+}
+
 #[cfg(debug_assertions)]
 fn feature_disabled(name: &str) -> bool {
     lazy_static::lazy_static! {

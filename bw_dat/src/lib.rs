@@ -1,13 +1,17 @@
 pub mod dialog;
 pub mod game;
 pub mod expr;
+pub mod image;
 pub mod unit;
+pub mod sprite;
 
 mod bw;
 mod parse_expr;
 
 pub use crate::game::Game;
+pub use crate::image::Image;
 pub use crate::unit::{Unit, UnitArray};
+pub use crate::sprite::Sprite;
 
 pub mod structs {
     pub use crate::bw::structs::*;
@@ -79,6 +83,8 @@ pub struct UpgradeId(pub u16);
 pub struct TechId(pub u16);
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize, Ord, PartialOrd, Hash)]
 pub struct SpriteId(pub u16);
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize, Ord, PartialOrd, Hash)]
+pub struct ImageId(pub u16);
 
 unsafe fn dat_read(dat: *const bw::DatTable, id: u32, field: u32) -> u32 {
     let dat = &*dat.offset(field as isize);

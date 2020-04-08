@@ -139,7 +139,6 @@ pub fn clear_load_mapping() {
 }
 
 pub trait UnitExt {
-    fn sprite(self) -> Option<*mut bw::Sprite>;
     fn orders(&self) -> Orders<'_>;
     fn worker_ai(self) -> Option<*mut bw::WorkerAi>;
     fn building_ai(self) -> Option<*mut bw::BuildingAi>;
@@ -153,15 +152,6 @@ pub trait UnitExt {
 }
 
 impl UnitExt for Unit {
-    fn sprite(self) -> Option<*mut bw::Sprite> {
-        unsafe {
-            match (**self).sprite == null_mut() {
-                true => None,
-                false => Some((**self).sprite),
-            }
-        }
-    }
-
     fn orders(&self) -> Orders<'_> {
         unsafe {
             Orders {
