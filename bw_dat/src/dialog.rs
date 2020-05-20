@@ -9,6 +9,15 @@ use crate::bw;
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct Control(NonNull<bw::Control>);
 
+impl std::ops::Deref for Control {
+    type Target = *mut bw::Control;
+    fn deref(&self) -> &Self::Target {
+        unsafe {
+            std::mem::transmute(&self.0)
+        }
+    }
+}
+
 impl Control {
     pub unsafe fn new(pointer: *mut bw::Control) -> Control {
         Control(NonNull::new(pointer).unwrap())
@@ -44,6 +53,24 @@ impl Control {
         }
     }
 
+    pub fn user_pointer(self) -> *mut c_void {
+        unsafe {
+            match crate::is_scr() {
+                false => (*self.0.as_ptr()).user_ptr,
+                true => (*(self.0.as_ptr() as *mut bw::scr::Control)).user_ptr,
+            }
+        }
+    }
+
+    pub fn is_disabled(self) -> bool {
+        unsafe {
+            match crate::is_scr() {
+                false => (*self.0.as_ptr()).flags & 0x2 != 0,
+                true => (*(self.0.as_ptr() as *mut bw::scr::Control)).flags2 & 0x1 != 0,
+            }
+        }
+    }
+
     pub fn screen_coords(self) -> bw::Rect {
         unsafe {
             let mut rect = (*self.0.as_ptr()).area;
@@ -58,6 +85,11 @@ impl Control {
             }
             rect
         }
+    }
+
+    /// Either parent, or self if this is a dialog.
+    pub fn dialog(self) -> Dialog {
+        self.parent().unwrap_or_else(|| unsafe { Dialog::new(*self as *mut bw::Dialog) })
     }
 
     pub fn parent(self) -> Option<Dialog> {
@@ -105,6 +137,15 @@ impl Control {
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct Dialog(NonNull<bw::Dialog>);
+
+impl std::ops::Deref for Dialog {
+    type Target = *mut bw::Dialog;
+    fn deref(&self) -> &Self::Target {
+        unsafe {
+            std::mem::transmute(&self.0)
+        }
+    }
+}
 
 impl Dialog {
     pub unsafe fn new(pointer: *mut bw::Dialog) -> Dialog {

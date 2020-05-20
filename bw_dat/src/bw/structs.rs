@@ -465,7 +465,7 @@ pub mod scr {
         pub image: [u8; 8],
         pub string: BwString,
         pub flags: u32,
-        pub unk34: [u8; 4],
+        pub flags2: u32,
         pub unknown: u16,
         pub id: i16,
         pub ty: u16,
