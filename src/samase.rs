@@ -48,113 +48,113 @@ fn fatal(text: &str) -> ! {
     unreachable!();
 }
 
-static mut GAME: GlobalFunc<fn() -> *mut bw::Game> = GlobalFunc(None);
+static mut GAME: GlobalFunc<extern fn() -> *mut bw::Game> = GlobalFunc(None);
 pub fn game() -> *mut bw::Game {
     unsafe { GAME.get()() }
 }
 
-static mut AI_REGIONS: GlobalFunc<fn() -> *mut *mut bw::AiRegion> = GlobalFunc(None);
+static mut AI_REGIONS: GlobalFunc<extern fn() -> *mut *mut bw::AiRegion> = GlobalFunc(None);
 pub fn ai_regions(player: u32) -> *mut bw::AiRegion {
     assert!(player < 8);
     unsafe { *(AI_REGIONS.get()()).offset(player as isize) }
 }
 
-static mut PLAYER_AI: GlobalFunc<fn() -> *mut bw::PlayerAiData> = GlobalFunc(None);
+static mut PLAYER_AI: GlobalFunc<extern fn() -> *mut bw::PlayerAiData> = GlobalFunc(None);
 pub fn player_ai(player: u32) -> *mut bw::PlayerAiData {
     assert!(player < 8);
     unsafe { (PLAYER_AI.get()()).offset(player as isize) }
 }
 
-static mut FIRST_ACTIVE_UNIT: GlobalFunc<fn() -> *mut bw::Unit> = GlobalFunc(None);
+static mut FIRST_ACTIVE_UNIT: GlobalFunc<extern fn() -> *mut bw::Unit> = GlobalFunc(None);
 pub fn first_active_unit() -> *mut bw::Unit {
     unsafe { FIRST_ACTIVE_UNIT.0.map(|x| x()).unwrap_or(null_mut()) }
 }
 
-static mut FIRST_HIDDEN_UNIT: GlobalFunc<fn() -> *mut bw::Unit> = GlobalFunc(None);
+static mut FIRST_HIDDEN_UNIT: GlobalFunc<extern fn() -> *mut bw::Unit> = GlobalFunc(None);
 pub fn first_hidden_unit() -> *mut bw::Unit {
     unsafe { FIRST_HIDDEN_UNIT.0.map(|x| x()).unwrap_or(null_mut()) }
 }
 
-static mut FIRST_AI_SCRIPT: GlobalFunc<fn() -> *mut bw::AiScript> = GlobalFunc(None);
+static mut FIRST_AI_SCRIPT: GlobalFunc<extern fn() -> *mut bw::AiScript> = GlobalFunc(None);
 pub fn first_ai_script() -> *mut bw::AiScript {
     unsafe { FIRST_AI_SCRIPT.0.map(|x| x()).unwrap_or(null_mut()) }
 }
 
-static mut SET_FIRST_AI_SCRIPT: GlobalFunc<fn(*mut bw::AiScript)> = GlobalFunc(None);
+static mut SET_FIRST_AI_SCRIPT: GlobalFunc<extern fn(*mut bw::AiScript)> = GlobalFunc(None);
 pub fn set_first_ai_script(value: *mut bw::AiScript) {
     unsafe {
         SET_FIRST_AI_SCRIPT.0.map(|x| x(value));
     }
 }
 
-static mut FIRST_FREE_AI_SCRIPT: GlobalFunc<fn() -> *mut bw::AiScript> = GlobalFunc(None);
+static mut FIRST_FREE_AI_SCRIPT: GlobalFunc<extern fn() -> *mut bw::AiScript> = GlobalFunc(None);
 pub fn first_free_ai_script() -> *mut bw::AiScript {
     unsafe { FIRST_FREE_AI_SCRIPT.0.map(|x| x()).unwrap_or(null_mut()) }
 }
 
-static mut SET_FIRST_FREE_AI_SCRIPT: GlobalFunc<fn(*mut bw::AiScript)> = GlobalFunc(None);
+static mut SET_FIRST_FREE_AI_SCRIPT: GlobalFunc<extern fn(*mut bw::AiScript)> = GlobalFunc(None);
 pub fn set_first_free_ai_script(value: *mut bw::AiScript) {
     unsafe {
         SET_FIRST_FREE_AI_SCRIPT.0.map(|x| x(value));
     }
 }
 
-static mut GUARD_AIS: GlobalFunc<fn() -> *mut bw::GuardAiList> = GlobalFunc(None);
+static mut GUARD_AIS: GlobalFunc<extern fn() -> *mut bw::GuardAiList> = GlobalFunc(None);
 pub fn guard_ais() -> *mut bw::GuardAiList {
     unsafe { GUARD_AIS.0.map(|x| x()).unwrap_or(null_mut()) }
 }
 
-static mut PATHING: GlobalFunc<fn() -> *mut bw::Pathing> = GlobalFunc(None);
+static mut PATHING: GlobalFunc<extern fn() -> *mut bw::Pathing> = GlobalFunc(None);
 pub fn pathing() -> *mut bw::Pathing {
     unsafe { PATHING.0.map(|x| x()).unwrap_or(null_mut()) }
 }
 
-static mut PLAYER_AI_TOWNS: GlobalFunc<fn() -> *mut bw::AiTownList> = GlobalFunc(None);
+static mut PLAYER_AI_TOWNS: GlobalFunc<extern fn() -> *mut bw::AiTownList> = GlobalFunc(None);
 pub fn active_towns() -> *mut bw::AiTownList {
     unsafe { PLAYER_AI_TOWNS.0.map(|x| x()).unwrap_or(null_mut()) }
 }
 
-static mut UNITS_DAT: GlobalFunc<fn() -> *mut bw_dat::DatTable> = GlobalFunc(None);
+static mut UNITS_DAT: GlobalFunc<extern fn() -> *mut bw_dat::DatTable> = GlobalFunc(None);
 pub fn units_dat() -> *mut bw_dat::DatTable {
     unsafe { UNITS_DAT.get()() }
 }
 
-static mut WEAPONS_DAT: GlobalFunc<fn() -> *mut bw_dat::DatTable> = GlobalFunc(None);
+static mut WEAPONS_DAT: GlobalFunc<extern fn() -> *mut bw_dat::DatTable> = GlobalFunc(None);
 pub fn weapons_dat() -> *mut bw_dat::DatTable {
     unsafe { WEAPONS_DAT.get()() }
 }
 
-static mut UPGRADES_DAT: GlobalFunc<fn() -> *mut bw_dat::DatTable> = GlobalFunc(None);
+static mut UPGRADES_DAT: GlobalFunc<extern fn() -> *mut bw_dat::DatTable> = GlobalFunc(None);
 pub fn upgrades_dat() -> *mut bw_dat::DatTable {
     unsafe { UPGRADES_DAT.get()() }
 }
 
-static mut TECHDATA_DAT: GlobalFunc<fn() -> *mut bw_dat::DatTable> = GlobalFunc(None);
+static mut TECHDATA_DAT: GlobalFunc<extern fn() -> *mut bw_dat::DatTable> = GlobalFunc(None);
 pub fn techdata_dat() -> *mut bw_dat::DatTable {
     unsafe { TECHDATA_DAT.get()() }
 }
 
-static mut ORDERS_DAT: GlobalFunc<fn() -> *mut bw_dat::DatTable> = GlobalFunc(None);
+static mut ORDERS_DAT: GlobalFunc<extern fn() -> *mut bw_dat::DatTable> = GlobalFunc(None);
 pub fn orders_dat() -> *mut bw_dat::DatTable {
     unsafe { ORDERS_DAT.get()() }
 }
 
-static mut GET_REGION: GlobalFunc<fn(u32, u32) -> u32> = GlobalFunc(None);
+static mut GET_REGION: GlobalFunc<extern fn(u32, u32) -> u32> = GlobalFunc(None);
 pub fn get_region(x: u32, y: u32) -> u32 {
     unsafe { GET_REGION.get()(x, y) }
 }
 
-static mut DAT_REQUIREMENTS: GlobalFunc<fn(u32, u32) -> *const u16> = GlobalFunc(None);
+static mut DAT_REQUIREMENTS: GlobalFunc<extern fn(u32, u32) -> *const u16> = GlobalFunc(None);
 pub fn requirements(ty: u32, id: u32) -> *const u16 {
     unsafe { DAT_REQUIREMENTS.get()(ty, id) }
 }
 
-static mut CHANGE_AI_REGION_STATE: GlobalFunc<fn(*mut bw::AiRegion, u32)> = GlobalFunc(None);
+static mut CHANGE_AI_REGION_STATE: GlobalFunc<extern fn(*mut bw::AiRegion, u32)> = GlobalFunc(None);
 pub fn change_ai_region_state(region: *mut bw::AiRegion, state: u32) {
     unsafe { CHANGE_AI_REGION_STATE.get()(region, state) }
 }
 
-static mut PLAYERS: GlobalFunc<fn() -> *mut bw::Player> = GlobalFunc(None);
+static mut PLAYERS: GlobalFunc<extern fn() -> *mut bw::Player> = GlobalFunc(None);
 pub fn players() -> *mut bw::Player {
     unsafe { PLAYERS.get()() }
 }
@@ -177,7 +177,7 @@ pub fn issue_order(
     unsafe { ISSUE_ORDER.get()(unit, order.0 as u32, x, y, target, fow_unit.0 as u32) }
 }
 
-static mut PRINT_TEXT: GlobalFunc<fn(*const u8)> = GlobalFunc(None);
+static mut PRINT_TEXT: GlobalFunc<extern fn(*const u8)> = GlobalFunc(None);
 // Too common to be inlined. Would be better if PRINT_TEXT were changed to always be valid
 // (But C ABI is still worse for binsize)
 #[inline(never)]
@@ -189,7 +189,7 @@ pub fn print_text(msg: *const u8) {
     }
 }
 
-static mut RNG_SEED: GlobalFunc<fn() -> u32> = GlobalFunc(None);
+static mut RNG_SEED: GlobalFunc<extern fn() -> u32> = GlobalFunc(None);
 pub fn rng_seed() -> Option<u32> {
     unsafe {
         if let Some(rng) = RNG_SEED.0 {
@@ -200,7 +200,7 @@ pub fn rng_seed() -> Option<u32> {
     }
 }
 
-static mut READ_FILE: GlobalFunc<fn(*const u8, *mut usize) -> *mut u8> = GlobalFunc(None);
+static mut READ_FILE: GlobalFunc<extern fn(*const u8, *mut usize) -> *mut u8> = GlobalFunc(None);
 pub fn read_file(name: &str) -> Option<(*mut u8, usize)> {
     // Uh, should work fine
     let cstring = format!("{}\0", name);
