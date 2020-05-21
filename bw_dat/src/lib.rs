@@ -104,12 +104,14 @@ pub mod weapon {
 
 pub mod upgrade {
     use super::UpgradeId;
+    pub const PLASMA_SHIELDS: UpgradeId = UpgradeId(0xf);
     pub const U_268_SHELLS: UpgradeId = UpgradeId(0x16);
     pub const VENTRAL_SACS: UpgradeId = UpgradeId(0x18);
     pub const GROOVED_SPINES: UpgradeId = UpgradeId(0x1e);
     pub const SINGULARITY_CHARGE: UpgradeId = UpgradeId(0x21);
     pub const REAVER_CAPACITY: UpgradeId = UpgradeId(0x24);
     pub const CARRIER_CAPACITY: UpgradeId = UpgradeId(0x2b);
+    pub const CHITINOUS_PLATING: UpgradeId = UpgradeId(0x34);
     pub const CHARON_BOOSTER: UpgradeId = UpgradeId(0x36);
     pub const NONE: UpgradeId = UpgradeId(0x3d);
 }
@@ -355,6 +357,10 @@ impl UnitId {
         }
     }
 
+    pub fn armor_type(self) -> u8 {
+        self.get(26) as u8
+    }
+
     pub fn rclick_action(self) -> u8 {
         self.get(28) as u8
     }
@@ -439,6 +445,10 @@ impl WeaponId {
 
     pub fn min_range(&self) -> Option<NonZeroU32> {
         NonZeroU32::new(self.get(4))
+    }
+
+    pub fn damage_type(&self) -> u8 {
+        self.get(7) as u8
     }
 
     pub fn attack_angle(&self) -> u8 {
