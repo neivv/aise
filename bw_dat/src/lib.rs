@@ -233,6 +233,10 @@ impl UnitId {
         self.get(6) != 0
     }
 
+    pub fn subunit(self) -> Option<UnitId> {
+        UnitId::optional(self.get(1))
+    }
+
     pub fn ground_weapon(self) -> Option<WeaponId> {
         WeaponId::optional(self.get(17))
     }
