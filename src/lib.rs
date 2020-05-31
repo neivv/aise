@@ -153,9 +153,7 @@ fn feature_disabled(name: &str) -> bool {
                 continue;
             }
             if !feats.iter().any(|&x| x == line) {
-                let msg = format!("Feature '{}' not known", line);
-                windows::message_box("Aiscript extension plugin", &msg);
-                TerminateProcess(GetCurrentProcess(), 0x4230daef);
+                panic!("Feature '{}' not known", line);
             }
             result.push(line.into());
         }
