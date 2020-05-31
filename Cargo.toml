@@ -1,6 +1,6 @@
 [package]
 name = "aise"
-version = "2.28.3"
+version = "2.29.0"
 authors = ["Markus Heikkinen <ittevien@gmail.com>"]
 edition = "2018"
 
@@ -20,7 +20,6 @@ overflow-checks = true
 lto = true
 
 [dependencies]
-backtrace = "0.3"
 bincode = "1.0"
 bitflags = "1.0"
 byteorder = "1.1"
@@ -61,7 +60,7 @@ rev = "e8e847864c2938735040ca3c68ef1cf9e03b692f"
 
 [dependencies.samase_shim]
 git = "https://github.com/neivv/samase_plugin"
-rev = "ffb7305433e7232c1bdc71b909795bff224750c2"
+rev = "b41de51edf79b11fc2224cbcc98f803b99f566cd"
 
 [features]
 opengl = ["cgmath", "euclid", "font-kit", "glium", "gl"]
