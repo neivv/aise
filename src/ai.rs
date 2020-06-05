@@ -1118,7 +1118,20 @@ pub fn remove_unit_ai(game: Game, unit_search: &UnitSearch, unit: Unit, was_kill
                 .map(|x| *x)
                 .unwrap_or_else(null_mut);
         }
-        assert!(!unit.has_ai());
+        if unit.has_ai() {
+            let ai = (**unit).ai as *mut bw::GuardAi;
+            panic!(
+                "Unit's AI was not removed.\n\
+                Unit 0x{:x} @ {:?} order 0x{:x} player {}\n\
+                Ai type {} pointer {:p},\n\
+                Ai bytes {:x?},\n\
+                Unit bytes {:x?}\n",
+                unit.id().0, unit.position(), unit.order().0, unit.player(),
+                (*ai).ai_type, ai,
+                std::slice::from_raw_parts(ai as *const u8, 0x20),
+                std::slice::from_raw_parts(*unit as *const u8, std::mem::size_of::<bw::Unit>()),
+            );
+        }
     }
 }
 
