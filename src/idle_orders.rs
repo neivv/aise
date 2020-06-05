@@ -44,6 +44,7 @@ impl IdleOrders {
             }
         }
         let game = bw::game();
+        let pathing = bw::pathing();
         let current_frame = game.frame_count();
         let deathrattles = &self.deathrattles;
         let ongoing = &mut self.ongoing;
@@ -79,8 +80,13 @@ impl IdleOrders {
 
                 if user.health() < o.panic_health {
                     for decl in deathrattles {
-                        let mut ctx =
-                            decl.target_validation_context(game, units, &mut cache, Some(user));
+                        let mut ctx = decl.target_validation_context(
+                            game,
+                            units,
+                            &mut cache,
+                            Some(user),
+                            pathing,
+                        );
                         if decl.unit_valid(user, &[], CheckTargetingFlags::Yes, &ctx) {
                             let panic_target = find_target(user, &decl, &[], &mut ctx);
                             if let Some((target, distance)) = panic_target {
@@ -124,6 +130,7 @@ impl IdleOrders {
                                     units,
                                     &mut cache,
                                     Some(user),
+                                    pathing,
                                 );
                                 new_target = find_target(user, &o.decl, &[], &mut ctx);
                                 // Drop the order unless new target is Some and good distance.
@@ -174,7 +181,8 @@ impl IdleOrders {
         // Start new idle orders, if any can be started.
         for &mut (ref decl, ref mut state) in self.orders.iter_mut().rev() {
             if state.next_frame <= current_frame {
-                let pair = find_user_target_pair(&decl, &ongoing, game, units, &mut cache);
+                let pair =
+                    find_user_target_pair(&decl, &ongoing, game, units, &mut cache, pathing);
                 if let Some((user, target)) = pair {
                     let (order_target, pos) = target_pos(target, &decl);
                     let home = match user.order() {
@@ -674,6 +682,7 @@ impl IdleOrder {
         units: &'a UnitSearch,
         cache: &'a mut InCombatCache,
         current_unit: Option<Unit>,
+        pathing: *mut bw::Pathing,
     ) -> IdleOrderTargetContext<'a> {
         let mut result = IdleOrderTargetContext {
             acceptable_players: [false; 12],
@@ -681,6 +690,7 @@ impl IdleOrder {
             current_unit,
             units,
             cache,
+            pathing,
         };
 
         let accept_enemies = self.target_flags.simple & 0x1 == 0;
@@ -702,6 +712,7 @@ impl IdleOrder {
 
     fn target_valid(
         &self,
+        user: Unit,
         unit: Unit,
         ongoing: &[OngoingOrder],
         check_targeting: CheckTargetingFlags,
@@ -760,13 +771,78 @@ impl IdleOrder {
                     x.user.player() == player as u8
             })
             .count();
+        if self.order.is_attack_order() {
+            if unsafe { !can_attack_unit(ctx.pathing, user, unit) } {
+                return false;
+            }
+        }
         already_targeted_count < self.limit as usize
+    }
+}
+
+unsafe fn can_attack_unit(pathing: *mut bw::Pathing, attacker: Unit, target: Unit) -> bool {
+    use bw_dat::unit;
+    if attacker.is_disabled() {
+        return false;
+    }
+    if target.is_invincible() || target.is_hidden() {
+        return false;
+    }
+    if target.is_invisible_hidden_to(attacker.player()) {
+        return false;
+    }
+    let turret = attacker.subunit_turret();
+    match attacker.id() {
+        unit::CARRIER | unit::GANTRITHOR => true,
+        unit::REAVER | unit::WARBRINGER => {
+            !target.is_air() && are_on_same_region_group(pathing, attacker, target)
+        }
+        unit::QUEEN | unit::MATRIARCH => can_be_infested(target),
+        _ => {
+            if attacker.id() == unit::ARBITER && attacker.has_ai() {
+                // Ai arbiters don't attack
+                return false;
+            }
+            if target.is_air() {
+                turret.id().air_weapon().is_some()
+            } else {
+                turret.id().ground_weapon().is_some()
+            }
+        }
+    }
+}
+
+fn can_be_infested(unit: Unit) -> bool {
+    unit.is_completed() && unit.id() == bw_dat::unit::COMMAND_CENTER && unit.hp_percent() < 50
+}
+
+unsafe fn are_on_same_region_group(pathing: *mut bw::Pathing, a: Unit, b: Unit) -> bool {
+    let a_region = get_region(pathing, &a.position());
+    let b_region = get_region(pathing, &b.position());
+    (*a_region).group == (*b_region).group
+}
+
+unsafe fn get_region(pathing: *mut bw::Pathing, position: &bw::Point) -> *mut bw::Region {
+    let tile_index = position.y as usize / 32 * 0x100 + position.x as usize / 32;
+    let region = (*pathing).map_tile_regions[tile_index];
+    if region >= 0x2000 {
+        let split = &(*pathing).split_regions[region as usize - 0x2000];
+        let bit_index = ((position.y as usize / 8) & 0x3) * 4 + ((position.x as usize / 8) & 0x3);
+        let region = if split.minitile_flags & (1 << bit_index) == 0 {
+            split.region_false
+        } else {
+            split.region_true
+        };
+        &mut (*pathing).regions[region as usize]
+    } else {
+        &mut (*pathing).regions[region as usize]
     }
 }
 
 struct IdleOrderTargetContext<'a> {
     acceptable_players: [bool; 12],
     game: Game,
+    pathing: *mut bw::Pathing,
     units: &'a UnitSearch,
     cache: &'a mut InCombatCache,
     current_unit: Option<Unit>,
@@ -793,6 +869,7 @@ fn find_user_target_pair(
     game: Game,
     units: &UnitSearch,
     cache: &mut InCombatCache,
+    pathing: *mut bw::Pathing,
 ) -> Option<(Unit, Unit)> {
     fn find_normal(
         decl: &IdleOrder,
@@ -831,7 +908,7 @@ fn find_user_target_pair(
             .filter_map(|x| x.target().map(|target| (x, target)))
             .filter(|&(user, target)| target.target() == Some(user))
             .filter(|&(user, target)| {
-                decl.target_valid(target, ongoing, CheckTargetingFlags::No, ctx) &&
+                decl.target_valid(user, target, ongoing, CheckTargetingFlags::No, ctx) &&
                     decl.unit_valid(user, ongoing, CheckTargetingFlags::No, ctx)
             })
             .map(|(user, tgt)| (user, tgt, bw::distance(user.position(), tgt.position())))
@@ -847,7 +924,7 @@ fn find_user_target_pair(
         unit::active_units()
             .filter_map(|x| x.target().map(|user| (user, x)))
             .filter(|&(user, target)| {
-                decl.target_valid(target, ongoing, CheckTargetingFlags::No, ctx) &&
+                decl.target_valid(user, target, ongoing, CheckTargetingFlags::No, ctx) &&
                     decl.unit_valid(user, ongoing, CheckTargetingFlags::Yes, ctx)
             })
             .map(|(user, tgt)| (user, tgt, bw::distance(user.position(), tgt.position())))
@@ -863,7 +940,7 @@ fn find_user_target_pair(
         unit::active_units()
             .filter_map(|x| x.target().map(|target| (x, target)))
             .filter(|&(user, target)| {
-                decl.target_valid(target, ongoing, CheckTargetingFlags::Yes, ctx) &&
+                decl.target_valid(user, target, ongoing, CheckTargetingFlags::Yes, ctx) &&
                     decl.unit_valid(user, ongoing, CheckTargetingFlags::No, ctx)
             })
             .map(|(user, tgt)| (user, tgt, bw::distance(user.position(), tgt.position())))
@@ -893,7 +970,7 @@ fn find_user_target_pair(
         .contains(TargetingFlags::CURRENT_UNIT);
     let target_normal = decl.target_flags.targeting_filter != TargetingFlags::CURRENT_UNIT;
 
-    let mut ctx = decl.target_validation_context(game, units, cache, None);
+    let mut ctx = decl.target_validation_context(game, units, cache, None, pathing);
     if self_current_unit && target_current_unit {
         update_best(
             &mut best,
@@ -922,7 +999,7 @@ fn find_target(
         if unit == user {
             return false;
         }
-        decl.target_valid(unit, ongoing, CheckTargetingFlags::Yes, ctx)
+        decl.target_valid(user, unit, ongoing, CheckTargetingFlags::Yes, ctx)
     })
 }
 
