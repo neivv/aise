@@ -167,6 +167,10 @@ pub unsafe fn can_satisfy_request(
     ai_mode: &AiMode,
 ) -> Result<(), RequestSatisfyError> {
     let wait_resources = ai_mode.wait_for_resources;
+    let town = match request.ty {
+        3 | 4 | 5 | 6 | 7 => Town::from_ptr(request.val as *mut bw::AiTown),
+        _ => None,
+    };
     match request.ty {
         1 | 2 | 3 | 4 => {
             let unit_id = UnitId(request.id);
@@ -200,7 +204,8 @@ pub unsafe fn can_satisfy_request(
                 // Units return ok on empty reqs, other dats fail
                 None => return Ok(()),
             };
-            can_satisfy_dat_request(game, player, reqs, 0).map_err(RequestSatisfyError::DatReq)?;
+            can_satisfy_dat_request(game, player, reqs, town, 0)
+                .map_err(RequestSatisfyError::DatReq)?;
             if request.ty == 3 {
                 let mut parents = SmallVec::new();
                 parent_unit_ids_for_request(reqs, 0, &mut parents);
@@ -232,7 +237,7 @@ pub unsafe fn can_satisfy_request(
                 Some(s) => s,
                 None => return Err(RequestSatisfyError::NeedDatReqs),
             };
-            can_satisfy_dat_request(game, player, reqs, current_level)
+            can_satisfy_dat_request(game, player, reqs, town, current_level)
                 .map_err(RequestSatisfyError::DatReq)
         }
         6 => {
@@ -247,7 +252,8 @@ pub unsafe fn can_satisfy_request(
                 Some(s) => s,
                 None => return Err(RequestSatisfyError::NeedDatReqs),
             };
-            can_satisfy_dat_request(game, player, reqs, 0).map_err(RequestSatisfyError::DatReq)
+            can_satisfy_dat_request(game, player, reqs, town, 0)
+                .map_err(RequestSatisfyError::DatReq)
         }
         _ => Ok(()),
     }
@@ -327,6 +333,7 @@ unsafe fn can_satisfy_dat_request(
     game: Game,
     player: u8,
     reqs: *const u16,
+    town: Option<Town>,
     current_upgrade_level: u8,
 ) -> Result<(), Vec<DatReqSatisfyError>> {
     fn match_req(dat_req: &DatReq) -> Option<MatchRequirement> {
@@ -434,6 +441,20 @@ unsafe fn can_satisfy_dat_request(
     let ok = unit::active_units()
         .filter(|x| x.player() == player && x.is_completed())
         .filter(|&x| !is_busy(x))
+        .filter(|&x| {
+            // If a town is specified, the constructing unit must be a
+            // worker/building within the town.
+            match town {
+                Some(town) => match x.building_ai() {
+                    Some(ai) => (*ai).town == town.0,
+                    None => match x.worker_ai() {
+                        Some(ai) => (*ai).town == town.0,
+                        None => false,
+                    },
+                }
+                None => true,
+            }
+        })
         .filter(|&x| match_requirements.iter().all(|r| r.0.matches(x)))
         .next()
         .is_some();
