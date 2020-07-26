@@ -168,7 +168,12 @@ pub unsafe fn can_satisfy_request(
 ) -> Result<(), RequestSatisfyError> {
     let wait_resources = ai_mode.wait_for_resources;
     let town = match request.ty {
-        3 | 4 | 5 | 6 | 7 => Town::from_ptr(request.val as *mut bw::AiTown),
+        // Overlords, upgrades, and techs can be done in any town,
+        // even if their request has a town pointer.
+        3 if UnitId(request.id) != bw_dat::unit::OVERLORD => {
+            Town::from_ptr(request.val as *mut bw::AiTown)
+        }
+        4 | 7 => Town::from_ptr(request.val as *mut bw::AiTown),
         _ => None,
     };
     match request.ty {

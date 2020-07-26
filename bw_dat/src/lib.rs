@@ -99,6 +99,7 @@ unsafe fn dat_read(dat: *const bw::DatTable, id: u32, field: u32) -> u32 {
 
 pub mod weapon {
     use super::WeaponId;
+    pub const HALO_ROCKETS: WeaponId = WeaponId(0x6a);
     pub const NONE: WeaponId = WeaponId(0x82);
 }
 
