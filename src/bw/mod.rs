@@ -221,6 +221,10 @@ pub fn first_active_ai_town(player: u8) -> *mut AiTown {
     unsafe { (*samase::active_towns().add(player as usize)).first }
 }
 
+pub fn tile_flags() -> *mut u32 {
+    samase::map_tile_flags()
+}
+
 whack_hooks!(stdcall, 0x00400000,
     0x00488AF0 => increment_death_scores(@edi *mut Unit, @edx u8);
     0x004465C0 => choose_placement_position(u32, u32, *mut Point, u32, @ecx *mut Unit) -> u32;
@@ -248,6 +252,5 @@ whack_funcs!(stdcall, init_funcs, 0x00400000,
 whack_vars!(init_vars, 0x00400000,
     0x0057EE9C => player_name: [u8; 0x19];
     0x0057F0B4 => is_multiplayer: u8;
-    0x006D1260 => tile_flags: *mut u32;
     0x00597208 => client_selection: [*mut Unit; 0xc];
 );

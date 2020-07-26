@@ -165,6 +165,11 @@ pub fn players() -> *mut bw::Player {
     unsafe { PLAYERS.get()() }
 }
 
+static mut MAP_TILE_FLAGS: GlobalFunc<extern fn() -> *mut u32> = GlobalFunc(None);
+pub fn map_tile_flags() -> *mut u32 {
+    unsafe { MAP_TILE_FLAGS.get()() }
+}
+
 static mut ISSUE_ORDER: GlobalFunc<
     unsafe extern fn(*mut bw::Unit, u32, u32, u32, *mut bw::Unit, u32),
 > = GlobalFunc(None);
@@ -344,6 +349,7 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
     );
     PATHING.init(((*api).pathing)().map(|x| mem::transmute(x)), "pathing");
     PLAYERS.init(((*api).players)().map(|x| mem::transmute(x)), "players");
+    MAP_TILE_FLAGS.init(((*api).map_tile_flags)().map(|x| mem::transmute(x)), "map_tile_flags");
     match ((*api).issue_order)() {
         None => ((*api).warn_unsupported_feature)(b"Ai script issue_order\0".as_ptr()),
         Some(s) => ISSUE_ORDER.0 = Some(mem::transmute(s)),

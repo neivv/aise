@@ -35,7 +35,12 @@ impl IdleOrders {
         self.returning_cloaked.swap_retain(|x| unit != x.unit.0);
     }
 
-    pub unsafe fn step_frame(&mut self, rng: &mut Rng, units: &UnitSearch) {
+    pub unsafe fn step_frame(
+        &mut self,
+        rng: &mut Rng,
+        units: &UnitSearch,
+        tile_flags: *mut u32,
+    ) {
         for i in 0..8 {
             let ai = bw::player_ai(i);
             if (*ai).spell_cooldown > 200 {
@@ -86,6 +91,7 @@ impl IdleOrders {
                             &mut cache,
                             Some(user),
                             pathing,
+                            tile_flags,
                         );
                         if decl.unit_valid(user, &[], CheckTargetingFlags::Yes, &ctx) {
                             let panic_target = find_target(user, &decl, &[], &mut ctx);
@@ -123,6 +129,7 @@ impl IdleOrders {
                                 Some(user),
                                 game,
                                 units,
+                                tile_flags,
                             );
                             if !flags_valid || target.is_invincible() {
                                 let mut ctx = o.decl.target_validation_context(
@@ -131,6 +138,7 @@ impl IdleOrders {
                                     &mut cache,
                                     Some(user),
                                     pathing,
+                                    tile_flags,
                                 );
                                 new_target = find_target(user, &o.decl, &[], &mut ctx);
                                 // Drop the order unless new target is Some and good distance.
@@ -182,7 +190,7 @@ impl IdleOrders {
         for &mut (ref decl, ref mut state) in self.orders.iter_mut().rev() {
             if state.next_frame <= current_frame {
                 let pair =
-                    find_user_target_pair(&decl, &ongoing, game, units, &mut cache, pathing);
+                    find_user_target_pair(&decl, &ongoing, game, units, &mut cache, pathing, tile_flags);
                 if let Some((user, target)) = pair {
                     let (order_target, pos) = target_pos(target, &decl);
                     let home = match user.order() {
@@ -672,6 +680,7 @@ impl IdleOrder {
                 None,
                 ctx.game,
                 ctx.units,
+                ctx.tile_flags,
             ) &&
             !ongoing.iter().any(|x| x.user.0 == user)
     }
@@ -683,6 +692,7 @@ impl IdleOrder {
         cache: &'a mut InCombatCache,
         current_unit: Option<Unit>,
         pathing: *mut bw::Pathing,
+        tile_flags: *mut u32,
     ) -> IdleOrderTargetContext<'a> {
         let mut result = IdleOrderTargetContext {
             acceptable_players: [false; 12],
@@ -691,6 +701,7 @@ impl IdleOrder {
             units,
             cache,
             pathing,
+            tile_flags,
         };
 
         let accept_enemies = self.target_flags.simple & 0x1 == 0;
@@ -734,6 +745,7 @@ impl IdleOrder {
             ctx.current_unit,
             ctx.game,
             ctx.units,
+            ctx.tile_flags,
         );
         if !flags_ok {
             return false;
@@ -846,6 +858,7 @@ struct IdleOrderTargetContext<'a> {
     units: &'a UnitSearch,
     cache: &'a mut InCombatCache,
     current_unit: Option<Unit>,
+    tile_flags: *mut u32,
 }
 
 fn target_pos(target: Unit, decl: &IdleOrder) -> (Option<Unit>, bw::Point) {
@@ -870,6 +883,7 @@ fn find_user_target_pair(
     units: &UnitSearch,
     cache: &mut InCombatCache,
     pathing: *mut bw::Pathing,
+    tile_flags: *mut u32,
 ) -> Option<(Unit, Unit)> {
     fn find_normal(
         decl: &IdleOrder,
@@ -970,7 +984,7 @@ fn find_user_target_pair(
         .contains(TargetingFlags::CURRENT_UNIT);
     let target_normal = decl.target_flags.targeting_filter != TargetingFlags::CURRENT_UNIT;
 
-    let mut ctx = decl.target_validation_context(game, units, cache, None, pathing);
+    let mut ctx = decl.target_validation_context(game, units, cache, None, pathing, tile_flags);
     if self_current_unit && target_current_unit {
         update_best(
             &mut best,
@@ -1023,6 +1037,7 @@ impl IdleOrderFlags {
         current_unit: Option<Unit>,
         game: Game,
         units: &UnitSearch,
+        tile_flags: *mut u32,
     ) -> bool {
         unsafe {
             if let Some(order) = self.order {
@@ -1073,9 +1088,9 @@ impl IdleOrderFlags {
             }
             if self.tiles_required != 0 || self.tiles_not != 0 {
                 let map_width = game.map_width_tiles();
-                let tile = *(*bw::tile_flags).offset(
-                    (unit.position().x as u16 / 32) as isize +
-                        (map_width * (unit.position().y as u16 / 32)) as isize,
+                let tile = *tile_flags.add(
+                    (unit.position().x / 32) as usize +
+                        map_width as usize * (unit.position().y / 32) as usize,
                 );
 
                 if tile & self.tiles_required != self.tiles_required {

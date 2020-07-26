@@ -1193,19 +1193,29 @@ pub unsafe extern fn resources_command(script: *mut bw::AiScript) {
     }
 }
 
-pub unsafe fn reveal_vision_hook(globals: &mut Globals, game: Game) {
+pub unsafe fn reveal_vision_hook(
+    globals: &mut Globals,
+    game: Game,
+    tile_flags: *mut u32,
+) {
     for rev in &mut globals.reveal_states {
         if rev.time != 0 {
             rev.time -= 1;
             if rev.time == 0 {
-                reveal(game, rev.pos, rev.players, false);
+                reveal(game, tile_flags, rev.pos, rev.players, false);
             }
         }
     }
     globals.reveal_states.swap_retain(|x| x.time > 0);
 }
 
-unsafe fn reveal(game: Game, area: bw::Rect, players: PlayerMatch, reveal: bool) {
+unsafe fn reveal(
+    game: Game,
+    tile_flags: *mut u32,
+    area: bw::Rect,
+    players: PlayerMatch,
+    reveal: bool,
+) {
     let tile_x = area.left / 32;
     let tile_y = area.top / 32;
     let limit_x = area.right / 32;
@@ -1214,8 +1224,7 @@ unsafe fn reveal(game: Game, area: bw::Rect, players: PlayerMatch, reveal: bool)
     for player in players.players().filter(|&x| x < 8) {
         for i in tile_x..=limit_x {
             for j in tile_y..=limit_y {
-                let tile_flag =
-                    (*bw::tile_flags).offset(i as isize + (map_width * j as u16) as isize);
+                let tile_flag = tile_flags.add(i as usize + map_width as usize * j as usize);
                 if reveal {
                     *tile_flag &= 0x1 << player;
                 } else {
@@ -1260,7 +1269,7 @@ pub unsafe extern fn reveal_area(script: *mut bw::AiScript) {
         };
         globals.reveal_states.push(reveal_state);
     }
-    reveal(game, src.area, players, true);
+    reveal(game, bw::tile_flags(), src.area, players, true);
 }
 
 fn get_bank_path(name: &str) -> Option<PathBuf> {
@@ -2927,9 +2936,10 @@ unsafe fn check_placement(
         }
     }
 
+    let tile_flags = bw::tile_flags();
     for px in 0..width_tiles {
         for py in 0..height_tiles {
-            let tile = *(*bw::tile_flags).offset(
+            let tile = *tile_flags.offset(
                 (px + x_tile as u16 - 1) as isize + (map_width * (py + y_tile as u16 - 1)) as isize,
             );
             if tile & 0x0080_0000 != 0 {

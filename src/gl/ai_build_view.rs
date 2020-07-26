@@ -521,7 +521,7 @@ struct MapTileFlags {
 impl MapTileFlags {
     fn new(game: Game) -> MapTileFlags {
         MapTileFlags {
-            pointer: unsafe { *bw::tile_flags },
+            pointer: unsafe { bw::tile_flags() },
             width: game.map_width_tiles(),
             height: game.map_height_tiles(),
         }
