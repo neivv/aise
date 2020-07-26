@@ -1126,8 +1126,12 @@ pub fn remove_unit_ai(game: Game, unit_search: &UnitSearch, unit: Unit, was_kill
                 Ai type {} pointer {:p},\n\
                 Ai bytes {:x?},\n\
                 Unit bytes {:x?}\n",
-                unit.id().0, unit.position(), unit.order().0, unit.player(),
-                (*ai).ai_type, ai,
+                unit.id().0,
+                unit.position(),
+                unit.order().0,
+                unit.player(),
+                (*ai).ai_type,
+                ai,
                 std::slice::from_raw_parts(ai as *const u8, 0x20),
                 std::slice::from_raw_parts(*unit as *const u8, std::mem::size_of::<bw::Unit>()),
             );

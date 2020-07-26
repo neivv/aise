@@ -1193,11 +1193,7 @@ pub unsafe extern fn resources_command(script: *mut bw::AiScript) {
     }
 }
 
-pub unsafe fn reveal_vision_hook(
-    globals: &mut Globals,
-    game: Game,
-    tile_flags: *mut u32,
-) {
+pub unsafe fn reveal_vision_hook(globals: &mut Globals, game: Game, tile_flags: *mut u32) {
     for rev in &mut globals.reveal_states {
         if rev.time != 0 {
             rev.time -= 1;

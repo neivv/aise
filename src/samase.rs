@@ -349,7 +349,10 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
     );
     PATHING.init(((*api).pathing)().map(|x| mem::transmute(x)), "pathing");
     PLAYERS.init(((*api).players)().map(|x| mem::transmute(x)), "players");
-    MAP_TILE_FLAGS.init(((*api).map_tile_flags)().map(|x| mem::transmute(x)), "map_tile_flags");
+    MAP_TILE_FLAGS.init(
+        ((*api).map_tile_flags)().map(|x| mem::transmute(x)),
+        "map_tile_flags",
+    );
     match ((*api).issue_order)() {
         None => ((*api).warn_unsupported_feature)(b"Ai script issue_order\0".as_ptr()),
         Some(s) => ISSUE_ORDER.0 = Some(mem::transmute(s)),

@@ -456,7 +456,7 @@ unsafe fn can_satisfy_dat_request(
                         Some(ai) => (*ai).town == town.0,
                         None => false,
                     },
-                }
+                },
                 None => true,
             }
         })

@@ -35,12 +35,7 @@ impl IdleOrders {
         self.returning_cloaked.swap_retain(|x| unit != x.unit.0);
     }
 
-    pub unsafe fn step_frame(
-        &mut self,
-        rng: &mut Rng,
-        units: &UnitSearch,
-        tile_flags: *mut u32,
-    ) {
+    pub unsafe fn step_frame(&mut self, rng: &mut Rng, units: &UnitSearch, tile_flags: *mut u32) {
         for i in 0..8 {
             let ai = bw::player_ai(i);
             if (*ai).spell_cooldown > 200 {
@@ -189,8 +184,9 @@ impl IdleOrders {
         // Start new idle orders, if any can be started.
         for &mut (ref decl, ref mut state) in self.orders.iter_mut().rev() {
             if state.next_frame <= current_frame {
-                let pair =
-                    find_user_target_pair(&decl, &ongoing, game, units, &mut cache, pathing, tile_flags);
+                let pair = find_user_target_pair(
+                    &decl, &ongoing, game, units, &mut cache, pathing, tile_flags,
+                );
                 if let Some((user, target)) = pair {
                     let (order_target, pos) = target_pos(target, &decl);
                     let home = match user.order() {

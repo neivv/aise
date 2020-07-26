@@ -217,7 +217,9 @@ unsafe extern fn frame_hook() {
     aiscript::claim_bw_allocated_scripts(globals);
     ai::update_region_safety(&mut globals.region_safety_pos, game, &search);
     aiscript::attack_timeouts_frame_hook(globals, game);
-    globals.idle_orders.step_frame(&mut globals.rng, &search, tile_flags);
+    globals
+        .idle_orders
+        .step_frame(&mut globals.rng, &search, tile_flags);
     aiscript::under_attack_frame_hook(globals);
     aiscript::reveal_vision_hook(globals, game, tile_flags);
     ai::update_guard_needs(game, &mut globals.guards);
