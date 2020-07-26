@@ -568,7 +568,7 @@ pub unsafe extern fn max_workers(script: *mut bw::AiScript) {
     }
 }
 
-pub extern fn max_workers_for(globals: &mut Globals, town: *mut bw::AiTown) -> Option<u8> {
+pub fn max_workers_for(globals: &mut Globals, town: *mut bw::AiTown) -> Option<u8> {
     globals
         .max_workers
         .iter()
@@ -1205,7 +1205,7 @@ pub unsafe fn reveal_vision_hook(globals: &mut Globals, game: Game) {
     globals.reveal_states.swap_retain(|x| x.time > 0);
 }
 
-unsafe extern fn reveal(game: Game, area: bw::Rect, players: PlayerMatch, reveal: bool) {
+unsafe fn reveal(game: Game, area: bw::Rect, players: PlayerMatch, reveal: bool) {
     let tile_x = area.left / 32;
     let tile_y = area.top / 32;
     let limit_x = area.right / 32;
@@ -2962,7 +2962,7 @@ unsafe fn check_placement(
     true
 }
 
-unsafe extern fn add_layout(
+unsafe fn add_layout(
     script: *mut bw::AiScript,
     unit_id: UnitId,
     layout_modifier: u8,
