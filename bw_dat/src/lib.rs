@@ -17,8 +17,9 @@ pub mod structs {
     pub use crate::bw::structs::*;
 }
 
+use std::mem;
 use std::num::NonZeroU32;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use bitflags::bitflags;
 use serde_derive::{Serialize, Deserialize};
@@ -26,6 +27,9 @@ use serde_derive::{Serialize, Deserialize};
 pub use bw::DatTable;
 
 static IS_SCR: AtomicBool = AtomicBool::new(false);
+static BW_MALLOC: AtomicUsize = AtomicUsize::new(0);
+static BW_FREE: AtomicUsize = AtomicUsize::new(0);
+static BW_MOUSE: AtomicUsize = AtomicUsize::new(0);
 
 pub fn set_is_scr(value: bool) {
     IS_SCR.store(value, Ordering::Relaxed);
@@ -33,6 +37,47 @@ pub fn set_is_scr(value: bool) {
 
 fn is_scr() -> bool {
     IS_SCR.load(Ordering::Relaxed) == true
+}
+
+pub unsafe fn set_bw_malloc(
+    malloc: unsafe extern fn(usize) -> *mut u8,
+    free: unsafe extern fn(*mut u8),
+) {
+    BW_MALLOC.store(malloc as usize, Ordering::Relaxed);
+    BW_FREE.store(free as usize, Ordering::Relaxed);
+}
+
+pub unsafe fn set_bw_mouse_func(
+    mouse: unsafe extern fn(*mut i32, *mut i32),
+) {
+    BW_MOUSE.store(mouse as usize, Ordering::Relaxed);
+}
+
+unsafe fn bw_malloc(val: usize) -> *mut u8 {
+    let func: unsafe extern fn(usize) -> *mut u8 =
+        mem::transmute(BW_MALLOC.load(Ordering::Relaxed));
+    func(val)
+}
+
+unsafe fn bw_free(val: *mut u8) {
+    let func: unsafe extern fn(*mut u8) =
+        mem::transmute(BW_FREE.load(Ordering::Relaxed));
+    func(val)
+}
+
+fn bw_mouse() -> (i32, i32) {
+    unsafe {
+        let mut x = 0;
+        let mut y = 0;
+        let func: Option<unsafe extern fn(*mut i32, *mut i32)> =
+            mem::transmute(BW_MOUSE.load(Ordering::Relaxed));
+        if let Some(func) = func {
+            func(&mut x, &mut y);
+            (x, y)
+        } else {
+            (0, 0)
+        }
+    }
 }
 
 macro_rules! init_fns {
@@ -66,6 +111,23 @@ bitflags! {
         const ZERG = 0x1;
         const TERRAN = 0x2;
         const PROTOSS = 0x4;
+    }
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize, Ord, PartialOrd, Hash)]
+pub enum Race {
+    Zerg,
+    Terran,
+    Protoss,
+}
+
+impl Race {
+    pub fn id(self) -> u8 {
+        match self {
+            Race::Zerg => 0,
+            Race::Terran => 1,
+            Race::Protoss => 2,
+        }
     }
 }
 
@@ -120,6 +182,7 @@ pub mod upgrade {
 pub mod tech {
     use super::TechId;
     pub const SPIDER_MINES: TechId = TechId(0x3);
+    pub const CLOAKING_FIELD: TechId = TechId(0x9);
     pub const PERSONNEL_CLOAKING: TechId = TechId(0xa);
     pub const NONE: TechId = TechId(0x2c);
 }
@@ -179,6 +242,7 @@ pub mod order {
     pub const LOAD_UNIT_TRANSPORT: OrderId = OrderId(0x5e);
     pub const SPREAD_CREEP: OrderId = OrderId(0x66);
     pub const ARCHON_WARP: OrderId = OrderId(0x69);
+    pub const ARCHON_SUMMON: OrderId = OrderId(0x6a);
     pub const HOLD_POSITION: OrderId = OrderId(0x6b);
     pub const CLOAK: OrderId = OrderId(0x6d);
     pub const DECLOAK: OrderId = OrderId(0x6e);
@@ -266,6 +330,10 @@ impl UnitId {
         self.flags() & 0x1 != 0
     }
 
+    pub fn is_creature(self) -> bool {
+        self.0 <= unit::DISRUPTION_WEB.0
+    }
+
     pub fn is_worker(self) -> bool {
         self.flags() & 0x8 != 0
     }
@@ -314,6 +382,24 @@ impl UnitId {
         RaceFlags::from_bits_truncate((self.group_flags() as u8) & 0x7)
     }
 
+    pub fn primary_race(self) -> Option<Race> {
+        let races = self.races();
+        if races.intersects(RaceFlags::ZERG) {
+            Some(Race::Zerg)
+        } else if races.intersects(RaceFlags::PROTOSS) {
+            Some(Race::Protoss)
+        } else if races.intersects(RaceFlags::TERRAN) {
+            Some(Race::Terran)
+        } else {
+            None
+        }
+
+    }
+
+    pub fn rank(self) -> u8 {
+        self.get(11) as u8
+    }
+
     pub fn armor(self) -> u32 {
         self.get(27)
     }
@@ -332,6 +418,10 @@ impl UnitId {
 
     pub fn build_time(self) -> u32 {
         self.get(42)
+    }
+
+    pub fn supply_provided(self) -> u32 {
+        self.get(45)
     }
 
     pub fn supply_cost(self) -> u32 {
@@ -393,6 +483,22 @@ impl UnitId {
             unit::REFINERY | unit::EXTRACTOR | unit::ASSIMILATOR => true,
             _ => false,
         }
+    }
+
+    pub fn map_specific_name(self) -> Option<u32> {
+        Some(self.get(51)).filter(|&x| x != 0)
+    }
+
+    pub fn fighter_id(self) -> Option<UnitId> {
+        match self {
+            unit::REAVER | unit::WARBRINGER => Some(unit::SCARAB),
+            unit::CARRIER | unit::GANTRITHOR => Some(unit::INTERCEPTOR),
+            _ => None,
+        }
+    }
+
+    pub fn icon(&self) -> u32 {
+        self.0 as u32
     }
 }
 
@@ -462,6 +568,10 @@ impl WeaponId {
 
     pub fn cooldown(&self) -> u32 {
         self.get(16)
+    }
+
+    pub fn icon(&self) -> u32 {
+        self.get(23)
     }
 }
 
@@ -603,5 +713,9 @@ impl OrderId {
 
     pub fn tech(&self) -> Option<TechId> {
         TechId::optional(self.get(14))
+    }
+
+    pub fn weapon(&self) -> Option<WeaponId> {
+        WeaponId::optional(self.get(13))
     }
 }

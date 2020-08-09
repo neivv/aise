@@ -1,8 +1,9 @@
-use std::ptr::{NonNull};
+use std::ptr::{NonNull, null_mut};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use lazy_static::lazy_static;
 use libc::c_void;
+use winapi::um::sysinfoapi::GetTickCount;
 
 use crate::bw;
 
@@ -35,6 +36,16 @@ impl Control {
         }
     }
 
+    pub fn set_string(self, value: &[u8]) {
+        if !crate::is_scr() {
+            return;
+        }
+        unsafe {
+            let this = (*self) as *mut bw::scr::Control;
+            assign_scr_string(&mut (*this).string, value);
+        }
+    }
+
     pub fn id(self) -> i16 {
         unsafe {
             match crate::is_scr() {
@@ -53,11 +64,38 @@ impl Control {
         }
     }
 
+    pub fn flags(self) -> u32 {
+        unsafe {
+            match crate::is_scr() {
+                false => (*self.0.as_ptr()).flags,
+                true => (*(self.0.as_ptr() as *mut bw::scr::Control)).flags,
+            }
+        }
+    }
+
     pub fn user_pointer(self) -> *mut c_void {
         unsafe {
             match crate::is_scr() {
                 false => (*self.0.as_ptr()).user_ptr,
                 true => (*(self.0.as_ptr() as *mut bw::scr::Control)).user_ptr,
+            }
+        }
+    }
+
+    pub fn set_user_pointer(self, value: *mut c_void) {
+        unsafe {
+            match crate::is_scr() {
+                false => (*self.0.as_ptr()).user_ptr = value,
+                true => (*(self.0.as_ptr() as *mut bw::scr::Control)).user_ptr = value,
+            }
+        }
+    }
+
+    pub fn set_short_user_value(self, value: u16) {
+        unsafe {
+            match crate::is_scr() {
+                false => (*self.0.as_ptr()).misc_u16 = value,
+                true => (*(self.0.as_ptr() as *mut bw::scr::Control)).misc_u16 = value,
             }
         }
     }
@@ -133,6 +171,86 @@ impl Control {
             };
         }
     }
+
+    pub fn contains_point(self, x: i16, y: i16) -> bool {
+        unsafe {
+            (**self).area.contains_point(&bw::Point { x, y })
+        }
+    }
+
+    pub fn send_ext_event(self, id: u32) -> u32 {
+        let (x, y) = crate::bw_mouse();
+        self.send_ext_event_mouse(id, x as i16, y as i16)
+    }
+
+    pub fn send_ext_event_mouse(self, id: u32, x: i16, y: i16) -> u32 {
+        unsafe {
+            if crate::is_scr() {
+                let this = (*self) as *mut bw::scr::Control;
+                let mut event = bw::scr::ControlEvent {
+                    ext_type: id,
+                    ext_ptr: null_mut(),
+                    ext_param: 0,
+                    param: 0,
+                    ty: 0xe,
+                    x,
+                    y,
+                    padding: 0,
+                    time: GetTickCount(),
+                };
+                if let Some(e) = (*this).event_handler {
+                    e(this, &mut event)
+                } else {
+                    0
+                }
+            } else {
+                0
+            }
+        }
+    }
+
+    pub fn show(self) {
+        if crate::is_scr() {
+            if self.flags() & 0x2 == 0 {
+                self.send_ext_event(0xd);
+            }
+        }
+    }
+
+    pub fn hide(self) {
+        if crate::is_scr() {
+            if self.flags() & 0x2 != 0 {
+                if self.send_ext_event(0xe) != 0 {
+                    self.send_ext_event(0x6);
+                }
+            }
+        }
+    }
+
+    pub fn enable(self) {
+        if self.is_disabled() {
+            if crate::is_scr() {
+                unsafe {
+                    let this = (*self) as *mut bw::scr::Control;
+                    (*this).flags2 &= !0x1;
+                    self.dialog().update_control_under_mouse();
+                }
+            }
+        }
+    }
+
+    pub fn disable(self) {
+        if !self.is_disabled() {
+            if crate::is_scr() {
+                unsafe {
+                    let this = (*self) as *mut bw::scr::Control;
+                    (*this).flags2 &= !0x4;
+                    (*this).flags2 |= 0x1;
+                    self.send_ext_event(0x6);
+                }
+            }
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -159,21 +277,120 @@ impl Dialog {
     }
 
     pub fn child_by_id(self, id: i16) -> Option<Control> {
+        self.children().find(|x| x.id() == id)
+    }
+
+    pub fn children(self) -> impl Iterator<Item = Control> {
         unsafe {
-            let mut child = match crate::is_scr() {
+            let child = match crate::is_scr() {
                 false => (*self.0.as_ptr()).first_child,
                 true => {
                     (*(self.0.as_ptr() as *mut bw::scr::Dialog)).first_child as *mut bw::Control
                 }
             };
-            while !child.is_null() {
-                let c = Control::new(child);
-                if c.id() == id {
-                    return Some(c);
+            IterChildren(child)
+        }
+    }
+
+    fn update_control_under_mouse(self) {
+        if crate::is_scr() {
+            unsafe {
+                let this = (*self) as *mut bw::scr::Dialog;
+                let (x, y) = crate::bw_mouse();
+                if let Some(ctrl) = self.find_ctrl_for_mouse(x as i16, y as i16) {
+                    let ctrl_ptr = (*ctrl) as *mut bw::scr::Control;
+                    if (*ctrl_ptr).flags2 & 0x4 == 0 {
+                        self.set_active_control(ctrl);
+                    }
+                } else {
+                    if let Some(ctrl) = self.active_control() {
+                        let ctrl_ptr = (*ctrl) as *mut bw::scr::Control;
+                        (*ctrl_ptr).flags2 &= !0x4;
+                        (*this).active = null_mut();
+                    }
                 }
-                child = (*child).next;
             }
-            None
+        }
+    }
+
+    fn find_ctrl_for_mouse(self, x: i16, y: i16) -> Option<Control> {
+        if !crate::is_scr() {
+            return None;
+        }
+        unsafe {
+            if !self.as_control().contains_point(x, y) {
+                return None;
+            }
+            let x = x - (**self.as_control()).area.left;
+            let y = y - (**self.as_control()).area.top;
+            let mut result: Option<Control> = None;
+            for child in self.children() {
+                if child.contains_point(x, y) && child.send_ext_event_mouse(0x4, x, y) != 0 {
+                    let better = if let Some(result) = result {
+                        let ctrl_ptr = (*result) as *mut bw::scr::Control;
+                        (*ctrl_ptr).flags2 & 0x20 == 0
+                    } else {
+                        true
+                    };
+                    if better {
+                        result = Some(child);
+                    }
+                }
+            }
+            if result.is_none() && self.as_control().send_ext_event_mouse(0x4, x, y) != 0 {
+                result = Some(self.as_control());
+            }
+            result
+        }
+    }
+
+    fn set_active_control(self, ctrl: Control) {
+        if crate::is_scr() {
+            unsafe {
+                let this = (*self) as *mut bw::scr::Dialog;
+                if let Some(ctrl) = self.active_control() {
+                    let ctrl_ptr = (*ctrl) as *mut bw::scr::Control;
+                    (*ctrl_ptr).flags2 &= !0x4;
+                    (*this).active = null_mut();
+                }
+                if ctrl != self.as_control() {
+                    let ctrl_ptr = (*ctrl) as *mut bw::scr::Control;
+                    (*ctrl_ptr).flags2 |= 0x4;
+                    ctrl.send_ext_event(0x9);
+                    (*this).active = ctrl_ptr;
+                }
+            }
+        }
+    }
+
+    fn active_control(self) -> Option<Control> {
+        unsafe {
+            let ptr = match crate::is_scr() {
+                false => (*self.0.as_ptr()).active,
+                true => (*(self.0.as_ptr() as *mut bw::scr::Dialog)).active as *mut bw::Control,
+            };
+            if ptr.is_null() {
+                None
+            } else {
+                Some(Control::new(ptr))
+            }
+        }
+    }
+}
+
+struct IterChildren(*mut bw::Control);
+
+impl Iterator for IterChildren {
+    type Item = Control;
+    fn next(&mut self) -> Option<Self::Item> {
+        unsafe {
+            if self.0.is_null() {
+                None
+            } else {
+                let next = Control::new(self.0);
+                self.0 = (**next).next;
+                Some(next)
+            }
         }
     }
 }
@@ -313,5 +530,29 @@ impl EventHandler {
                 orig_offset,
             }
         }
+    }
+}
+
+fn assign_scr_string(out: &mut bw::scr::BwString, value: &[u8]) {
+    if out.capacity & !(isize::min_value() as usize) < value.len() + 1 {
+        reserve_reset_scr_string(out, value.len() + 1);
+    }
+    unsafe {
+        let data = out.data as *mut u8;
+        std::ptr::copy_nonoverlapping(value.as_ptr(), data as *mut u8, value.len());
+        *data.add(value.len()) = 0;
+        out.length = value.len();
+    }
+}
+
+fn reserve_reset_scr_string(out: &mut bw::scr::BwString, capacity: usize) {
+    use crate::{bw_malloc, bw_free};
+    unsafe {
+        let new_buf = bw_malloc(capacity);
+        if out.capacity & (isize::min_value() as usize) == 0 {
+            bw_free(out.data as *mut u8);
+        }
+        out.capacity = capacity;
+        out.data = new_buf as *const u8;
     }
 }

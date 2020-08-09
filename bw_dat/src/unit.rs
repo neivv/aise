@@ -45,6 +45,19 @@ impl Unit {
         UnitId(unsafe { (**self).unit_id })
     }
 
+    /// Morphing buildings show the name/graphics of incomplete building
+    pub fn building_morph_displayed_id(self) -> UnitId {
+        if !self.is_completed() {
+            if let Some(dest_id) = self.first_queued_unit() {
+                return match dest_id {
+                    LAIR | HIVE | GREATER_SPIRE | SUNKEN_COLONY | SPORE_COLONY => dest_id,
+                    _ => self.id(),
+                }
+            }
+        }
+        self.id()
+    }
+
     pub fn position(self) -> bw::Point {
         unsafe { (**self).position }
     }
@@ -66,49 +79,23 @@ impl Unit {
     }
 
     pub fn hp_percent(self) -> i32 {
-        self.hitpoints().saturating_mul(100) / (self.id().hitpoints())
+        self.hitpoints().saturating_mul(100)
+            .checked_div(self.id().hitpoints())
+            .unwrap_or(100)
     }
 
-    pub fn spider_mines(self, game: Game) -> u8 {
-        if game.tech_researched(self.player(), tech::SPIDER_MINES) || self.id().is_hero() {
-            unsafe { (**self).unit_specific[0] }
-        } else {
-            0
+    pub fn armor(self, game: Game) -> u32 {
+        let id = self.id();
+        let mut val = id.armor();
+        if let Some(upgrade) = id.armor_upgrade() {
+            val = val.saturating_add(game.upgrade_level(self.player(), upgrade) as u32);
         }
-    }
-
-    pub fn hangar_count(self) -> u8 {
-        // Count fighters outside hangar if carrier
-        unsafe {
-            match self.id() {
-                CARRIER | GANTRITHOR => {
-                    (**self).unit_specific[8] + (**self).unit_specific[9]
-                }
-                _ => (**self).unit_specific[8],
-            }
+        if id == TORRASQUE || (id == ULTRALISK &&
+            game.upgrade_level(self.player(), upgrade::CHITINOUS_PLATING) > 0
+        ) {
+            val = val.saturating_add(2);
         }
-    }
-
-    pub fn hangar_cap(self, game: Game) -> u8 {
-        match self.id() {
-            CARRIER | GANTRITHOR => {
-                let upgrade = upgrade::CARRIER_CAPACITY;
-                if self.id().is_hero() || game.upgrade_level(self.player(), upgrade) > 0 {
-                    8
-                } else {
-                    4
-                }
-            }
-            REAVER | WARBRINGER => {
-                let upgrade = upgrade::REAVER_CAPACITY;
-                if self.id().is_hero() || game.upgrade_level(self.player(), upgrade) > 0 {
-                    10
-                } else {
-                    5
-                }
-            }
-            _ => 0,
-        }
+        val
     }
 
     pub fn is_transport(self, game: Game) -> bool {
@@ -285,22 +272,22 @@ impl Unit {
         }
     }
 
-    pub fn tech_in_progress(self) -> TechId {
+    pub fn tech_in_progress(self) -> Option<TechId> {
         unsafe {
             if self.id().is_building() {
-                TechId((**self).unit_specific[0x8].into())
+                TechId::optional((**self).unit_specific[0x8].into())
             } else {
-                tech::NONE
+                None
             }
         }
     }
 
-    pub fn upgrade_in_progress(self) -> UpgradeId {
+    pub fn upgrade_in_progress(self) -> Option<UpgradeId> {
         unsafe {
             if self.id().is_building() {
-                UpgradeId((**self).unit_specific[0x9].into())
+                UpgradeId::optional((**self).unit_specific[0x9].into())
             } else {
-                upgrade::NONE
+                None
             }
         }
     }
@@ -316,6 +303,25 @@ impl Unit {
                 (**self).maelstrom_timer != 0 ||
                 (**self).flags & 0x400 != 0
         }
+    }
+
+    pub fn is_blind(self) -> bool {
+        unsafe { (**self).is_blind != 0 }
+    }
+
+    pub fn is_parasited(self) -> bool {
+        unsafe { (**self).parasited_by_players != 0 }
+    }
+
+    pub fn acid_spore_count(self) -> u8 {
+        unsafe { (**self).acid_spore_count }
+    }
+
+    pub fn can_detect(self) -> bool {
+        self.id().flags() & 0x8000 != 0 &&
+            self.is_completed() &&
+            !self.is_blind() &&
+            !self.is_disabled()
     }
 
     pub fn powerup(self) -> Option<Unit> {
@@ -350,11 +356,42 @@ impl Unit {
         }
     }
 
-    pub fn fighter_amount(self) -> u8 {
+    pub fn fighter_amount(self) -> u32 {
         if self.uses_fighters() {
-            unsafe { (**self).unit_specific[8] + (**self).unit_specific[9] }
+            // Count fighters outside hangar if carrier
+            unsafe {
+                match self.id() {
+                    CARRIER | GANTRITHOR => {
+                        ((**self).unit_specific[8] as u32)
+                            .saturating_add((**self).unit_specific[9] as u32)
+                    }
+                    _ => (**self).unit_specific[8] as u32,
+                }
+            }
         } else {
             0
+        }
+    }
+
+    pub fn hangar_cap(self, game: Game) -> u32 {
+        match self.id() {
+            CARRIER | GANTRITHOR => {
+                let upgrade = upgrade::CARRIER_CAPACITY;
+                if self.id().is_hero() || game.upgrade_level(self.player(), upgrade) > 0 {
+                    8
+                } else {
+                    4
+                }
+            }
+            REAVER | WARBRINGER => {
+                let upgrade = upgrade::REAVER_CAPACITY;
+                if self.id().is_hero() || game.upgrade_level(self.player(), upgrade) > 0 {
+                    10
+                } else {
+                    5
+                }
+            }
+            _ => 0,
         }
     }
 
@@ -393,8 +430,18 @@ impl Unit {
     }
 
     pub fn first_queued_unit(self) -> Option<UnitId> {
-        let current_build_unit =
-            unsafe { UnitId((**self).build_queue[(**self).current_build_slot as usize]) };
+        let index = unsafe { (**self).current_build_slot as usize };
+        let current_build_unit = unsafe { UnitId((**self).build_queue[index]) };
+        if current_build_unit == NONE {
+            None
+        } else {
+            Some(current_build_unit)
+        }
+    }
+
+    pub fn nth_queued_unit(self, slot: u8) -> Option<UnitId> {
+        let index = unsafe { ((**self).current_build_slot as usize + slot as usize) % 5 };
+        let current_build_unit = unsafe { UnitId((**self).build_queue[index]) };
         if current_build_unit == NONE {
             None
         } else {
@@ -410,6 +457,14 @@ impl Unit {
 
     pub fn resource_amount(self) -> u16 {
         unsafe { (&(**self).unit_specific2[0..]).read_u16::<LE>().unwrap() }
+    }
+
+    pub fn rank(self) -> u8 {
+        unsafe { self.id().rank().saturating_add((**self).rank) }
+    }
+
+    pub fn kills(self) -> u32 {
+        unsafe { (**self).kills as u32 }
     }
 
     pub fn has_ai(self) -> bool {
@@ -549,16 +604,21 @@ pub const GOLIATH_TURRET: UnitId = UnitId(0x4);
 pub const SIEGE_TANK_TANK: UnitId = UnitId(0x5);
 pub const SIEGE_TANK_TURRET: UnitId = UnitId(0x6);
 pub const SCV: UnitId = UnitId(0x7);
+pub const WRAITH: UnitId = UnitId(0x7);
 pub const GUI_MONTAG: UnitId = UnitId(0xa);
 pub const SPIDER_MINE: UnitId = UnitId(0xd);
 pub const NUCLEAR_MISSILE: UnitId = UnitId(0xe);
+pub const CIVILIAN: UnitId = UnitId(0xf);
 pub const SARAH_KERRIGAN: UnitId = UnitId(0x10);
 pub const ALAN_SCHEZAR: UnitId = UnitId(0x11);
 pub const SCHEZAR_TURRET: UnitId = UnitId(0x12);
 pub const JIM_RAYNOR_VULTURE: UnitId = UnitId(0x13);
 pub const JIM_RAYNOR_MARINE: UnitId = UnitId(0x14);
+pub const TOM_KAZANSKY: UnitId = UnitId(0x15);
 pub const EDMUND_DUKE_TANK: UnitId = UnitId(0x17);
 pub const EDMUND_DUKE_SIEGE: UnitId = UnitId(0x19);
+pub const HYPERION: UnitId = UnitId(0x19);
+pub const NORAD_II: UnitId = UnitId(0x1a);
 pub const SIEGE_TANK_SIEGE: UnitId = UnitId(0x1e);
 pub const FIREBAT: UnitId = UnitId(0x20);
 pub const MEDIC: UnitId = UnitId(0x22);
@@ -575,6 +635,7 @@ pub const QUEEN: UnitId = UnitId(0x2d);
 pub const SCOURGE: UnitId = UnitId(0x2f);
 pub const TORRASQUE: UnitId = UnitId(0x30);
 pub const MATRIARCH: UnitId = UnitId(0x31);
+pub const INFESTED_TERRAN: UnitId = UnitId(0x32);
 pub const INFESTED_KERRIGAN: UnitId = UnitId(0x33);
 pub const COCOON: UnitId = UnitId(0x3b);
 pub const DARK_TEMPLAR: UnitId = UnitId(0x3d);
@@ -585,6 +646,7 @@ pub const HIGH_TEMPLAR: UnitId = UnitId(0x43);
 pub const ARCHON: UnitId = UnitId(0x44);
 pub const ARBITER: UnitId = UnitId(0x47);
 pub const CARRIER: UnitId = UnitId(0x48);
+pub const INTERCEPTOR: UnitId = UnitId(0x49);
 pub const FENIX_DRAGOON: UnitId = UnitId(0x4e);
 pub const WARBRINGER: UnitId = UnitId(0x51);
 pub const GANTRITHOR: UnitId = UnitId(0x52);
@@ -614,7 +676,9 @@ pub const SUNKEN_COLONY: UnitId = UnitId(0x92);
 pub const EXTRACTOR: UnitId = UnitId(0x95);
 pub const PYLON: UnitId = UnitId(0x9c);
 pub const ASSIMILATOR: UnitId = UnitId(0x9d);
+pub const GATEWAY: UnitId = UnitId(0xa0);
 pub const PHOTON_CANNON: UnitId = UnitId(0xa2);
+pub const STARGATE: UnitId = UnitId(0xa7);
 pub const MINERAL_FIELD_1: UnitId = UnitId(0xb0);
 pub const MINERAL_FIELD_2: UnitId = UnitId(0xb1);
 pub const MINERAL_FIELD_3: UnitId = UnitId(0xb2);

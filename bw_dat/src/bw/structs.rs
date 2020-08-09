@@ -418,6 +418,7 @@ pub struct Dialog {
     pub control: Control,
     pub unk36: [u8; 0xc],
     pub first_child: *mut Control,
+    pub active: *mut Control,
 }
 
 #[repr(C, packed)]
@@ -456,6 +457,7 @@ pub mod scr {
         pub control: Control,
         pub unk50: [u8; 0xc],
         pub first_child: *mut Control,
+        pub active: *mut Control,
     }
 
     #[repr(C, packed)]
@@ -487,7 +489,7 @@ pub mod scr {
     #[repr(C, packed)]
     pub struct ControlEvent {
         pub ext_type: u32,
-        pub unk4: u32,
+        pub ext_ptr: *mut c_void,
         pub ext_param: u32,
         pub param: u32,
         pub ty: u16,

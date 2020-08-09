@@ -1138,11 +1138,11 @@ impl IdleOrderFlags {
                     IdleOrderNumeric::Hangar => {
                         use bw_dat::unit::*;
                         match id {
-                            VULTURE | JIM_RAYNOR_VULTURE => (unit.spider_mines(game) as i32, 3),
+                            VULTURE | JIM_RAYNOR_VULTURE => (unit.mine_amount(game) as i32, 3),
                             NUCLEAR_SILO => (unit.has_nuke() as i32, 1),
                             // Should this check upgrades for max amount?
-                            CARRIER | GANTRITHOR => (unit.hangar_count() as i32, 8),
-                            REAVER | WARBRINGER => (unit.hangar_count() as i32, 10),
+                            CARRIER | GANTRITHOR => (unit.fighter_amount() as i32, 8),
+                            REAVER | WARBRINGER => (unit.fighter_amount() as i32, 10),
                             _ => (0, 0),
                         }
                     }

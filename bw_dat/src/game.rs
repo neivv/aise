@@ -1,6 +1,6 @@
 use std::ptr::{NonNull};
 
-use crate::{TechId, UnitId, UpgradeId};
+use crate::{Race, TechId, UnitId, UpgradeId};
 use crate::bw;
 
 #[derive(Copy, Clone)]
@@ -13,13 +13,6 @@ impl std::ops::Deref for Game {
             std::mem::transmute(&self.0)
         }
     }
-}
-
-#[derive(Copy, Clone)]
-pub enum Race {
-    Zerg,
-    Terran,
-    Protoss,
 }
 
 impl Game {
@@ -61,12 +54,32 @@ impl Game {
         }
     }
 
+    pub fn supply_used(self, player: u8, race: Race) -> u32 {
+        let index = race.id() as usize;
+        unsafe {
+            let supplies = &(**self).supplies[index];
+            supplies.provided[player as usize]
+        }
+    }
+
+    pub fn supply_provided(self, player: u8, race: Race) -> u32 {
+        let index = race.id() as usize;
+        unsafe {
+            let supplies = &(**self).supplies[index];
+            supplies.provided[player as usize]
+        }
+    }
+
+    pub fn supply_max(self, player: u8, race: Race) -> u32 {
+        let index = race.id() as usize;
+        unsafe {
+            let supplies = &(**self).supplies[index];
+            supplies.max[player as usize]
+        }
+    }
+
     pub fn supply_free(self, player: u8, race: Race) -> u32 {
-        let index = match race {
-            Race::Zerg => 0,
-            Race::Terran => 1,
-            Race::Protoss => 2,
-        };
+        let index = race.id() as usize;
         unsafe {
             let supplies = &(**self).supplies[index];
             supplies.provided[player as usize].saturating_sub(supplies.used[player as usize])

@@ -1,6 +1,6 @@
 use smallvec::SmallVec;
 
-use bw_dat::{self, tech, unit, upgrade, Game, TechId, Unit, UnitId};
+use bw_dat::{self, unit, Game, TechId, Unit, UnitId};
 
 impl DatReq {
     unsafe fn read(pos: &mut *const u16) -> DatReq {
@@ -210,13 +210,13 @@ pub unsafe fn check_dat_requirements(
                 DatReq::IsNotBusy => {
                     unit.first_queued_unit().is_none() &&
                         !unit.is_building_addon() &&
-                        unit.upgrade_in_progress() == upgrade::NONE &&
-                        unit.tech_in_progress() == tech::NONE
+                        unit.upgrade_in_progress().is_none() &&
+                        unit.tech_in_progress().is_none()
                 }
                 DatReq::IsNotConstructingAddon => !unit.is_building_addon(),
                 DatReq::IsNotConstructingBuilding => !unit.is_constructing_building(),
-                DatReq::IsNotTeching => unit.tech_in_progress() == tech::NONE,
-                DatReq::IsNotUpgrading => unit.upgrade_in_progress() == upgrade::NONE,
+                DatReq::IsNotTeching => unit.tech_in_progress().is_none(),
+                DatReq::IsNotUpgrading => unit.upgrade_in_progress().is_none(),
                 DatReq::IsLifted => unit.id().is_building() && !unit.is_landed_building(),
                 DatReq::IsNotLifted => unit.is_landed_building(),
                 DatReq::HasNoNydusExit => *((**unit).unit_specific2.as_ptr() as *const u32) == 0,
@@ -243,7 +243,7 @@ pub unsafe fn check_dat_requirements(
                         }
                         match unit.id() {
                             unit::REAVER | unit::WARBRINGER | unit::CARRIER | unit::GANTRITHOR => {
-                                return unit.hangar_count() > 0;
+                                return unit.fighter_amount() > 0;
                             }
                             _ => (),
                         }
@@ -263,7 +263,7 @@ pub unsafe fn check_dat_requirements(
                 DatReq::WorkerOnly => unit.id().is_worker(),
                 DatReq::FlyingBuildingOnly => unit.id().flags() & 0x20 != 0,
                 DatReq::PowerupOnly => unit.id().flags() & 0x800 != 0,
-                DatReq::HasSpiderMinesOnly => unit.spider_mines(game) > 0,
+                DatReq::HasSpiderMinesOnly => unit.mine_amount(game) > 0,
                 DatReq::CanHoldPositionOnly => true, // The check is dumb anyway
                 DatReq::AllowOnHallucinations => {
                     hallucinations_allowed = true;
@@ -278,7 +278,7 @@ pub unsafe fn check_dat_requirements(
                     true
                 }
                 DatReq::CurrentUnitIs(unit_id) => unit.matches_id(unit_id),
-                DatReq::HasHangarSpace => unit.hangar_count() < unit.hangar_cap(game),
+                DatReq::HasHangarSpace => unit.fighter_amount() < unit.hangar_cap(game),
                 DatReq::HasNotNukeOnly => !unit.has_nuke(),
                 DatReq::HasNoAddon => unit.addon().is_none(),
                 DatReq::HasAddonAttached(id) => {
