@@ -238,7 +238,7 @@ unsafe fn aiscript_opcode(
 #[no_mangle]
 pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
     bw_dat::set_is_scr(crate::is_scr());
-    let required_version = 26;
+    let required_version = 29;
     if (*api).version < required_version {
         fatal(&format!(
             "Newer samase is required. (Plugin API version {}, this plugin requires version {})",
@@ -246,6 +246,10 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
             required_version,
         ));
     }
+
+    let mut ext_arrays = null_mut();
+    let ext_arrays_len = ((*api).extended_arrays)(&mut ext_arrays);
+    bw_dat::set_extended_arrays(ext_arrays as *mut _, ext_arrays_len);
 
     CRASH_WITH_MESSAGE.0 = Some((*api).crash_with_message);
 

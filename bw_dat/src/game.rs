@@ -1,6 +1,6 @@
 use std::ptr::{NonNull};
 
-use crate::{Race, TechId, UnitId, UpgradeId};
+use crate::{Race, TechId, UnitId, UpgradeId, extended_array};
 use crate::bw;
 
 #[derive(Copy, Clone)]
@@ -88,84 +88,112 @@ impl Game {
 
     pub fn upgrade_level(self, player: u8, upgrade: UpgradeId) -> u8 {
         unsafe {
-            let upgrade = upgrade.0;
+            let upgrade = upgrade.0 as usize;
             assert!(player < 0xc);
-            if upgrade >= 0x2e {
-                (**self).upgrade_level_bw[player as usize][upgrade as usize - 0x2e]
+            if let Some(arr) = extended_array(0) {
+                arr.read_u8(upgrade * 12 + player as usize)
             } else {
-                (**self).upgrade_level_sc[player as usize][upgrade as usize]
+                if upgrade >= 0x2e {
+                    (**self).upgrade_level_bw[player as usize][upgrade - 0x2e]
+                } else {
+                    (**self).upgrade_level_sc[player as usize][upgrade]
+                }
             }
         }
     }
 
     pub fn upgrade_max_level(self, player: u8, upgrade: UpgradeId) -> u8 {
         unsafe {
-            let upgrade = upgrade.0;
+            let upgrade = upgrade.0 as usize;
             assert!(player < 0xc);
-            if upgrade >= 0x2e {
-                (**self).upgrade_limit_bw[player as usize][upgrade as usize - 0x2e]
+            if let Some(arr) = extended_array(1) {
+                arr.read_u8(upgrade * 12 + player as usize)
             } else {
-                (**self).upgrade_limit_sc[player as usize][upgrade as usize]
+                if upgrade >= 0x2e {
+                    (**self).upgrade_limit_bw[player as usize][upgrade - 0x2e]
+                } else {
+                    (**self).upgrade_limit_sc[player as usize][upgrade]
+                }
             }
         }
     }
 
     pub fn set_upgrade_level(self, player: u8, upgrade: UpgradeId, level: u8) {
         unsafe {
-            let upgrade = upgrade.0;
+            let upgrade = upgrade.0 as usize;
             assert!(player < 0xc);
-            if upgrade >= 0x2e {
-                (**self).upgrade_level_bw[player as usize][upgrade as usize - 0x2e] = level;
+            if let Some(arr) = extended_array(0) {
+                arr.write_u8(upgrade * 12 + player as usize, level);
             } else {
-                (**self).upgrade_level_sc[player as usize][upgrade as usize] = level;
+                if upgrade >= 0x2e {
+                    (**self).upgrade_level_bw[player as usize][upgrade - 0x2e] = level;
+                } else {
+                    (**self).upgrade_level_sc[player as usize][upgrade] = level;
+                }
             }
         }
     }
 
     pub fn tech_researched(self, player: u8, tech: TechId) -> bool {
         unsafe {
-            let tech = tech.0;
+            let tech = tech.0 as usize;
             assert!(player < 0xc);
-            if tech >= 0x18 {
-                (**self).tech_level_bw[player as usize][tech as usize - 0x18] != 0
+            if let Some(arr) = extended_array(2) {
+                arr.read_u8(tech * 12 + player as usize) != 0
             } else {
-                (**self).tech_level_sc[player as usize][tech as usize] != 0
+                if tech >= 0x18 {
+                    (**self).tech_level_bw[player as usize][tech - 0x18] != 0
+                } else {
+                    (**self).tech_level_sc[player as usize][tech] != 0
+                }
             }
         }
     }
 
     pub fn set_tech_level(self, player: u8, tech: TechId, level: u8) {
         unsafe {
-            let tech = tech.0;
             assert!(player < 0xc);
-            if tech >= 0x18 {
-                (**self).tech_level_bw[player as usize][tech as usize - 0x18] = level;
+            let tech = tech.0 as usize;
+            if let Some(arr) = extended_array(2) {
+                arr.write_u8(tech * 12 + player as usize, level);
             } else {
-                (**self).tech_level_sc[player as usize][tech as usize] = level;
+                if tech >= 0x18 {
+                    (**self).tech_level_bw[player as usize][tech - 0x18] = level;
+                } else {
+                    (**self).tech_level_sc[player as usize][tech] = level;
+                }
             }
         }
     }
 
     pub fn tech_available(self, player: u8, tech: TechId) -> bool {
         unsafe {
-            let tech = tech.0;
+            let tech = tech.0 as usize;
             assert!(player < 0xc);
-            if tech >= 0x18 {
-                (**self).tech_availability_bw[player as usize][tech as usize - 0x18] != 0
+            if let Some(arr) = extended_array(3) {
+                arr.read_u8(tech * 12 + player as usize) != 0
             } else {
-                (**self).tech_availability_sc[player as usize][tech as usize] != 0
+                if tech >= 0x18 {
+                    (**self).tech_availability_bw[player as usize][tech - 0x18] != 0
+                } else {
+                    (**self).tech_availability_sc[player as usize][tech] != 0
+                }
             }
         }
     }
 
     pub fn set_tech_availability(self, player: u8, tech: TechId, level: u8) {
         unsafe {
-            let tech = tech.0;
+            let tech = tech.0 as usize;
             assert!(player < 0xc);
-            if tech >= 0x18 {
-                (**self).tech_availability_bw[player as usize][tech as usize - 0x18] = level;
+            if let Some(arr) = extended_array(3) {
+                arr.write_u8(tech * 12 + player as usize, level);
             } else {
-                (**self).tech_availability_sc[player as usize][tech as usize] = level;
+                if tech >= 0x18 {
+                    (**self).tech_availability_bw[player as usize][tech - 0x18] = level;
+                } else {
+                    (**self).tech_availability_sc[player as usize][tech] = level;
+                }
             }
         }
     }

@@ -30,6 +30,36 @@ static IS_SCR: AtomicBool = AtomicBool::new(false);
 static BW_MALLOC: AtomicUsize = AtomicUsize::new(0);
 static BW_FREE: AtomicUsize = AtomicUsize::new(0);
 static BW_MOUSE: AtomicUsize = AtomicUsize::new(0);
+static EXTENDED_ARRAYS: AtomicUsize = AtomicUsize::new(0);
+static EXTENDED_ARRAYS_LEN: AtomicUsize = AtomicUsize::new(0);
+
+#[repr(C)]
+pub struct ExtendedArray {
+    pub pointer: *mut u8,
+    pub end: *mut u8,
+    pub unused: usize,
+    pub unused2: usize,
+}
+
+impl ExtendedArray {
+    fn len(&self) -> usize {
+        (self.end as usize).wrapping_sub(self.pointer as usize)
+    }
+
+    pub(crate) fn read_u8(&self, offset: usize) -> u8 {
+        if offset < self.len() {
+            unsafe { *self.pointer.add(offset) }
+        } else {
+            0
+        }
+    }
+
+    pub(crate) fn write_u8(&self, offset: usize, value: u8) {
+        if offset < self.len() {
+            unsafe { *self.pointer.add(offset) = value; }
+        }
+    }
+}
 
 pub fn set_is_scr(value: bool) {
     IS_SCR.store(value, Ordering::Relaxed);
@@ -53,6 +83,11 @@ pub unsafe fn set_bw_mouse_func(
     BW_MOUSE.store(mouse as usize, Ordering::Relaxed);
 }
 
+pub unsafe fn set_extended_arrays(arrays: *const ExtendedArray, len: usize) {
+    EXTENDED_ARRAYS.store(arrays as usize, Ordering::Relaxed);
+    EXTENDED_ARRAYS_LEN.store(len, Ordering::Relaxed);
+}
+
 unsafe fn bw_malloc(val: usize) -> *mut u8 {
     let func: unsafe extern fn(usize) -> *mut u8 =
         mem::transmute(BW_MALLOC.load(Ordering::Relaxed));
@@ -63,6 +98,17 @@ unsafe fn bw_free(val: *mut u8) {
     let func: unsafe extern fn(*mut u8) =
         mem::transmute(BW_FREE.load(Ordering::Relaxed));
     func(val)
+}
+
+fn extended_array(index: u32) -> Option<&'static ExtendedArray> {
+    let index = index as usize;
+    if index < EXTENDED_ARRAYS_LEN.load(Ordering::Relaxed) {
+        unsafe {
+            Some(&*(EXTENDED_ARRAYS.load(Ordering::Relaxed) as *const ExtendedArray).add(index))
+        }
+    } else {
+        None
+    }
 }
 
 fn bw_mouse() -> (i32, i32) {
