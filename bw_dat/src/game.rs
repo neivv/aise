@@ -199,11 +199,63 @@ impl Game {
     }
 
     pub fn unit_count(self, player: u8, unit: UnitId) -> u32 {
-        unsafe { (**self).all_units_count[unit.0 as usize][player as usize] }
+        unsafe {
+            let unit = unit.0 as usize;
+            assert!(player < 0xc);
+            if let Some(arr) = extended_array(7) {
+                arr.read_u32(unit * 12 + player as usize)
+            } else {
+                (**self).all_units_count[unit][player as usize]
+            }
+        }
     }
 
     pub fn completed_count(self, player: u8, unit: UnitId) -> u32 {
-        unsafe { (**self).completed_units_count[unit.0 as usize][player as usize] }
+        unsafe {
+            let unit = unit.0 as usize;
+            assert!(player < 0xc);
+            if let Some(arr) = extended_array(8) {
+                arr.read_u32(unit * 12 + player as usize)
+            } else {
+                (**self).completed_units_count[unit][player as usize]
+            }
+        }
+    }
+
+    pub fn unit_kills(self, player: u8, unit: UnitId) -> u32 {
+        unsafe {
+            let unit = unit.0 as usize;
+            assert!(player < 0xc);
+            if let Some(arr) = extended_array(9) {
+                arr.read_u32(unit * 12 + player as usize)
+            } else {
+                (**self).unit_kills[unit][player as usize]
+            }
+        }
+    }
+
+    pub fn unit_deaths(self, player: u8, unit: UnitId) -> u32 {
+        unsafe {
+            let unit = unit.0 as usize;
+            assert!(player < 0xc);
+            if let Some(arr) = extended_array(0xa) {
+                arr.read_u32(unit * 12 + player as usize)
+            } else {
+                (**self).deaths[unit][player as usize]
+            }
+        }
+    }
+
+    pub fn set_unit_deaths(self, player: u8, unit: UnitId, value: u32) {
+        unsafe {
+            let unit = unit.0 as usize;
+            assert!(player < 0xc);
+            if let Some(arr) = extended_array(0xa) {
+                arr.write_u32(unit * 12 + player as usize, value);
+            } else {
+                (**self).deaths[unit][player as usize] = value;
+            }
+        }
     }
 
     pub fn allied(self, player: u8, other: u8) -> bool {

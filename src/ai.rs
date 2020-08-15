@@ -63,7 +63,12 @@ impl PlayerAi {
     }
 
     pub fn is_at_limit(&self, unit: UnitId, game: Game) -> bool {
-        match unsafe { (*self.0).build_limits[unit.0 as usize] } {
+        let limit = if let Some(arr) = bw_dat::extended_array(0xc) {
+            arr.read_u8(unit.0 as usize * 0xc + self.1 as usize)
+        } else {
+            unsafe { (*self.0).build_limits[unit.0 as usize] }
+        };
+        match limit {
             0 => false,
             0xff => true,
             x => count_units(self.1, unit, game) >= x.into(),

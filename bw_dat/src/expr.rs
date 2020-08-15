@@ -122,7 +122,7 @@ impl<E: CustomEval> EvalCtx<E> {
                         IrradiateTimer => (**unit).irradiate_timer as i32,
                         MatrixTimer => (**unit).matrix_timer as i32,
                         MatrixHitpoints => (**unit).defensive_matrix_dmg as i32,
-                        AcidSporeCount => (**unit).acid_spore_count as i32,
+                        AcidSporeCount => unit.acid_spore_count() as i32,
                         Fighters => unit.fighter_amount() as i32,
                         Mines => unit.mine_amount(game) as i32,
                         Hitpoints => unit.hitpoints(),
@@ -130,11 +130,11 @@ impl<E: CustomEval> EvalCtx<E> {
                         Shields => unit.shields(),
                         ShieldsPercent => unit.shields() * 100 / unit.id().shields(),
                         Energy => unit.energy() as i32,
-                        Kills => (**unit).kills as i32,
+                        Kills => unit.kills() as i32,
                         FrameCount => game.frame_count() as i32,
                         Tileset => (**game).tileset as i32,
-                        Minerals => (**game).minerals[unit.player() as usize] as i32,
-                        Gas => (**game).gas[unit.player() as usize] as i32,
+                        Minerals => game.minerals(unit.player()) as i32,
+                        Gas => game.gas(unit.player()) as i32,
                         CarriedResourceAmount => {
                             if unit.id().is_worker() {
                                 (**unit).unit_specific[0xf] as i32
@@ -149,7 +149,7 @@ impl<E: CustomEval> EvalCtx<E> {
                         SigOrder => (**unit).order_signal as i32,
                         Player => (**unit).player as i32,
                         UnitId => (**unit).unit_id as i32,
-                        Order => (**unit).order as i32,
+                        Order => unit.order().0 as i32,
                         Sin => {
                             let val = self.eval_int_r(&x.args[0]);
                             ((val as f32).to_radians().sin() * 256.0) as i32
@@ -167,16 +167,12 @@ impl<E: CustomEval> EvalCtx<E> {
                                 x if x >= 0 && x < unit::NONE.0 as i32 => x,
                                 _ => return i32::min_value(),
                             };
+                            let player = player as u8;
+                            let unit = crate::UnitId(unit as u16);
                             match x.ty {
-                                Deaths => (**game).deaths[unit as usize][player as usize] as i32,
-                                UnitCountCompleted => game.completed_count(
-                                    player as u8,
-                                    crate::UnitId(unit as u16),
-                                ) as i32,
-                                UnitCountAny | _ => game.unit_count(
-                                    player as u8,
-                                    crate::UnitId(unit as u16),
-                                ) as i32,
+                                Deaths => game.unit_deaths(player, unit) as i32,
+                                UnitCountCompleted => game.completed_count(player, unit) as i32,
+                                UnitCountAny | _ => game.unit_count(player, unit) as i32,
                             }
                         }
                         Upgrade => {

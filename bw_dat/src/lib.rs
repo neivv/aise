@@ -46,7 +46,7 @@ impl ExtendedArray {
         (self.end as usize).wrapping_sub(self.pointer as usize)
     }
 
-    pub(crate) fn read_u8(&self, offset: usize) -> u8 {
+    pub fn read_u8(&self, offset: usize) -> u8 {
         if offset < self.len() {
             unsafe { *self.pointer.add(offset) }
         } else {
@@ -54,9 +54,25 @@ impl ExtendedArray {
         }
     }
 
-    pub(crate) fn write_u8(&self, offset: usize, value: u8) {
+    pub fn write_u8(&self, offset: usize, value: u8) {
         if offset < self.len() {
             unsafe { *self.pointer.add(offset) = value; }
+        }
+    }
+
+    pub fn read_u32(&self, offset: usize) -> u32 {
+        let offset = offset << 2;
+        if offset < self.len() {
+            unsafe { *(self.pointer.add(offset) as *const u32) }
+        } else {
+            0
+        }
+    }
+
+    pub fn write_u32(&self, offset: usize, value: u32) {
+        let offset = offset << 2;
+        if offset < self.len() {
+            unsafe { *(self.pointer.add(offset) as *mut u32) = value; }
         }
     }
 }
@@ -100,7 +116,7 @@ unsafe fn bw_free(val: *mut u8) {
     func(val)
 }
 
-fn extended_array(index: u32) -> Option<&'static ExtendedArray> {
+pub fn extended_array(index: u32) -> Option<&'static ExtendedArray> {
     let index = index as usize;
     if index < EXTENDED_ARRAYS_LEN.load(Ordering::Relaxed) {
         unsafe {

@@ -113,21 +113,21 @@ pub unsafe extern fn attack_to(script: *mut bw::AiScript) {
 pub unsafe extern fn attack_to_deaths(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let grouping_x_unit = read.read_u16();
-    let grouping_x_player = read.read_u16();
+    let grouping_x_player = read.read_u16() as u8;
     let grouping_y_unit = read.read_u16();
-    let grouping_y_player = read.read_u16();
+    let grouping_y_player = read.read_u16() as u8;
     let target_x_unit = read.read_u16();
-    let target_x_player = read.read_u16();
+    let target_x_player = read.read_u16() as u8;
     let target_y_unit = read.read_u16();
-    let target_y_player = read.read_u16();
+    let target_y_player = read.read_u16() as u8;
     if feature_disabled("attack_to") {
         return;
     }
     let game = bw::game();
-    let group_x = (**game).deaths[grouping_x_unit as usize][grouping_x_player as usize];
-    let group_y = (**game).deaths[grouping_y_unit as usize][grouping_y_player as usize];
-    let target_x = (**game).deaths[target_x_unit as usize][target_x_player as usize];
-    let target_y = (**game).deaths[target_y_unit as usize][target_y_player as usize];
+    let group_x = game.unit_deaths(grouping_x_player, UnitId(grouping_x_unit));
+    let group_y = game.unit_deaths(grouping_y_player, UnitId(grouping_y_unit));
+    let target_x = game.unit_deaths(target_x_player, UnitId(target_x_unit));
+    let target_y = game.unit_deaths(target_y_player, UnitId(target_y_unit));
     let grouping = bw::Point {
         x: group_x as i16,
         y: group_y as i16,
@@ -1651,12 +1651,7 @@ pub unsafe extern fn deaths(script: *mut bw::AiScript) {
                     players
                         .players()
                         .map(|player| {
-                            (**game)
-                                .deaths
-                                .get_mut(unit_id.0 as usize)
-                                .and_then(|x| x.get_mut(player as usize))
-                                .cloned()
-                                .unwrap_or(0)
+                            game.unit_deaths(player, unit_id)
                         })
                         .sum::<u32>()
                 })
@@ -1666,13 +1661,9 @@ pub unsafe extern fn deaths(script: *mut bw::AiScript) {
         ModifierType::Write(write) => {
             for unit_id in units.iter_flatten_groups() {
                 for player in players.players() {
-                    let deaths = (**game)
-                        .deaths
-                        .get_mut(unit_id.0 as usize)
-                        .and_then(|x| x.get_mut(player as usize));
-                    if let Some(deaths) = deaths {
-                        *deaths = write.apply(*deaths, amount, &mut globals.rng);
-                    }
+                    let deaths = game.unit_deaths(player, unit_id);
+                    let new = write.apply(deaths, amount, &mut globals.rng);
+                    game.set_unit_deaths(player, unit_id, new);
                 }
             }
         }
