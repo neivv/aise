@@ -222,6 +222,18 @@ impl Game {
         }
     }
 
+    pub fn set_completed_count(self, player: u8, unit: UnitId, value: u32) {
+        unsafe {
+            let unit = unit.0 as usize;
+            assert!(player < 0xc);
+            if let Some(arr) = extended_array(8) {
+                arr.write_u32(unit * 12 + player as usize, value)
+            } else {
+                (**self).completed_units_count[unit][player as usize] = value;
+            }
+        }
+    }
+
     pub fn unit_kills(self, player: u8, unit: UnitId) -> u32 {
         unsafe {
             let unit = unit.0 as usize;
