@@ -94,7 +94,7 @@ unsafe fn military_line(
     player: u8,
     unit_id: UnitId,
 ) {
-    if unit_id.0 >= unit::NONE.0 {
+    if unit_id == unit::NONE {
         return;
     }
     page.push(unit_name(unit_id));
@@ -114,21 +114,21 @@ unsafe fn military_line(
 fn town_request_name(req: &TownRequest) -> Option<String> {
     match req.ty {
         RequestType::Unit(u) => {
-            if u.0 >= unit::NONE.0 {
+            if u.0 == unit::NONE {
                 None
             } else {
                 Some(format!("{} {}", req.count, unit_name(u)))
             }
         }
         RequestType::Upgrade(u) => {
-            if u.0 >= upgrade::NONE.0 {
+            if u.0 == upgrade::NONE {
                 None
             } else {
                 Some(format!("{} level {}", upgrade_name(u), req.count))
             }
         }
         RequestType::Tech(u) => {
-            if u.0 >= tech::NONE.0 {
+            if u.0 == tech::NONE {
                 None
             } else {
                 Some(format!("{}", tech_name(u)))

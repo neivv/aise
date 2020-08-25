@@ -34,7 +34,6 @@ impl FromIterator<(Unit, Rect)> for UnitSearch {
 impl UnitSearch {
     pub unsafe fn from_bw() -> UnitSearch {
         unit::active_units()
-            .filter(|unit| unit.id().0 < bw_dat::unit::NONE.0)
             .map(|unit| (unit, unit.collision_rect()))
             .collect()
     }

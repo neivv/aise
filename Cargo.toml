@@ -60,7 +60,7 @@ rev = "e8e847864c2938735040ca3c68ef1cf9e03b692f"
 
 [dependencies.samase_shim]
 git = "https://github.com/neivv/samase_plugin"
-rev = "efea4458c610128a949728464b8099222bcadcdc"
+rev = "f2c737224a3429bf35e563a76b8802b68d7aa2f"
 
 [features]
 opengl = ["cgmath", "euclid", "font-kit", "glium", "gl"]

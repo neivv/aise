@@ -145,11 +145,12 @@ fn bw_mouse() -> (i32, i32) {
 macro_rules! init_fns {
     ($($fn_name:ident, $global:ident,)*) => {
         $(
-            static mut $global: *const bw::DatTable = 0 as *const bw::DatTable;
+            static $global: [AtomicUsize; 2] = [AtomicUsize::new(0), AtomicUsize::new(0)];
         )*
         $(
-            pub unsafe fn $fn_name(dat: *const DatTable) {
-                $global = dat;
+            pub unsafe fn $fn_name(dat: *const DatTable, fields: usize) {
+                $global[0].store(dat as usize, Ordering::Relaxed);
+                $global[1].store(fields, Ordering::Relaxed);
             }
         )*
     }
@@ -210,15 +211,23 @@ pub struct SpriteId(pub u16);
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize, Ord, PartialOrd, Hash)]
 pub struct ImageId(pub u16);
 
-unsafe fn dat_read(dat: *const bw::DatTable, id: u32, field: u32) -> u32 {
-    let dat = &*dat.offset(field as isize);
+unsafe fn dat_read(dat: &'static [AtomicUsize; 2], id: u32, field: u32) -> u32 {
+    dat_read_opt(dat, id, field).unwrap_or_else(|| panic!("Missing field {:x}", field))
+}
+
+unsafe fn dat_read_opt(dat: &'static [AtomicUsize; 2], id: u32, field: u32) -> Option<u32> {
+    if dat[1].load(Ordering::Relaxed) as u32 <= field {
+        return None;
+    }
+    let dat = dat[0].load(Ordering::Relaxed) as *const bw::DatTable;
+    let dat = &*dat.add(field as usize);
     assert!(dat.entries > id);
-    match dat.entry_size {
+    Some(match dat.entry_size {
         1 => *(dat.data as *const u8).offset(id as isize) as u32,
         2 => *(dat.data as *const u16).offset(id as isize) as u32,
         4 => *(dat.data as *const u32).offset(id as isize),
         x => panic!("Invalid dat entry size: {}", x),
-    }
+    })
 }
 
 pub mod weapon {
@@ -246,6 +255,7 @@ pub mod tech {
     pub const SPIDER_MINES: TechId = TechId(0x3);
     pub const CLOAKING_FIELD: TechId = TechId(0x9);
     pub const PERSONNEL_CLOAKING: TechId = TechId(0xa);
+    pub const BURROWING: TechId = TechId(0xb);
     pub const NONE: TechId = TechId(0x2c);
 }
 
@@ -332,15 +342,33 @@ pub struct PlacementBox {
 
 impl UnitId {
     pub fn optional(id: u32) -> Option<UnitId> {
-        if id > u16::max_value() as u32 || id == unit::NONE.0 as u32 {
+        let limit = UnitId::entry_amount();
+        if id > u16::max_value() as u32 || id >= limit ||
+            (id >= unit::NONE.0 as u32 && id <= 260)
+        {
             None
         } else {
             Some(UnitId(id as u16))
         }
     }
 
+    pub fn entry_amount() -> u32 {
+        unsafe {
+            let dat = UNITS_DAT[0].load(Ordering::Relaxed) as *const DatTable;
+            if dat.is_null() {
+                u32::max_value()
+            } else {
+                (*dat).entries as u32
+            }
+        }
+    }
+
     pub fn get(self, id: u32) -> u32 {
-        unsafe { crate::dat_read(UNITS_DAT, self.0 as u32, id) }
+        unsafe { crate::dat_read(&UNITS_DAT, self.0 as u32, id) }
+    }
+
+    pub fn get_opt(self, id: u32) -> Option<u32> {
+        unsafe { crate::dat_read_opt(&UNITS_DAT, self.0 as u32, id) }
     }
 
     pub fn hitpoints(self) -> i32 {
@@ -393,7 +421,10 @@ impl UnitId {
     }
 
     pub fn is_creature(self) -> bool {
-        self.0 <= unit::DISRUPTION_WEB.0
+        !self.is_building() &&
+            !self.is_powerup() &&
+            !self.is_doodad_unit() &&
+            self != unit::DARK_SWARM
     }
 
     pub fn is_worker(self) -> bool {
@@ -492,7 +523,8 @@ impl UnitId {
 
     pub fn placement(self) -> PlacementBox {
         unsafe {
-            let dat = &*UNITS_DAT.offset(36);
+            let dat = UNITS_DAT[0].load(Ordering::Relaxed) as *const DatTable;
+            let dat = &*dat.add(36);
             assert!(dat.entries > u32::from(self.0));
             *(dat.data as *const PlacementBox).offset(self.0 as isize)
         }
@@ -508,7 +540,8 @@ impl UnitId {
 
     pub fn dimensions(self) -> Rect {
         unsafe {
-            let dat = &*UNITS_DAT.offset(38);
+            let dat = UNITS_DAT[0].load(Ordering::Relaxed) as *const DatTable;
+            let dat = &*dat.add(38);
             assert!(dat.entries > u32::from(self.0));
             *(dat.data as *const Rect).offset(self.0 as isize)
         }
@@ -547,6 +580,10 @@ impl UnitId {
         }
     }
 
+    pub fn is_doodad_unit(self) -> bool {
+        self.0 >= 203 && self.0 <= 213
+    }
+
     pub fn map_specific_name(self) -> Option<u32> {
         Some(self.get(51)).filter(|&x| x != 0)
     }
@@ -560,13 +597,14 @@ impl UnitId {
     }
 
     pub fn icon(&self) -> u32 {
-        self.0 as u32
+        self.get_opt(0x43)
+            .unwrap_or_else(|| self.0 as u32)
     }
 }
 
 impl FlingyId {
     pub fn get(&self, id: u32) -> u32 {
-        unsafe { crate::dat_read(FLINGY_DAT, self.0 as u32, id) }
+        unsafe { crate::dat_read(&FLINGY_DAT, self.0 as u32, id) }
     }
 }
 
@@ -589,7 +627,7 @@ impl WeaponId {
     }
 
     pub fn get(&self, id: u32) -> u32 {
-        unsafe { crate::dat_read(WEAPONS_DAT, self.0 as u32, id) }
+        unsafe { crate::dat_read(&WEAPONS_DAT, self.0 as u32, id) }
     }
 
     pub fn damage(&self) -> u32 {
@@ -647,7 +685,7 @@ impl UpgradeId {
     }
 
     pub fn get(&self, id: u32) -> u32 {
-        unsafe { crate::dat_read(UPGRADES_DAT, self.0 as u32, id) }
+        unsafe { crate::dat_read(&UPGRADES_DAT, self.0 as u32, id) }
     }
 
     pub fn label(&self) -> u32 {
@@ -697,7 +735,7 @@ impl TechId {
     }
 
     fn get(&self, id: u32) -> u32 {
-        unsafe { crate::dat_read(TECHDATA_DAT, self.0 as u32, id) }
+        unsafe { crate::dat_read(&TECHDATA_DAT, self.0 as u32, id) }
     }
 
     pub fn mineral_cost(&self) -> u32 {
@@ -770,7 +808,7 @@ impl OrderId {
     }
 
     fn get(&self, id: u32) -> u32 {
-        unsafe { crate::dat_read(ORDERS_DAT, self.0 as u32, id) }
+        unsafe { crate::dat_read(&ORDERS_DAT, self.0 as u32, id) }
     }
 
     pub fn tech(&self) -> Option<TechId> {

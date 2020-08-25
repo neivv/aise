@@ -943,7 +943,9 @@ impl UnitMatch {
     pub fn iter_flatten_groups<'a>(&'a mut self) -> impl Iterator<Item = UnitId> + 'a {
         // Ineffective but w/e, simpler than ignoring duplicates
         if self.units.iter().any(|&x| x == unit::id::ANY_UNIT) {
-            self.units = (0..unit::id::NONE.0).map(UnitId).collect();
+            self.units = (0..UnitId::entry_amount())
+                .flat_map(|x| UnitId::optional(x))
+                .collect();
         } else {
             let mut group_flags = 0;
             for &id in &self.units {
@@ -956,11 +958,11 @@ impl UnitMatch {
             }
             if group_flags != 0 {
                 self.units.retain(|&unit_id| match unit_id {
-                    x if x.0 >= unit::id::NONE.0 => false,
+                    x if UnitId::optional(x.0 as u32).is_none() => false,
                     x => x.group_flags() & group_flags == 0,
                 });
-                let new_units = (0..unit::id::NONE.0)
-                    .map(UnitId)
+                let new_units = (0..UnitId::entry_amount())
+                    .flat_map(|x| UnitId::optional(x))
                     .filter(|x| x.group_flags() & group_flags != 0);
                 self.units.extend(new_units);
             }
@@ -976,7 +978,7 @@ impl UnitMatch {
         self.units
             .iter()
             .cloned()
-            .filter(|x| x.0 < unit::id::NONE.0)
+            .flat_map(|x| UnitId::optional(x.0 as u32))
             .next()
             .unwrap_or(UnitId(0))
     }

@@ -115,9 +115,9 @@ impl AiBuildView {
 
                 let unit_id = u16::from_str_radix(message, base)
                     .ok()
-                    .filter(|&x| x < bw_dat::unit::NONE.0);
+                    .flat_map(|x| UnitId::optional(x.into()))
                 if let Some(unit_id) = unit_id {
-                    self.unit_id = UnitId(unit_id);
+                    self.unit_id = unit_id;
                     None
                 } else {
                     let message = format!("'{}' is not a valid unit id", message);

@@ -270,6 +270,32 @@ impl Game {
         }
     }
 
+    pub fn max_energy(self, player: u8, unit: UnitId) -> u32 {
+        if unit.is_hero() {
+            250 * 256
+        } else {
+            let upgrade = match unit.0 {
+                0x9 => 0x13,
+                0x1 => 0x15,
+                0x8 => 0x16,
+                0xc => 0x17,
+                0x2d => 0x1f,
+                0x2e => 0x20,
+                0x43 => 0x28,
+                0x47 => 0x2c,
+                0x3c => 0x2f,
+                0x22 => 0x33,
+                0x3f => 0x31,
+                _ => return 200 * 256,
+            };
+            if self.upgrade_level(player, UpgradeId(upgrade)) != 0 {
+                250 * 256
+            } else {
+                200 * 256
+            }
+        }
+    }
+
     pub fn allied(self, player: u8, other: u8) -> bool {
         unsafe { (**self).alliances[player as usize][other as usize] != 0 }
     }

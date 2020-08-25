@@ -120,31 +120,6 @@ pub fn active_towns() -> *mut bw::AiTownList {
     unsafe { PLAYER_AI_TOWNS.0.map(|x| x()).unwrap_or(null_mut()) }
 }
 
-static mut UNITS_DAT: GlobalFunc<extern fn() -> *mut bw_dat::DatTable> = GlobalFunc(None);
-pub fn units_dat() -> *mut bw_dat::DatTable {
-    unsafe { UNITS_DAT.get()() }
-}
-
-static mut WEAPONS_DAT: GlobalFunc<extern fn() -> *mut bw_dat::DatTable> = GlobalFunc(None);
-pub fn weapons_dat() -> *mut bw_dat::DatTable {
-    unsafe { WEAPONS_DAT.get()() }
-}
-
-static mut UPGRADES_DAT: GlobalFunc<extern fn() -> *mut bw_dat::DatTable> = GlobalFunc(None);
-pub fn upgrades_dat() -> *mut bw_dat::DatTable {
-    unsafe { UPGRADES_DAT.get()() }
-}
-
-static mut TECHDATA_DAT: GlobalFunc<extern fn() -> *mut bw_dat::DatTable> = GlobalFunc(None);
-pub fn techdata_dat() -> *mut bw_dat::DatTable {
-    unsafe { TECHDATA_DAT.get()() }
-}
-
-static mut ORDERS_DAT: GlobalFunc<extern fn() -> *mut bw_dat::DatTable> = GlobalFunc(None);
-pub fn orders_dat() -> *mut bw_dat::DatTable {
-    unsafe { ORDERS_DAT.get()() }
-}
-
 static mut GET_REGION: GlobalFunc<extern fn(u32, u32) -> u32> = GlobalFunc(None);
 pub fn get_region(x: u32, y: u32) -> u32 {
     unsafe { GET_REGION.get()(x, y) }
@@ -238,7 +213,7 @@ unsafe fn aiscript_opcode(
 #[no_mangle]
 pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
     bw_dat::set_is_scr(crate::is_scr());
-    let required_version = 29;
+    let required_version = 30;
     if (*api).version < required_version {
         fatal(&format!(
             "Newer samase is required. (Plugin API version {}, this plugin requires version {})",
@@ -385,16 +360,17 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
             fatal("Couldn't hook soi");
         }
     }
-    UNITS_DAT.init(((*api).dat)(0).map(|x| mem::transmute(x)), "units.dat");
-    bw_dat::init_units(units_dat());
-    WEAPONS_DAT.init(((*api).dat)(1).map(|x| mem::transmute(x)), "weapons.dat");
-    bw_dat::init_weapons(weapons_dat());
-    UPGRADES_DAT.init(((*api).dat)(3).map(|x| mem::transmute(x)), "upgrades.dat");
-    bw_dat::init_upgrades(upgrades_dat());
-    TECHDATA_DAT.init(((*api).dat)(4).map(|x| mem::transmute(x)), "techdata.dat");
-    bw_dat::init_techdata(techdata_dat());
-    ORDERS_DAT.init(((*api).dat)(7).map(|x| mem::transmute(x)), "orders.dat");
-    bw_dat::init_orders(orders_dat());
+    let mut dat_len = 0usize;
+    let units_dat = ((*api).extended_dat)(0).expect("units.dat")(&mut dat_len);
+    bw_dat::init_units(units_dat as *const _, dat_len);
+    let weapons_dat = ((*api).extended_dat)(1).expect("weapons.dat")(&mut dat_len);
+    bw_dat::init_weapons(weapons_dat as *const _, dat_len);
+    let upgrades_dat = ((*api).extended_dat)(3).expect("upgrades.dat")(&mut dat_len);
+    bw_dat::init_upgrades(upgrades_dat as *const _, dat_len);
+    let techdata_dat = ((*api).extended_dat)(4).expect("techdata.dat")(&mut dat_len);
+    bw_dat::init_techdata(techdata_dat as *const _, dat_len);
+    let orders_dat = ((*api).extended_dat)(7).expect("orders.dat")(&mut dat_len);
+    bw_dat::init_orders(orders_dat as *const _, dat_len);
 
     PRINT_TEXT.0 = Some(mem::transmute(((*api).print_text)()));
     RNG_SEED.0 = Some(mem::transmute(((*api).rng_seed)()));

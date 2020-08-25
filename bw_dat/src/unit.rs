@@ -317,6 +317,10 @@ impl Unit {
         unsafe { (**self).acid_spore_count }
     }
 
+    pub fn death_timer(self) -> u16 {
+        unsafe { (**self).death_timer }
+    }
+
     pub fn can_detect(self) -> bool {
         self.id().flags() & 0x8000 != 0 &&
             self.is_completed() &&
@@ -627,6 +631,7 @@ pub const EGG: UnitId = UnitId(0x24);
 pub const ZERGLING: UnitId = UnitId(0x25);
 pub const HYDRALISK: UnitId = UnitId(0x26);
 pub const ULTRALISK: UnitId = UnitId(0x27);
+pub const BROODLING: UnitId = UnitId(0x28);
 pub const DRONE: UnitId = UnitId(0x29);
 pub const OVERLORD: UnitId = UnitId(0x2a);
 pub const MUTALISK: UnitId = UnitId(0x2b);
