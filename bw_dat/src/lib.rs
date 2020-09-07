@@ -167,6 +167,7 @@ init_fns! {
     init_techdata, TECHDATA_DAT,
     init_sfxdata, SFXDATA_DAT,
     init_portdata, PORTDATA_DAT,
+    init_buttons, BUTTONS_DAT,
 }
 
 bitflags! {
@@ -210,6 +211,8 @@ pub struct TechId(pub u16);
 pub struct SpriteId(pub u16);
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize, Ord, PartialOrd, Hash)]
 pub struct ImageId(pub u16);
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize, Ord, PartialOrd, Hash)]
+pub struct ButtonSetId(pub u16);
 
 unsafe fn dat_read(dat: &'static [AtomicUsize; 2], id: u32, field: u32) -> u32 {
     dat_read_opt(dat, id, field).unwrap_or_else(|| panic!("Missing field {:x}", field))
@@ -817,5 +820,15 @@ impl OrderId {
 
     pub fn weapon(&self) -> Option<WeaponId> {
         WeaponId::optional(self.get(13))
+    }
+}
+
+impl ButtonSetId {
+    pub fn get(self, id: u32) -> u32 {
+        unsafe { crate::dat_read(&BUTTONS_DAT, self.0 as u32, id) }
+    }
+
+    pub fn get_opt(self, id: u32) -> Option<u32> {
+        unsafe { crate::dat_read_opt(&BUTTONS_DAT, self.0 as u32, id) }
     }
 }
