@@ -534,8 +534,8 @@ impl EventHandler {
 }
 
 fn assign_scr_string(out: &mut bw::scr::BwString, value: &[u8]) {
-    if out.capacity & !(isize::min_value() as usize) < value.len() + 1 {
-        reserve_reset_scr_string(out, value.len() + 1);
+    if out.capacity & !(isize::min_value() as usize) < value.len() {
+        reserve_reset_scr_string(out, value.len());
     }
     unsafe {
         let data = out.data as *mut u8;
@@ -548,7 +548,7 @@ fn assign_scr_string(out: &mut bw::scr::BwString, value: &[u8]) {
 fn reserve_reset_scr_string(out: &mut bw::scr::BwString, capacity: usize) {
     use crate::{bw_malloc, bw_free};
     unsafe {
-        let new_buf = bw_malloc(capacity);
+        let new_buf = bw_malloc(capacity + 1);
         if out.capacity & (isize::min_value() as usize) == 0 {
             bw_free(out.data as *mut u8);
         }
