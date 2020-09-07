@@ -45,12 +45,22 @@ impl Game {
     }
 
     pub fn unit_available(self, player: u8, unit: UnitId) -> bool {
-        unsafe { (**self).unit_availability[player as usize][unit.0 as usize] != 0 }
+        unsafe {
+            if let Some(arr) = extended_array(6) {
+                arr.read_u8(unit.0 as usize * 12 + player as usize) != 0
+            } else {
+                (**self).unit_availability[player as usize][unit.0 as usize] != 0
+            }
+        }
     }
 
     pub fn set_unit_availability(self, player: u8, unit: UnitId, available: bool) {
         unsafe {
-            (**self).unit_availability[player as usize][unit.0 as usize] = available as u8;
+            if let Some(arr) = extended_array(6) {
+                arr.write_u8(unit.0 as usize * 12 + player as usize, available as u8);
+            } else {
+                (**self).unit_availability[player as usize][unit.0 as usize] = available as u8;
+            }
         }
     }
 
