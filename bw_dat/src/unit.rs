@@ -454,9 +454,10 @@ impl Unit {
     }
 
     pub fn is_constructing_building(self) -> bool {
-        let current_build_unit =
-            unsafe { UnitId((**self).build_queue[(**self).current_build_slot as usize]) };
-        current_build_unit != NONE && current_build_unit.is_building()
+        // Note: Oddly AI SCVs can have a building in their build queue even when
+        // not executing this order; checking the queue here would be wrong.
+        // (Patching that could be wise though)
+        self.order() == crate::order::CONSTRUCTING_BUILDING
     }
 
     pub fn resource_amount(self) -> u16 {
