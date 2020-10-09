@@ -177,7 +177,7 @@ pub unsafe fn can_satisfy_request(
         _ => None,
     };
     match request.ty {
-        1 | 2 | 3 | 4 => {
+        1 | 2 | 3 | 4 | 7 | 8 => {
             let unit_id = UnitId(request.id);
             if !game.unit_available(player, unit_id) {
                 return Err(RequestSatisfyError::NotAvailable);
