@@ -28,6 +28,18 @@ impl Game {
         unsafe { (**self).gas[player as usize] }
     }
 
+    pub fn set_minerals(self, player: u8, amount: u32) {
+        unsafe {
+            (**self).minerals[player as usize] = amount;
+        }
+    }
+
+    pub fn set_gas(self, player: u8, amount: u32) {
+        unsafe {
+            (**self).gas[player as usize] = amount;
+        }
+    }
+
     pub fn reduce_minerals(self, player: u8, amount: u32) {
         unsafe {
             (**self).minerals[player as usize] -= amount;
@@ -88,6 +100,30 @@ impl Game {
         }
     }
 
+    pub fn set_supply_used(self, player: u8, race: Race, value: u32) {
+        let index = race.id() as usize;
+        unsafe {
+            let supplies = &mut (**self).supplies[index];
+            supplies.provided[player as usize] = value;
+        }
+    }
+
+    pub fn set_supply_provided(self, player: u8, race: Race, value: u32) {
+        let index = race.id() as usize;
+        unsafe {
+            let supplies = &mut (**self).supplies[index];
+            supplies.provided[player as usize] = value;
+        }
+    }
+
+    pub fn set_supply_max(self, player: u8, race: Race, value: u32) {
+        let index = race.id() as usize;
+        unsafe {
+            let supplies = &mut (**self).supplies[index];
+            supplies.max[player as usize] = value;
+        }
+    }
+
     pub fn supply_free(self, player: u8, race: Race) -> u32 {
         let index = race.id() as usize;
         unsafe {
@@ -139,6 +175,22 @@ impl Game {
                     (**self).upgrade_level_bw[player as usize][upgrade - 0x2e] = level;
                 } else {
                     (**self).upgrade_level_sc[player as usize][upgrade] = level;
+                }
+            }
+        }
+    }
+
+    pub fn set_upgrade_max_level(self, player: u8, upgrade: UpgradeId, level: u8) {
+        unsafe {
+            let upgrade = upgrade.0 as usize;
+            assert!(player < 0xc);
+            if let Some(arr) = extended_array(1) {
+                arr.write_u8(upgrade * 12 + player as usize, level);
+            } else {
+                if upgrade >= 0x2e {
+                    (**self).upgrade_limit_bw[player as usize][upgrade - 0x2e] = level;
+                } else {
+                    (**self).upgrade_limit_sc[player as usize][upgrade] = level;
                 }
             }
         }
@@ -256,6 +308,18 @@ impl Game {
         }
     }
 
+    pub fn set_unit_kills(self, player: u8, unit: UnitId, value: u32) {
+        unsafe {
+            let unit = unit.0 as usize;
+            assert!(player < 0xc);
+            if let Some(arr) = extended_array(9) {
+                arr.write_u32(unit * 12 + player as usize, value);
+            } else {
+                (**self).unit_kills[unit][player as usize] = value;
+            }
+        }
+    }
+
     pub fn unit_deaths(self, player: u8, unit: UnitId) -> u32 {
         unsafe {
             let unit = unit.0 as usize;
@@ -308,6 +372,24 @@ impl Game {
 
     pub fn allied(self, player: u8, other: u8) -> bool {
         unsafe { (**self).alliances[player as usize][other as usize] != 0 }
+    }
+
+    pub fn set_alliance(self, player: u8, other: u8, allied: bool) {
+        unsafe { (**self).alliances[player as usize][other as usize] = allied as u8; }
+    }
+
+    /// If `player` is sharing vision to `other`.
+    pub fn shared_vision(self, player: u8, other: u8) -> bool {
+        unsafe { (**self).visions[player as usize] & (1 << other) != 0 }
+    }
+
+    pub fn set_shared_vision(self, player: u8, other: u8, share_vision: bool) {
+        let mask = 1 << other;
+        if share_vision {
+            unsafe { (**self).visions[player as usize] |= mask; }
+        } else {
+            unsafe { (**self).visions[player as usize] &= !mask; }
+        }
     }
 
     pub fn map_width_tiles(self) -> u16 {
