@@ -206,8 +206,7 @@ pub unsafe fn can_satisfy_request(
             }
             let reqs = match bw::unit_dat_requirements(unit_id) {
                 Some(s) => s,
-                // Units return ok on empty reqs, other dats fail
-                None => return Ok(()),
+                None => return Err(RequestSatisfyError::NeedDatReqs),
             };
             can_satisfy_dat_request(game, player, reqs, town, 0)
                 .map_err(RequestSatisfyError::DatReq)?;
