@@ -1672,6 +1672,48 @@ pub unsafe extern fn deaths(script: *mut bw::AiScript) {
     }
 }
 
+pub unsafe extern fn bw_kills(script: *mut bw::AiScript) {
+    let old_pos = (*script).pos - 1;
+    let game = bw::game();
+    // kills(player, modifier, amount, unit, dest)
+    let mut read = ScriptData::new(script);
+    let players = read.read_player_match(game);
+    let modifier = read.read_modifier();
+    let amount = read.read_u32();
+    let mut units = read.read_unit_match();
+    let dest = read.read_jump_pos();
+    if feature_disabled("bw_kills") {
+        return;
+    }
+
+    let mut globals = Globals::get("ais bw kills");
+    match modifier.ty {
+        ModifierType::Read(read) => {
+            let sum = units
+                .iter_flatten_groups()
+                .map(|unit_id| {
+                    players
+                        .players()
+                        .map(|player| {
+                            game.unit_kills(player, unit_id)
+                        })
+                        .sum::<u32>()
+                })
+                .sum::<u32>();
+            read.compare_and_act(sum, amount, script, dest, old_pos);
+        }
+        ModifierType::Write(write) => {
+            for unit_id in units.iter_flatten_groups() {
+                for player in players.players() {
+                    let kills = game.unit_kills(player, unit_id);
+                    let new = write.apply(kills, amount, &mut globals.rng);
+                    game.set_unit_kills(player, unit_id, new);
+                }
+            }
+        }
+    }
+}
+
 pub unsafe extern fn wait_rand(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let mut r1 = read.read_u32();
