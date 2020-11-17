@@ -1606,6 +1606,9 @@ pub unsafe extern fn wait_build(script: *mut bw::AiScript) {
     unit_id = globals.unit_replace.replace_check(unit_id);
 
     if let Some(town) = town {
+        if unit_id.is_worker() && (*town.0).worker_limit <= (*town.0).worker_count {
+            return;
+        }
         let units_in_town = ai::count_town_units(town, unit_id, true);
         if units_in_town < amount as u32 {
             (*script).pos = old_pos;
@@ -1622,11 +1625,28 @@ pub unsafe extern fn wait_buildstart(script: *mut bw::AiScript) {
     let globals = Globals::get("ais wait_buildstart");
     unit_id = globals.unit_replace.replace_check(unit_id);
     if let Some(town) = town {
-        let units_in_town = ai::count_town_units(town, unit_id, false);
-        if units_in_town < amount as u32 {
-            (*script).pos = old_pos;
-            (*script).wait = 30;
+        if unit_id.is_worker() {
+            let workers_being_built = town.buildings()
+                .filter_map(|ai| {
+                    let unit = Unit::from_ptr((*ai).parent)?;
+                    unit.currently_building()
+                        .filter(|x| x.id().is_worker())
+                })
+                .count();
+            let count = ((*town.0).worker_count as u32)
+                .saturating_add(workers_being_built as u32);
+            let limit = ((*town.0).worker_limit).min(amount);
+            if count >= limit as u32 {
+                return;
+            }
+        } else {
+            let units_in_town = ai::count_town_units(town, unit_id, false);
+            if units_in_town >= amount as u32 {
+                return;
+            }
         }
+        (*script).pos = old_pos;
+        (*script).wait = 30;
     }
 }
 
