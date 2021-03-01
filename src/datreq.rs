@@ -81,6 +81,13 @@ impl DatReq {
                 TechOnly(opt_tech_id(id))
             }
             0xff26 => BurrowedOnly,
+            0xff40 => {
+                let id = **pos;
+                *pos = pos.add(1);
+                let count = **pos;
+                *pos = pos.add(1);
+                UnitCountLessThan(opt_unit_id(id), count)
+            }
             x => {
                 if x < 0xff00 {
                     Unit(opt_unit_id(val))
@@ -127,6 +134,7 @@ pub enum DatReq {
     BwOnly,
     TechOnly(TechId),
     BurrowedOnly,
+    UnitCountLessThan(UnitId, u16),
     Unit(UnitId),
     Unknown(u16),
 }
@@ -273,6 +281,9 @@ pub unsafe fn check_dat_requirements(
                 DatReq::TechResearched(tech) => game.tech_researched(player, tech),
                 DatReq::HasUnit(unit) => game.unit_count(player, unit) != 0,
                 DatReq::Unit(unit) => game.completed_count(player, unit) != 0,
+                DatReq::UnitCountLessThan(unit, limit) => {
+                    game.unit_count(player, unit) < limit.into()
+                }
                 DatReq::Unknown(id) => {
                     warn!("Unknown req ty {:x}", id);
                     true

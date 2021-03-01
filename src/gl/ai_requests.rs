@@ -206,6 +206,9 @@ unsafe fn request_line(
                 for e in errs {
                     let msg = match e {
                         DatReqSatisfyError::NeedUnit(unit) => format!("Need {}", unit_name(unit)),
+                        DatReqSatisfyError::TooManyUnits(unit) => {
+                            format!("Too many {}", unit_name(unit))
+                        }
                         DatReqSatisfyError::NeedTech(tech) => format!("Need {}", tech_name(tech)),
                         DatReqSatisfyError::NeedAddonless => "Need addonless unit".into(),
                         DatReqSatisfyError::NeedEmptySilo => "Need empty silo".into(),

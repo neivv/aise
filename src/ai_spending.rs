@@ -281,6 +281,7 @@ pub enum DatReqSatisfyError {
     /// This doesn't differentiate between current unit is/owns unit,
     /// but let's assume that the user can figure things out from the error.
     NeedUnit(UnitId),
+    TooManyUnits(UnitId),
     NeedTech(TechId),
     NeedAddonless,
     NeedEmptySilo,
@@ -407,6 +408,13 @@ unsafe fn can_satisfy_dat_request(
                     let pass = game.completed_count(player, unit) != 0;
                     if !pass {
                         errors.push(DatReqSatisfyError::NeedUnit(unit));
+                    }
+                    pass
+                }
+                DatReq::UnitCountLessThan(unit, count) => {
+                    let pass = game.unit_count(player, unit) < count.into();
+                    if !pass {
+                        errors.push(DatReqSatisfyError::TooManyUnits(unit));
                     }
                     pass
                 }
