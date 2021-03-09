@@ -652,10 +652,10 @@ mod test {
         assert_eq!(mem::size_of::<Player>(), 0x24);
         assert_eq!(mem::size_of::<ControlEvent>(), 0x12);
         assert_eq!(mem::size_of::<Control>(), 0x36);
-        assert_eq!(mem::size_of::<Dialog>(), 0x46);
+        assert_eq!(mem::size_of::<Dialog>(), 0x4a);
         assert_eq!(mem::size_of::<scr::ControlEvent>(), 0x1c);
         assert_eq!(mem::size_of::<scr::Control>(), 0x50);
-        assert_eq!(mem::size_of::<scr::Dialog>(), 0x60);
+        assert_eq!(mem::size_of::<scr::Dialog>(), 0x64);
         assert_eq!(mem::size_of::<scr::DrawCommand>(), 0xa0);
         assert_eq!(mem::size_of::<scr::BwString>(), 0x1c);
         assert_eq!(mem::size_of::<scr::Sprite>(), 0x28);
