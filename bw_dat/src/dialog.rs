@@ -1,7 +1,7 @@
 use std::ptr::{NonNull, null_mut};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use once_cell::sync::OnceCell;
 
-use lazy_static::lazy_static;
 use libc::c_void;
 use winapi::um::sysinfoapi::GetTickCount;
 
@@ -454,20 +454,19 @@ impl InitedEventHandler {
     }
 }
 
-lazy_static! {
-    static ref EXEC_HEAP: usize = unsafe {
-        use winapi::um::heapapi::HeapCreate;
-        use winapi::um::winnt::HEAP_CREATE_ENABLE_EXECUTE;
-        let heap = HeapCreate(HEAP_CREATE_ENABLE_EXECUTE, 0, 0);
-        assert!(heap.is_null() == false);
-        heap as usize
-    };
-}
+static EXEC_HEAP: OnceCell<usize> = OnceCell::new();
 
 fn exec_alloc(size: usize) -> *mut u8 {
     use winapi::um::heapapi::HeapAlloc;
     unsafe {
-        HeapAlloc(*EXEC_HEAP as *mut _, 0, size) as *mut u8
+        let heap = EXEC_HEAP.get_or_init(|| {
+            use winapi::um::heapapi::HeapCreate;
+            use winapi::um::winnt::HEAP_CREATE_ENABLE_EXECUTE;
+            let heap = HeapCreate(HEAP_CREATE_ENABLE_EXECUTE, 0, 0);
+            assert!(heap.is_null() == false);
+            heap as usize
+        });
+        HeapAlloc(*heap as *mut _, 0, size) as *mut u8
     }
 }
 

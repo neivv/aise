@@ -1,5 +1,5 @@
-use lazy_static::lazy_static;
 use fxhash::FxHashMap;
+use once_cell::sync::Lazy;
 
 #[derive(Debug)]
 pub enum Error<'a, C: CustomState> {
@@ -156,14 +156,10 @@ pub struct IntFunc<C: CustomState> {
     pub args: Box<[IntExpr<C>]>,
 }
 
-lazy_static! {
-    static ref PARSER_MAPS: ParserMaps = {
-        ParserMaps {
-            int_funcs: INT_FUNCS.iter().cloned().collect(),
-            bool_funcs: BOOL_FUNCS.iter().cloned().collect(),
-        }
-    };
-}
+static PARSER_MAPS: Lazy<ParserMaps> = Lazy::new(|| ParserMaps {
+    int_funcs: INT_FUNCS.iter().cloned().collect(),
+    bool_funcs: BOOL_FUNCS.iter().cloned().collect(),
+});
 
 struct ParserMaps {
     int_funcs: FxHashMap<&'static [u8], (IntFuncType, u8)>,
@@ -176,7 +172,6 @@ pub struct Parser<'a, P: CustomParser> {
 }
 
 impl<'b, C: CustomState, P: CustomParser<State = C>> Parser<'b, P> {
-    #[inline(never)]
     pub fn new(custom_state: &mut P) -> Parser<P> {
         Parser {
             maps: &PARSER_MAPS,
