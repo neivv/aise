@@ -1,5 +1,7 @@
 use libc::c_void;
-use serde_derive::{Serialize, Deserialize};
+
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
 
 #[repr(C, packed)]
 pub struct DatTable {
@@ -163,7 +165,8 @@ pub struct Order {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct Rect32 {
     pub left: i32,
     pub top: i32,
@@ -172,7 +175,8 @@ pub struct Rect32 {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct Rect {
     pub left: i16,
     pub top: i16,
@@ -181,14 +185,16 @@ pub struct Rect {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct Point {
     pub x: i16,
     pub y: i16,
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct Point32 {
     pub x: i32,
     pub y: i32,

@@ -53,6 +53,7 @@ features = ["heapapi", "libloaderapi", "processthreadsapi", "winuser", "wingdi"]
 
 [dependencies.bw_dat]
 path = "bw_dat"
+features = ["serde"]
 
 [dependencies.whack]
 git = "https://github.com/neivv/whack/"
