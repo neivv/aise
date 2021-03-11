@@ -399,4 +399,20 @@ impl Game {
     pub fn map_height_tiles(self) -> u16 {
         unsafe { (**self).map_height_tiles }
     }
+
+    pub fn score(self, score_type: u8, player: u8) -> u32 {
+        unsafe { (**self).scores[score_type as usize][player as usize] }
+    }
+
+    pub fn set_score(self, score_type: u8, player: u8, value: u32) {
+        unsafe { (**self).scores[score_type as usize][player as usize] = value; }
+    }
+
+    pub fn custom_score(self, player: u8) -> u32 {
+        unsafe { (**self).custom_score[player as usize] }
+    }
+
+    pub fn set_custom_score(self, player: u8, value: u32) {
+        unsafe { (**self).custom_score[player as usize] = value; }
+    }
 }
