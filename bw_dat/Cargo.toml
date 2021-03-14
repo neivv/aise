@@ -12,6 +12,10 @@ libc = "0.2"
 once_cell = "1.7"
 serde = { version = "1.0.124", optional = true, features = ["derive"] }
 
+[features]
+default = []
+scr-only = []
+
 [dependencies.winapi]
 version = "0.3.3"
 features = ["heapapi", "sysinfoapi"]
