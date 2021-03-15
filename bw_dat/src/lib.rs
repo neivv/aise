@@ -192,19 +192,16 @@ bitflags! {
 
 #[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[repr(u8)]
 pub enum Race {
-    Zerg,
-    Terran,
-    Protoss,
+    Zerg = 0,
+    Terran = 1,
+    Protoss = 2,
 }
 
 impl Race {
     pub fn id(self) -> u8 {
-        match self {
-            Race::Zerg => 0,
-            Race::Terran => 1,
-            Race::Protoss => 2,
-        }
+        self as u8
     }
 }
 
