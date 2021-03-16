@@ -706,6 +706,17 @@ impl UpgradeId {
         }
     }
 
+    pub fn entry_amount() -> u32 {
+        unsafe {
+            let dat = UPGRADES_DAT[0].load(Ordering::Relaxed) as *const DatTable;
+            if dat.is_null() {
+                u32::max_value()
+            } else {
+                (*dat).entries as u32
+            }
+        }
+    }
+
     pub fn get(&self, id: u32) -> u32 {
         unsafe { crate::dat_read(&UPGRADES_DAT, self.0 as u32, id) }
     }
@@ -753,6 +764,17 @@ impl TechId {
             None
         } else {
             Some(TechId(id as u16))
+        }
+    }
+
+    pub fn entry_amount() -> u32 {
+        unsafe {
+            let dat = TECHDATA_DAT[0].load(Ordering::Relaxed) as *const DatTable;
+            if dat.is_null() {
+                u32::max_value()
+            } else {
+                (*dat).entries as u32
+            }
         }
     }
 

@@ -21,7 +21,11 @@ pub struct Supplies {
 pub struct Game {
     pub minerals: [u32; 0xc],
     pub gas: [u32; 0xc],
-    pub dc60: [u8; 0x84],
+    pub dc60: [u8; 0x70],
+    pub starting_races: [u8; 0xc],
+    pub team_game_main_player: [u8; 4],
+    pub screen_pos_x_tiles: u16,
+    pub screen_pos_y_tiles: u16,
     pub map_width_tiles: u16,
     pub map_height_tiles: u16,
     pub dce8: [u8; 0x4],
@@ -414,7 +418,7 @@ pub struct Region {
 pub struct Player {
     pub id: u32,
     pub storm_id: u32,
-    pub ty: u8,
+    pub player_type: u8,
     pub race: u8,
     pub team: u8,
     pub name: [u8; 25],
