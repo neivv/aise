@@ -414,7 +414,8 @@ pub struct Region {
     pub _dc20: [u8; 0x20],
 }
 
-#[repr(C, packed)]
+#[repr(C)]
+#[derive(Copy, Clone)]
 pub struct Player {
     pub id: u32,
     pub storm_id: u32,

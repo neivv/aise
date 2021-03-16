@@ -776,7 +776,7 @@ unsafe fn remove_from_ai_structs(
     let pathing = bw::pathing();
     let region_count = (*pathing).region_count;
     for i in 0u8..8 {
-        if (*players.add(i as usize)).ty != 1 {
+        if (*players.add(i as usize)).player_type != 1 {
             continue;
         }
         let ai_regions = bw::ai_regions(i as u32);
