@@ -109,6 +109,15 @@ impl Control {
         }
     }
 
+    pub fn is_hidden(self) -> bool {
+        unsafe {
+            match crate::is_scr() {
+                false => (*self.0.as_ptr()).flags & 0x8 == 0,
+                true => (*(self.0.as_ptr() as *mut bw::scr::Control)).flags & 0x2 == 0,
+            }
+        }
+    }
+
     pub fn screen_coords(self) -> bw::Rect {
         unsafe {
             let mut rect = (*self.0.as_ptr()).area;
