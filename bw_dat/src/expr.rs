@@ -11,8 +11,8 @@ use bitflags::bitflags;
 
 use crate::game::Game;
 use crate::parse_expr::{self, DefaultParser};
-use crate::unit::{self, Unit};
-use crate::{order, upgrade, tech, UpgradeId, TechId};
+use crate::unit::{Unit};
+use crate::{order, UpgradeId, TechId};
 
 #[derive(Debug)]
 pub struct Error {
@@ -163,10 +163,7 @@ impl<E: CustomEval> EvalCtx<E> {
                                 x if x >= 0 && x < 12 => x,
                                 _ => return i32::min_value(),
                             };
-                            let unit = match self.eval_int_r(&x.args[1]) {
-                                x if x >= 0 && x < unit::NONE.0 as i32 => x,
-                                _ => return i32::min_value(),
-                            };
+                            let unit = self.eval_int_r(&x.args[1]);
                             let player = player as u8;
                             let unit = crate::UnitId(unit as u16);
                             match x.ty {
@@ -180,10 +177,7 @@ impl<E: CustomEval> EvalCtx<E> {
                                 x if x >= 0 && x < 12 => x as u8,
                                 _ => return i32::min_value(),
                             };
-                            let upgrade = match self.eval_int_r(&x.args[1]) {
-                                x if x >= 0 && x < upgrade::NONE.0 as i32 => x,
-                                _ => return i32::min_value(),
-                            };
+                            let upgrade = self.eval_int_r(&x.args[1]);
                             game.upgrade_level(player, UpgradeId(upgrade as u16)).into()
                         }
                     }
@@ -253,10 +247,7 @@ impl<E: CustomEval> EvalCtx<E> {
                                 x if x >= 0 && x < 12 => x as u8,
                                 _ => return false,
                             };
-                            let tech = match self.eval_int_r(&x.args[1]) {
-                                x if x >= 0 && x < tech::NONE.0 as i32 => x,
-                                _ => return false,
-                            };
+                            let tech = self.eval_int_r(&x.args[1]);
                             game.tech_researched(player, TechId(tech as u16))
                         }
                     }
