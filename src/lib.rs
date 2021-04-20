@@ -222,7 +222,6 @@ unsafe extern fn frame_hook() {
         .idle_orders
         .step_frame(&mut globals.rng, &search, tile_flags);
     aiscript::under_attack_frame_hook(globals);
-    aiscript::reveal_vision_hook(globals, game, tile_flags);
     ai::update_guard_needs(game, &mut globals.guards);
     ai::continue_incomplete_buildings();
     aiscript::lift_land_hook(&mut globals.lift_lands, &search, game);
@@ -285,8 +284,11 @@ unsafe extern fn frame_hook() {
 
 unsafe extern fn frame_hook_after() {
     let mut globals = Globals::get("frame hook after");
+    let game = bw::game();
+    let tile_flags = bw::tile_flags();
     aiscript::update_towns(&mut globals);
     aiscript::attack_timeouts_frame_hook_after(&mut globals);
+    aiscript::reveal_vision_hook(&mut globals, game, tile_flags);
 }
 
 // For hooking the point after frame's ai step but before any unit orders.

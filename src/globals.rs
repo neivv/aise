@@ -71,9 +71,10 @@ pub struct RevealState {
     pub players: PlayerMatch,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Copy, Clone, Eq, PartialEq)]
 pub enum RevealType {
     RevealFog,
+    RevealFull,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]

@@ -1197,10 +1197,12 @@ pub unsafe extern fn resources_command(script: *mut bw::AiScript) {
 
 pub unsafe fn reveal_vision_hook(globals: &mut Globals, game: Game, tile_flags: *mut u32) {
     for rev in &mut globals.reveal_states {
-        if rev.time != 0 {
+        if rev.time != !0 {
             rev.time -= 1;
             if rev.time == 0 {
-                reveal(game, tile_flags, rev.pos, rev.players, false);
+                reveal(game, tile_flags, rev.pos, rev.players, rev.reveal_type, false);
+            } else {
+                reveal(game, tile_flags, rev.pos, rev.players, rev.reveal_type, true);
             }
         }
     }
@@ -1212,6 +1214,7 @@ unsafe fn reveal(
     tile_flags: *mut u32,
     area: bw::Rect,
     players: PlayerMatch,
+    reveal_type: RevealType,
     reveal: bool,
 ) {
     let tile_x = area.left / 32;
@@ -1219,15 +1222,21 @@ unsafe fn reveal(
     let limit_x = area.right / 32;
     let limit_y = area.bottom / 32;
     let map_width = game.map_width_tiles();
+    let base_mask = match (reveal_type, reveal) {
+        (RevealType::RevealFull, false) => 0x1,
+        (RevealType::RevealFull, true) => 0x101,
+        (RevealType::RevealFog, _) => 0x100,
+    };
     for player in players.players().filter(|&x| x < 8) {
+        let player_mask = base_mask << player;
+
         for i in tile_x..=limit_x {
             for j in tile_y..=limit_y {
                 let tile_flag = tile_flags.add(i as usize + map_width as usize * j as usize);
                 if reveal {
-                    *tile_flag &= 0x1 << player;
+                    *tile_flag &= !player_mask;
                 } else {
-                    *tile_flag |= 0x100 << player;
-                    *tile_flag |= 0x1 << player;
+                    *tile_flag |= player_mask;
                 }
             }
         }
@@ -1235,10 +1244,6 @@ unsafe fn reveal(
 }
 
 pub unsafe extern fn reveal_area(script: *mut bw::AiScript) {
-    if bw::is_scr() {
-        bw_print!("reveal_area is not supported in SCR");
-        return;
-    }
     let mut read = ScriptData::new(script);
     let game = bw::game();
     let mut globals = Globals::get("ais reveal_area");
@@ -1253,21 +1258,26 @@ pub unsafe extern fn reveal_area(script: *mut bw::AiScript) {
     }
     let reveal_type = match flag {
         0 => RevealType::RevealFog,
+        1 => RevealType::RevealFull,
         x => {
             bw_print!("Unsupported flag modifier: {:x}", x);
             return;
         }
     };
-    if time != 0 {
+    if time != 0 || reveal_type == RevealType::RevealFull {
         let reveal_state = RevealState {
             pos: src.area,
-            time,
+            time: if time == 0 {
+                !0
+            } else {
+                time
+            },
             reveal_type,
             players,
         };
         globals.reveal_states.push(reveal_state);
     }
-    reveal(game, bw::tile_flags(), src.area, players, true);
+    reveal(game, bw::tile_flags(), src.area, players, reveal_type, true);
 }
 
 fn get_bank_path(name: &str) -> Option<PathBuf> {
