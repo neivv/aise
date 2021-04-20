@@ -80,7 +80,7 @@ impl Game {
         let index = race.id() as usize;
         unsafe {
             let supplies = &(**self).supplies[index];
-            supplies.provided[player as usize]
+            supplies.used[player as usize]
         }
     }
 
