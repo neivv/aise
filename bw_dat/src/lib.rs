@@ -350,6 +350,8 @@ pub mod order {
     pub const RESET_COLLISION_HARVESTER: OrderId = OrderId(0x97);
     pub const COMPUTER_AI: OrderId = OrderId(0x9c);
     pub const AI_ATTACK_MOVE: OrderId = OrderId(0x9d);
+    pub const RESCUABLE_IDLE: OrderId = OrderId(0xa1);
+    pub const NEUTRAL_IDLE: OrderId = OrderId(0xa2);
     pub const REVEAL_TRAP: OrderId = OrderId(0xab);
     pub const MEDIC_MOVE: OrderId = OrderId(0xb1);
     pub const DARK_ARCHON_MELD: OrderId = OrderId(0xb7);
@@ -410,6 +412,10 @@ impl UnitId {
         self.get(6) != 0
     }
 
+    pub fn flingy(self) -> FlingyId {
+        FlingyId(self.get(0) as u16)
+    }
+
     pub fn subunit(self) -> Option<UnitId> {
         UnitId::optional(self.get(1))
     }
@@ -428,6 +434,10 @@ impl UnitId {
 
     pub fn ai_flags(self) -> u8 {
         self.get(21) as u8
+    }
+
+    pub fn ai_return_to_idle_order(self) -> OrderId {
+        OrderId(self.get(12) as u8)
     }
 
     pub fn return_to_idle_order(self) -> OrderId {
@@ -627,6 +637,22 @@ impl UnitId {
 impl FlingyId {
     pub fn get(&self, id: u32) -> u32 {
         unsafe { crate::dat_read(&FLINGY_DAT, self.0 as u32, id) }
+    }
+
+    pub fn top_speed(self) -> u32 {
+        self.get(0x01)
+    }
+
+    pub fn acceleration(self) -> u32 {
+        self.get(0x02)
+    }
+
+    pub fn turn_speed(self) -> u32 {
+        self.get(0x04)
+    }
+
+    pub fn movement_type(self) -> u32 {
+        self.get(0x06)
     }
 }
 

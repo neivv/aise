@@ -179,6 +179,10 @@ impl Unit {
         unsafe { (**self).flags & 0x20 != 0 }
     }
 
+    pub fn in_transport(self) -> bool {
+        unsafe { (**self).flags & 0x40 != 0 }
+    }
+
     /// Is the unit cloaked or burrowed (So it requires detection)
     pub fn is_invisible(self) -> bool {
         unsafe { (**self).flags & 0x300 != 0 }

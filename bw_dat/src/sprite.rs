@@ -32,6 +32,10 @@ impl Sprite {
         unsafe { (**self).player }
     }
 
+    pub fn set_player(self, val: u8) {
+        unsafe { (**self).player = val; }
+    }
+
     pub fn elevation_level(self) -> u8 {
         unsafe { (**self).elevation_level }
     }
