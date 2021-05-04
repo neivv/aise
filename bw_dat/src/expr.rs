@@ -145,7 +145,7 @@ impl<E: CustomEval> EvalCtx<E> {
                         GroundCooldown => (**unit).ground_cooldown as i32,
                         AirCooldown => (**unit).air_cooldown as i32,
                         SpellCooldown => (**unit).spell_cooldown as i32,
-                        Speed => (**unit).speed,
+                        Speed => (**unit).current_speed,
                         SigOrder => (**unit).order_signal as i32,
                         Player => (**unit).player as i32,
                         UnitId => (**unit).unit_id as i32,

@@ -1,7 +1,7 @@
 use std::ptr::{NonNull};
 
 use crate::bw;
-use crate::{ImageId};
+use crate::{ImageId, Sprite};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct Image(NonNull<bw::Image>);
@@ -37,6 +37,31 @@ impl Image {
     pub fn redraw(self) {
         unsafe {
             (**self).flags |= 0x1;
+        }
+    }
+
+    pub fn set_offset(self, x: i8, y: i8) {
+        unsafe {
+            (**self).x_offset = x;
+            (**self).y_offset = y;
+        }
+    }
+
+    pub fn is_flipped(self) -> bool {
+        unsafe {
+            (**self).flags & 0x2 != 0
+        }
+    }
+
+    pub fn flags(self) -> u16 {
+        unsafe {
+            (**self).flags
+        }
+    }
+
+    pub fn parent(self) -> Sprite {
+        unsafe {
+            Sprite::from_ptr((**self).parent).expect("No image parent")
         }
     }
 }
