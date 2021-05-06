@@ -229,6 +229,11 @@ impl IdleOrders {
 unsafe fn step_cloak(order: &mut OngoingOrder, game: Game) {
     let user = order.user.0;
     if !order.cloaked && !user.is_invisible() {
+        let full_distance = bw::distance(order.home, (**user).move_target);
+        if full_distance < 32 * 24 {
+            // Don't cloak if the order is short range
+            return;
+        }
         let tech = bw_dat::tech::PERSONNEL_CLOAKING;
         let order_energy = order.order.tech().map(|x| x.energy_cost()).unwrap_or(0);
         let min_energy = tech
