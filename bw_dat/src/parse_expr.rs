@@ -376,7 +376,11 @@ impl<'b, C: CustomState, P: CustomParser<State = C>> Parser<'b, P> {
                 return Err(Error::Msg(input, "Unclosed '('"));
             }
             if out_stack.len() < 2 {
-                return Err(Error::Msg(input, "Missing right operand"));
+                if matches!(error, Error::Eof) {
+                    return Err(Error::Msg(input, "Missing right operand"));
+                } else {
+                    return Err(error);
+                }
             }
             let right = out_stack.pop().unwrap();
             let left = out_stack.pop().unwrap();
@@ -650,11 +654,19 @@ impl<'b, C: CustomState, P: CustomParser<State = C>> Parser<'b, P> {
             if let Operator::OpenBrace = op {
                 return Err(Error::Msg(input, "Unclosed '('"));
             }
-            let val = apply_op(&mut out_stack, op)
-                .map_err(|e| match e {
-                    Error::Eof => Error::Msg(input, "Missing right operand"),
-                    x => x,
-                })?;
+            let val = match apply_op(&mut out_stack, op) {
+                Ok(o) => o,
+                Err(e) => {
+                    return if matches!(error, Error::Eof) {
+                        Err(match e {
+                            Error::Eof => Error::Msg(input, "Missing right operand"),
+                            x => x,
+                        })
+                    } else {
+                        Err(error)
+                    }
+                }
+            };
             out_stack.push(Expr::Bool(val));
         }
         if out_stack.is_empty() {
@@ -992,5 +1004,15 @@ mod test {
                 ]),
             },
         );
+    }
+
+    #[test]
+    fn bool_expr_rhs_error() {
+        let default = &mut DefaultParser;
+        let mut parser = Parser::new(default);
+        let mut parse = |text| {
+            parser.bool_expr(text)
+        };
+        assert_error_contains(parse(b"1 == 2 && asd > 90"), "Invalid name");
     }
 }
