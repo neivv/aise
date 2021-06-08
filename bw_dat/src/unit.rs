@@ -297,7 +297,7 @@ impl Unit {
     }
 
     pub fn cargo_count(self) -> u8 {
-        unsafe { (**self).loaded_units.iter().filter(|&&x| x != 0).count() as u8 }
+        unsafe { (0..8).filter(|&i| (**self).loaded_units[i] != 0).count() as u8 }
     }
 
     pub fn is_disabled(self) -> bool {

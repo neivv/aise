@@ -3,7 +3,7 @@ use libc::c_void;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-#[repr(C, packed)]
+#[repr(C)]
 pub struct DatTable {
     pub data: *mut c_void,
     pub entry_size: u32,
@@ -17,7 +17,7 @@ pub struct Supplies {
     pub max: [u32; 0xc],
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 pub struct Game {
     pub minerals: [u32; 0xc],
     pub gas: [u32; 0xc],
@@ -106,7 +106,7 @@ pub struct Location {
 
 pub struct GrpSprite;
 
-#[repr(C, packed)]
+#[repr(C)]
 pub struct Image {
     pub prev: *mut Image,
     pub next: *mut Image,
@@ -129,7 +129,7 @@ pub struct Image {
     pub parent: *mut Sprite,
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 pub struct Iscript {
     pub header: u16,
     pub pos: u16,
@@ -138,7 +138,7 @@ pub struct Iscript {
     pub wait: u8,
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 pub struct Sprite {
     pub prev: *mut Sprite,
     pub next: *mut Sprite,
@@ -158,7 +158,7 @@ pub struct Sprite {
     pub(crate) last_image: *mut Image,
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 pub struct Order {
     pub prev: *mut Order,
     pub next: *mut Order,
@@ -213,7 +213,7 @@ pub struct LoneSprite {
     pub sprite: *mut Sprite,
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 pub struct Unit {
     pub prev: *mut Unit,
     pub next: *mut Unit,
@@ -464,7 +464,7 @@ pub mod scr {
     use libc::c_void;
     use super::{Image, Rect};
 
-    #[repr(C, packed)]
+    #[repr(C)]
     pub struct Dialog {
         pub control: Control,
         pub unk50: [u8; 0xc],
@@ -472,7 +472,7 @@ pub mod scr {
         pub active: *mut Control,
     }
 
-    #[repr(C, packed)]
+    #[repr(C)]
     pub struct Control {
         pub next: *mut Control,
         pub area: Rect,
@@ -498,7 +498,7 @@ pub mod scr {
         pub inline_buffer: [u8; 0x10],
     }
 
-    #[repr(C, packed)]
+    #[repr(C)]
     pub struct ControlEvent {
         pub ext_type: u32,
         pub ext_ptr: *mut c_void,
@@ -511,11 +511,12 @@ pub mod scr {
         pub time: u32,
     }
 
-    #[repr(C, packed)]
+    #[repr(C)]
     pub struct DrawCommands {
         pub commands: [DrawCommand; 0x2000],
         pub _dc140000: [u8; 0x20028],
         pub draw_command_count: u16,
+        pub _dc16002a: [u8; 0x6],
     }
 
     #[repr(C)]
@@ -535,7 +536,7 @@ pub mod scr {
         pub uniforms: [f32; 0x14],
     }
 
-    #[repr(C, packed)]
+    #[repr(C)]
     pub struct Sprite {
         pub prev: *mut Sprite,
         pub next: *mut Sprite,
@@ -669,6 +670,7 @@ mod test {
         assert_eq!(mem::size_of::<scr::Control>(), 0x50);
         assert_eq!(mem::size_of::<scr::Dialog>(), 0x64);
         assert_eq!(mem::size_of::<scr::DrawCommand>(), 0xa0);
+        assert_eq!(mem::size_of::<scr::DrawCommands>(), 0x160030);
         assert_eq!(mem::size_of::<scr::BwString>(), 0x1c);
         assert_eq!(mem::size_of::<scr::Sprite>(), 0x28);
     }
