@@ -187,6 +187,13 @@ impl IdleOrders {
                 let pair = find_user_target_pair(
                     &decl, &ongoing, game, units, &mut cache, pathing, tile_flags,
                 );
+                let rate = if decl.rate.lower == decl.rate.upper {
+                    decl.rate.lower as u32
+                } else {
+                    rng.synced_rand(
+                        (decl.rate.lower as u32)..((decl.rate.upper as u32).saturating_add(1))
+                    )
+                };
                 if let Some((user, target)) = pair {
                     let (order_target, pos) = target_pos(target, &decl);
                     let home = match user.order() {
@@ -206,11 +213,6 @@ impl IdleOrders {
                     });
                     // Round to multiple of decl.rate so that priority is somewhat useful.
                     // Adds [rate, rate * 2) frames of wait.
-                    let rate = if decl.rate.lower == decl.rate.upper {
-                        decl.rate.lower as u32
-                    } else {
-                        rng.synced_rand((decl.rate.lower as u32)..(decl.rate.upper as u32 + 1))
-                    };
 
                     state.next_frame = current_frame
                         .saturating_sub(1)
@@ -219,7 +221,8 @@ impl IdleOrders {
                         .saturating_add(2)
                         .saturating_mul(rate);
                 } else {
-                    state.next_frame = current_frame + 24 * 10;
+                    // Clamp next check to be once in half a second .. 10 second range
+                    state.next_frame = current_frame.wrapping_add(rate.clamp(12, 24 * 10));
                 }
             }
         }
