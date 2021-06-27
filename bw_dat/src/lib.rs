@@ -888,6 +888,46 @@ impl OrderId {
     pub fn weapon(&self) -> Option<WeaponId> {
         WeaponId::optional(self.get(13))
     }
+
+    pub fn subunit_inheritance(&self) -> bool {
+        self.get(4) != 0
+    }
+
+    pub fn interruptable(&self) -> bool {
+        self.get(6) != 0
+    }
+
+    pub fn deaccelerate_to_waypoint(&self) -> bool {
+        self.get(7) != 0
+    }
+
+    pub fn queuable(&self) -> bool {
+        self.get(8) != 0
+    }
+
+    pub fn keep_target_when_disabled(&self) -> bool {
+        self.get(9) != 0
+    }
+
+    pub fn terrain_clip(&self) -> bool {
+        self.get(10) != 0
+    }
+
+    pub fn fleeable(&self) -> bool {
+        self.get(11) != 0
+    }
+
+    pub fn animation(&self) -> u8 {
+        self.get(15) as u8
+    }
+
+    pub fn icon(&self) -> u32 {
+        self.get(16)
+    }
+
+    pub fn obscured(&self) -> OrderId {
+        OrderId(self.get(18) as u8)
+    }
 }
 
 impl ButtonSetId {
