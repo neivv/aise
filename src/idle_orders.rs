@@ -739,7 +739,7 @@ impl IdleOrder {
         let player_mask = 1 << self.player;
         let player = unit.player() as usize;
 
-        if unit.is_invincible() {
+        if unit.is_invincible() || !unit.is_completed() {
             return false;
         }
         let flags_ok = self.target_flags.match_status(
