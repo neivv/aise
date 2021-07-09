@@ -312,12 +312,17 @@ pub mod order {
     pub const BUILDING_MORPH: OrderId = OrderId(0x2b);
     pub const BUILD_NYDUS_EXIT: OrderId = OrderId(0x2e);
     pub const FOLLOW: OrderId = OrderId(0x31);
+    pub const CARRIER_IDLE: OrderId = OrderId(0x32);
     pub const CARRIER_ATTACK: OrderId = OrderId(0x35);
     pub const CARRIER_ATTACK_OBSCURED: OrderId = OrderId(0x36);
+    pub const CARRIER_MOVE: OrderId = OrderId(0x37);
     pub const CARRIER_ATTACK_UNIT: OrderId = OrderId(0x38);
+    pub const CARRIER_HOLD_POSITION: OrderId = OrderId(0x39);
+    pub const REAVER_IDLE: OrderId = OrderId(0x3a);
     pub const REAVER_ATTACK: OrderId = OrderId(0x3b);
     pub const REAVER_ATTACK_OBSCURED: OrderId = OrderId(0x3c);
     pub const REAVER_ATTACK_UNIT: OrderId = OrderId(0x3d);
+    pub const REAVER_HOLD_POSITION: OrderId = OrderId(0x3e);
     pub const TRAIN_FIGHTER: OrderId = OrderId(0x3f);
     pub const INTERCEPTOR_ATTACK: OrderId = OrderId(0x40);
     pub const SCARAB_ATTACK: OrderId = OrderId(0x41);
