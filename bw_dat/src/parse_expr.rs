@@ -373,7 +373,11 @@ impl<'b, C: CustomState, P: CustomParser<State = C>> Parser<'b, P> {
         }
         while let Some(op) = op_stack.pop() {
             if let Operator::OpenBrace = op {
-                return Err(Error::Msg(input, "Unclosed '('"));
+                if matches!(error, Error::Eof) {
+                    return Err(Error::Msg(input, "Unclosed '(')"));
+                } else {
+                    return Err(error);
+                }
             }
             if out_stack.len() < 2 {
                 if matches!(error, Error::Eof) {
@@ -652,7 +656,11 @@ impl<'b, C: CustomState, P: CustomParser<State = C>> Parser<'b, P> {
         }
         while let Some(op) = op_stack.pop() {
             if let Operator::OpenBrace = op {
-                return Err(Error::Msg(input, "Unclosed '('"));
+                if matches!(error, Error::Eof) {
+                    return Err(Error::Msg(input, "Unclosed '(')"));
+                } else {
+                    return Err(error);
+                }
             }
             let val = match apply_op(&mut out_stack, op) {
                 Ok(o) => o,
@@ -1014,5 +1022,15 @@ mod test {
             parser.bool_expr(text)
         };
         assert_error_contains(parse(b"1 == 2 && asd > 90"), "Invalid name");
+    }
+
+    #[test]
+    fn invalid_name_in_parens_error() {
+        let default = &mut DefaultParser;
+        let mut parser = Parser::new(default);
+        let mut parse = |text| {
+            parser.bool_expr(text)
+        };
+        assert_error_contains(parse(b"(1 == 2) && (asd > 90)"), "Invalid name");
     }
 }
