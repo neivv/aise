@@ -569,6 +569,10 @@ impl UnitId {
         self.flags() & 0x1 != 0
     }
 
+    pub fn is_addon(self) -> bool {
+        self.flags() & 0x2 != 0
+    }
+
     pub fn is_creature(self) -> bool {
         !self.is_building() &&
             !self.is_powerup() &&

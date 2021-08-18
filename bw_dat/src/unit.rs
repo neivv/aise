@@ -139,14 +139,68 @@ impl Unit {
         })
     }
 
-    pub fn has_nuke(self) -> bool {
+    pub fn fighter_parent(self) -> Option<Unit> {
         unsafe {
-            let nuke = Unit::from_ptr(
-                (&(**self).unit_specific2[..]).read_u32::<LE>().unwrap() as *mut bw::Unit
-            );
-            match nuke {
-                Some(n) => n.is_completed(),
-                None => false,
+            if self.id() == SCARAB || self.id() == INTERCEPTOR {
+                Unit::from_ptr(
+                    (&(**self).unit_specific[..]).read_u32::<LE>().unwrap() as *mut bw::Unit
+                )
+            } else {
+                None
+            }
+        }
+    }
+
+    pub fn has_nuke(self) -> bool {
+        self.silo_nuke().is_some()
+    }
+
+    pub fn silo_nuke(self) -> Option<Unit> {
+        unsafe {
+            if self.id() == NUCLEAR_SILO {
+                let nuke = Unit::from_ptr(
+                    (&(**self).unit_specific2[..]).read_u32::<LE>().unwrap() as *mut bw::Unit
+                );
+                // Will a nuke even be stored here if it's not completed?
+                nuke.filter(|x| x.is_completed())
+            } else {
+                None
+            }
+        }
+    }
+
+    pub fn powerup_worker(self) -> Option<Unit> {
+        unsafe {
+            if self.id().is_powerup() {
+                Unit::from_ptr(
+                    (&(**self).unit_specific2[4..]).read_u32::<LE>().unwrap() as *mut bw::Unit
+                )
+            } else {
+                None
+            }
+        }
+    }
+
+    pub fn nydus_linked(self) -> Option<Unit> {
+        unsafe {
+            if self.id() == NYDUS_CANAL {
+                Unit::from_ptr(
+                    (&(**self).unit_specific2[..]).read_u32::<LE>().unwrap() as *mut bw::Unit
+                )
+            } else {
+                None
+            }
+        }
+    }
+
+    pub fn rally_unit(self) -> Option<Unit> {
+        unsafe {
+            if self.id().is_building() && self.id() != PYLON {
+                Unit::from_ptr(
+                    (&(**self).rally_pylon[4..]).read_u32::<LE>().unwrap() as *mut bw::Unit
+                )
+            } else {
+                None
             }
         }
     }
@@ -677,6 +731,7 @@ pub const BUNKER: UnitId = UnitId(0x7d);
 pub const HATCHERY: UnitId = UnitId(0x83);
 pub const LAIR: UnitId = UnitId(0x84);
 pub const HIVE: UnitId = UnitId(0x85);
+pub const NYDUS_CANAL: UnitId = UnitId(0x86);
 pub const HYDRALISK_DEN: UnitId = UnitId(0x87);
 pub const GREATER_SPIRE: UnitId = UnitId(0x89);
 pub const SPIRE: UnitId = UnitId(0x8d);
