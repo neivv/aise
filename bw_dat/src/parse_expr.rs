@@ -25,10 +25,27 @@ impl CustomState for NoCustom {
     type BoolExt = Void;
 }
 
+pub enum Expr<C: CustomState> {
+    Bool(BoolExpr<C>),
+    Int(IntExpr<C>),
+}
+
 pub trait CustomParser {
     type State: CustomState;
     fn parse_int<'a>(&mut self, input: &'a [u8]) ->
         Option<(<Self::State as CustomState>::IntExt, &'a [u8])>;
+    fn parse_operator<'a>(&mut self, _input: &'a [u8]) -> Option<(u16, &'a [u8])> {
+        None
+    }
+    fn apply_operator(
+        &mut self,
+        _left: Expr<Self::State>,
+        _right: Expr<Self::State>,
+        _oper: u16,
+    ) -> Result<Expr<Self::State>, &'static str> {
+        Err("Not supported")
+    }
+
     fn parse_bool<'a>(&mut self, input: &'a [u8]) ->
         Option<(<Self::State as CustomState>::BoolExt, &'a [u8])>;
 }
@@ -55,6 +72,27 @@ pub enum IntExpr<C: CustomState> {
     Func(IntFunc<C>),
     Custom(C::IntExt),
 }
+
+#[derive(Copy, Clone, Eq, PartialEq)]
+enum Operator {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    And,
+    Or,
+    Eq,
+    Neq,
+    LessThan,
+    LessOrEq,
+    GreaterThan,
+    GreaterOrEq,
+    Not,
+    OpenBrace,
+    Custom(u16),
+}
+
 
 macro_rules! decl_funcc {
     (argc, $argc:expr) => {
@@ -256,145 +294,9 @@ impl<'b, C: CustomState, P: CustomParser<State = C>> Parser<'b, P> {
         &mut self,
         input: &'a [u8],
     ) -> Result<(IntExpr<C>, &'a [u8]), Error<'a, C>> {
-        #[derive(Copy, Clone)]
-        enum Operator {
-            Add,
-            Sub,
-            Mul,
-            Div,
-            Mod,
-            OpenBrace,
-        }
-
-        #[inline(always)]
-        fn apply_op<C: CustomState>(
-            op: Operator,
-            val: Box<(IntExpr<C>, IntExpr<C>)>,
-        ) -> IntExpr<C> {
-            match op {
-                Operator::Add => IntExpr::Add(val),
-                Operator::Sub => IntExpr::Sub(val),
-                Operator::Mul => IntExpr::Mul(val),
-                Operator::Div => IntExpr::Div(val),
-                Operator::Mod | _ => IntExpr::Modulo(val),
-            }
-        }
-
-        let mut out_stack = Vec::new();
-        let mut op_stack = Vec::new();
-        let mut input = input;
-        let mut error = Error::Eof;
-        'outer_loop: loop {
-            let &first_byte = match input.get(0) {
-                Some(s) => s,
-                None => break,
-            };
-            let rest = match first_byte {
-                b'(' => {
-                    op_stack.push(Operator::OpenBrace);
-                    input = skip_spaces(&input[1..]);
-                    continue;
-                }
-                b'0' ..= b'9' | b'-' => {
-                    let (int, rest) = parse_i32(input)?;
-                    out_stack.push(IntExpr::Integer(int));
-                    rest
-                }
-                _ => {
-                    if let Some((result, rest)) = self.custom_state.parse_int(input) {
-                        out_stack.push(IntExpr::Custom(result));
-                        rest
-                    } else {
-                        let (func, rest) = match self.int_func(input) {
-                            Ok(o) => o,
-                            Err(e) => {
-                                error = e;
-                                break;
-                            }
-                        };
-                        out_stack.push(IntExpr::Func(func));
-                        rest
-                    }
-                }
-            };
-            input = rest;
-            'op_loop: loop {
-                let rest = skip_spaces(input);
-                let &operator = match rest.get(0) {
-                    Some(s) => s,
-                    None => {
-                        input = rest;
-                        break 'outer_loop;
-                    }
-                };
-                let op = match operator {
-                    b'+' => Operator::Add,
-                    b'-' => Operator::Sub,
-                    b'*' => Operator::Mul,
-                    b'/' => Operator::Div,
-                    b'%' => Operator::Mod,
-                    b')' => {
-                        while let Some(op) = op_stack.pop() {
-                            if let Operator::OpenBrace = op {
-                                input = &rest[1..];
-                                continue 'op_loop;
-                            }
-                            let right = out_stack.pop().unwrap();
-                            let left = out_stack.pop().unwrap();
-                            let val = Box::new((left, right));
-                            out_stack.push(apply_op(op, val));
-                        }
-                        input = rest;
-                        break 'outer_loop;
-                    }
-                    _ => {
-                        input = rest;
-                        break 'outer_loop;
-                    }
-                };
-                loop {
-                    match op_stack.last().cloned() {
-                        Some(Operator::OpenBrace) | None => break,
-                        Some(Operator::Add) | Some(Operator::Sub) => match op {
-                            Operator::Mul | Operator::Div | Operator::Mod => break,
-                            _ => (),
-                        },
-                        _ => (),
-                    }
-                    let right = out_stack.pop().unwrap();
-                    let left = out_stack.pop().unwrap();
-                    let val = Box::new((left, right));
-                    out_stack.push(apply_op(op_stack.pop().unwrap(), val));
-                }
-                op_stack.push(op);
-                input = skip_spaces(&rest[1..]);
-                break;
-            }
-        }
-        while let Some(op) = op_stack.pop() {
-            if let Operator::OpenBrace = op {
-                if matches!(error, Error::Eof) {
-                    return Err(Error::Msg(input, "Unclosed '(')"));
-                } else {
-                    return Err(error);
-                }
-            }
-            if out_stack.len() < 2 {
-                if matches!(error, Error::Eof) {
-                    return Err(Error::Msg(input, "Missing right operand"));
-                } else {
-                    return Err(error);
-                }
-            }
-            let right = out_stack.pop().unwrap();
-            let left = out_stack.pop().unwrap();
-            let val = Box::new((left, right));
-            out_stack.push(apply_op(op, val));
-        }
-        if out_stack.is_empty() {
-            Err(error)
-        } else {
-            Ok((out_stack.remove(0), input))
+        match self.expr(input)? {
+            (Expr::Int(i), rest) => Ok((i, rest)),
+            (Expr::Bool(b), _) => Err(Error::NotInteger(b)),
         }
     }
 
@@ -402,29 +304,22 @@ impl<'b, C: CustomState, P: CustomParser<State = C>> Parser<'b, P> {
         &mut self,
         input: &'a [u8],
     ) -> Result<(BoolExpr<C>, &'a [u8]), Error<'a, C>> {
-        #[derive(Copy, Clone, Eq, PartialEq)]
-        enum Operator {
-            And,
-            Or,
-            Eq,
-            Neq,
-            LessThan,
-            LessOrEq,
-            GreaterThan,
-            GreaterOrEq,
-            Not,
-            OpenBrace,
+        match self.expr(input)? {
+            (Expr::Bool(b), rest) => Ok((b, rest)),
+            (Expr::Int(i), _) => Err(Error::NotBoolean(i)),
         }
+    }
 
-        enum Expr<C: CustomState> {
-            Bool(BoolExpr<C>),
-            Int(IntExpr<C>),
-        }
-
-        fn apply_op<C: CustomState>(
+    pub fn expr<'a>(
+        &mut self,
+        input: &'a [u8],
+    ) -> Result<(Expr<C>, &'a [u8]), Error<'a, C>> {
+        fn apply_op<'a, C: CustomState, P: CustomParser<State = C>>(
             stack: &mut Vec<Expr<C>>,
             op: Operator,
-        ) -> Result<BoolExpr<C>, Error<'static, C>> {
+            pos: &'a [u8],
+            custom_state: &mut P,
+        ) -> Result<Expr<C>, Error<'a, C>> {
             let right = match stack.pop() {
                 Some(s) => s,
                 None => return Err(Error::Eof),
@@ -442,11 +337,11 @@ impl<'b, C: CustomState, P: CustomParser<State = C>> Parser<'b, P> {
                         }
                     };
                     let val = Box::new((left, right));
-                    if let Operator::And = op {
-                        Ok(BoolExpr::And(val))
+                    Ok(Expr::Bool(if let Operator::And = op {
+                        BoolExpr::And(val)
                     } else {
-                        Ok(BoolExpr::Or(val))
-                    }
+                        BoolExpr::Or(val)
+                    }))
                 }
                 Operator::Eq => {
                     if left.is_none() {
@@ -454,10 +349,10 @@ impl<'b, C: CustomState, P: CustomParser<State = C>> Parser<'b, P> {
                     }
                     match (left.unwrap(), right) {
                         (Expr::Bool(l), Expr::Bool(r)) => {
-                            Ok(BoolExpr::EqualBool(Box::new((l, r))))
+                            Ok(Expr::Bool(BoolExpr::EqualBool(Box::new((l, r)))))
                         }
                         (Expr::Int(l), Expr::Int(r)) => {
-                            Ok(BoolExpr::EqualInt(Box::new((l, r))))
+                            Ok(Expr::Bool(BoolExpr::EqualInt(Box::new((l, r)))))
                         }
                         (Expr::Int(e), _) | (_, Expr::Int(e)) => {
                             Err(Error::NotBoolean(e))
@@ -470,10 +365,14 @@ impl<'b, C: CustomState, P: CustomParser<State = C>> Parser<'b, P> {
                     }
                     match (left.unwrap(), right) {
                         (Expr::Bool(l), Expr::Bool(r)) => {
-                            Ok(BoolExpr::Not(Box::new(BoolExpr::EqualBool(Box::new((l, r))))))
+                            Ok(Expr::Bool(
+                                BoolExpr::Not(Box::new(BoolExpr::EqualBool(Box::new((l, r)))))
+                            ))
                         }
                         (Expr::Int(l), Expr::Int(r)) => {
-                            Ok(BoolExpr::Not(Box::new(BoolExpr::EqualInt(Box::new((l, r))))))
+                            Ok(Expr::Bool(
+                                BoolExpr::Not(Box::new(BoolExpr::EqualInt(Box::new((l, r)))))
+                            ))
                         }
                         (Expr::Int(e), _) | (_, Expr::Int(e)) => {
                             Err(Error::NotBoolean(e))
@@ -481,7 +380,8 @@ impl<'b, C: CustomState, P: CustomParser<State = C>> Parser<'b, P> {
                     }
                 }
                 Operator::GreaterThan | Operator::GreaterOrEq | Operator::LessThan |
-                    Operator::LessOrEq =>
+                    Operator::LessOrEq | Operator::Add | Operator::Sub | Operator::Mul |
+                    Operator::Div | Operator::Mod =>
                 {
                     if left.is_none() {
                         return Err(Error::Eof);
@@ -493,11 +393,24 @@ impl<'b, C: CustomState, P: CustomParser<State = C>> Parser<'b, P> {
                         }
                     };
                     let val = Box::new((left, right));
-                    match op {
-                        Operator::GreaterThan => Ok(BoolExpr::GreaterThan(val)),
-                        Operator::GreaterOrEq => Ok(BoolExpr::GreaterOrEqual(val)),
-                        Operator::LessThan => Ok(BoolExpr::LessThan(val)),
-                        Operator::LessOrEq | _ => Ok(BoolExpr::LessOrEqual(val)),
+                    Ok(match op {
+                        Operator::Add => Expr::Int(IntExpr::Add(val)),
+                        Operator::Sub => Expr::Int(IntExpr::Sub(val)),
+                        Operator::Mul => Expr::Int(IntExpr::Mul(val)),
+                        Operator::Div => Expr::Int(IntExpr::Div(val)),
+                        Operator::Mod => Expr::Int(IntExpr::Modulo(val)),
+                        Operator::GreaterThan => Expr::Bool(BoolExpr::GreaterThan(val)),
+                        Operator::GreaterOrEq => Expr::Bool(BoolExpr::GreaterOrEqual(val)),
+                        Operator::LessThan => Expr::Bool(BoolExpr::LessThan(val)),
+                        Operator::LessOrEq | _ => Expr::Bool(BoolExpr::LessOrEqual(val)),
+                    })
+                }
+                Operator::Custom(priority) => {
+                    if let Some(left) = left {
+                        custom_state.apply_operator(left, right, priority)
+                            .map_err(|x| Error::Msg(pos, x))
+                    } else {
+                        Err(Error::Eof)
                     }
                 }
                 Operator::Not | _ => {
@@ -505,7 +418,7 @@ impl<'b, C: CustomState, P: CustomParser<State = C>> Parser<'b, P> {
                         stack.push(left);
                     }
                     match right {
-                        Expr::Bool(r) => Ok(BoolExpr::Not(Box::new(r))),
+                        Expr::Bool(r) => Ok(Expr::Bool(BoolExpr::Not(Box::new(r)))),
                         Expr::Int(e) => Err(Error::NotBoolean(e)),
                     }
                 }
@@ -532,15 +445,23 @@ impl<'b, C: CustomState, P: CustomParser<State = C>> Parser<'b, P> {
                     input = &input[1..];
                     continue;
                 }
+                b'0' ..= b'9' | b'-' => {
+                    let (int, rest) = parse_i32(input)?;
+                    out_stack.push(Expr::Int(IntExpr::Integer(int)));
+                    rest
+                }
                 _ => {
                     if let Some((result, rest)) = self.custom_state.parse_bool(input) {
                         out_stack.push(Expr::Bool(BoolExpr::Custom(result)));
                         rest
+                    } else if let Some((result, rest)) = self.custom_state.parse_int(input) {
+                        out_stack.push(Expr::Int(IntExpr::Custom(result)));
+                        rest
                     } else {
                         let (func, rest) = match self.bool_func(input) {
                             Ok(o) => (Expr::Bool(BoolExpr::Func(o.0)), o.1),
-                            Err(_) => match self.int_expr(input) {
-                                Ok(o) => (Expr::Int(o.0), o.1),
+                            Err(_) => match self.int_func(input) {
+                                Ok(o) => (Expr::Int(IntExpr::Func(o.0)), o.1),
                                 Err(e) => {
                                     error = e;
                                     break;
@@ -555,90 +476,125 @@ impl<'b, C: CustomState, P: CustomParser<State = C>> Parser<'b, P> {
             input = rest;
             'op_loop: loop {
                 input = skip_spaces(input);
-                let &operator = match input.get(0) {
-                    Some(s) => s,
-                    None => break,
-                };
-                let rest = &input[1..];
-                let op = match operator {
-                    b'|' => if rest.get(0).cloned() == Some(b'|') {
-                        input = &rest[1..];
-                        Operator::Or
-                    } else {
-                        break 'outer_loop;
-                    },
-                    b'&' => if rest.get(0).cloned() == Some(b'&') {
-                        input = &rest[1..];
-                        Operator::And
-                    } else {
-                        break 'outer_loop;
-                    },
-                    b'<' => if rest.get(0).cloned() == Some(b'=') {
-                        input = &rest[1..];
-                        Operator::LessOrEq
-                    } else {
-                        input = rest;
-                        Operator::LessThan
-                    },
-                    b'>' => if rest.get(0).cloned() == Some(b'=') {
-                        input = &rest[1..];
-                        Operator::GreaterOrEq
-                    } else {
-                        input = rest;
-                        Operator::GreaterThan
-                    },
-                    b'=' => if rest.get(0).cloned() == Some(b'=') {
-                        input = &rest[1..];
-                        Operator::Eq
-                    } else {
-                        break 'outer_loop;
-                    },
-                    b'!' => if rest.get(0).cloned() == Some(b'=') {
-                        input = &rest[1..];
-                        Operator::Neq
-                    } else {
-                        break 'outer_loop;
-                    },
-                    b')' => {
-                        while let Some(op) = op_stack.pop() {
-                            if let Operator::OpenBrace = op {
-                                input = rest;
-                                continue 'op_loop;
-                            }
-                            let val = apply_op(&mut out_stack, op)?;
-                            out_stack.push(Expr::Bool(val));
+                let op = if let Some((prio, new_rest)) =
+                    self.custom_state.parse_operator(input)
+                {
+                    input = new_rest;
+                    Operator::Custom(prio)
+                } else {
+                    let &operator = match input.get(0) {
+                        Some(s) => s,
+                        None => break,
+                    };
+                    let rest = &input[1..];
+                    match operator {
+                        b'+' => {
+                            input = rest;
+                            Operator::Add
                         }
-                        break 'outer_loop;
-                    }
-                    _ => {
-                        break 'outer_loop;
+                        b'-' => {
+                            input = rest;
+                            Operator::Sub
+                        }
+                        b'*' => {
+                            input = rest;
+                            Operator::Mul
+                        }
+                        b'/' => {
+                            input = rest;
+                            Operator::Div
+                        }
+                        b'%' => {
+                            input = rest;
+                            Operator::Mod
+                        }
+                        b'|' => if rest.get(0).cloned() == Some(b'|') {
+                            input = &rest[1..];
+                            Operator::Or
+                        } else {
+                            break 'outer_loop;
+                        },
+                        b'&' => if rest.get(0).cloned() == Some(b'&') {
+                            input = &rest[1..];
+                            Operator::And
+                        } else {
+                            break 'outer_loop;
+                        },
+                        b'<' => if rest.get(0).cloned() == Some(b'=') {
+                            input = &rest[1..];
+                            Operator::LessOrEq
+                        } else {
+                            input = rest;
+                            Operator::LessThan
+                        },
+                        b'>' => if rest.get(0).cloned() == Some(b'=') {
+                            input = &rest[1..];
+                            Operator::GreaterOrEq
+                        } else {
+                            input = rest;
+                            Operator::GreaterThan
+                        },
+                        b'=' => if rest.get(0).cloned() == Some(b'=') {
+                            input = &rest[1..];
+                            Operator::Eq
+                        } else {
+                            break 'outer_loop;
+                        },
+                        b'!' => if rest.get(0).cloned() == Some(b'=') {
+                            input = &rest[1..];
+                            Operator::Neq
+                        } else {
+                            break 'outer_loop;
+                        },
+                        b')' => {
+                            while let Some(op) = op_stack.pop() {
+                                if let Operator::OpenBrace = op {
+                                    input = rest;
+                                    continue 'op_loop;
+                                }
+                                let val = apply_op(&mut out_stack, op, rest, self.custom_state)?;
+                                out_stack.push(val);
+                            }
+                            break 'outer_loop;
+                        }
+                        _ => {
+                            break 'outer_loop;
+                        }
                     }
                 };
+
                 loop {
                     let last = match op_stack.last() {
                         Some(&s) => s,
                         None => break,
                     };
-                    match last {
-                        Operator::OpenBrace => break,
-                        Operator::Or | Operator::And => match op {
-                            Operator::Eq | Operator::Neq | Operator::LessThan | Operator::LessOrEq |
-                                Operator::GreaterThan | Operator::GreaterOrEq => break,
-                            _ => (),
+                    let last_priority = op_priority(last);
+                    let op_priority = op_priority(op);
+
+                    fn op_priority(op: Operator) -> u32 {
+                        if let Operator::Custom(a) = op {
+                            a as u32 + 1
+                        } else {
+                            (match op {
+                                Operator::OpenBrace => 0u8,
+                                Operator::Not => 255,
+                                Operator::Mul | Operator::Div | Operator::Mod => 20,
+                                Operator::Add | Operator::Sub => 19,
+                                Operator::Or | Operator::And => 5,
+                                Operator::Eq | Operator::Neq | Operator::LessThan |
+                                    Operator::LessOrEq | Operator::GreaterThan |
+                                    Operator::GreaterOrEq => 6,
+                                Operator::Custom(_) => 0,
+                            } as u32) << 17
                         }
-                        _ => (),
-                    };
-                    if last != op {
+                    }
+                    if last_priority < op_priority {
+                        break;
+                    }
+                    if last != op && last_priority == op_priority {
                         let conflict = match last {
-                            Operator::Not => false,
-                            Operator::Eq | Operator::Neq | Operator::LessThan | Operator::LessOrEq |
-                                Operator::GreaterThan | Operator::GreaterOrEq =>
-                            {
-                                match op {
-                                    Operator::Or | Operator::And => false,
-                                    _ => true,
-                                }
-                            }
+                            Operator::Add | Operator::Sub |
+                                Operator::Mul | Operator::Div | Operator::Mod => false,
                             _ => true,
                         };
                         if conflict {
@@ -646,8 +602,8 @@ impl<'b, C: CustomState, P: CustomParser<State = C>> Parser<'b, P> {
                         }
                     }
                     op_stack.pop();
-                    let val = apply_op(&mut out_stack, last)?;
-                    out_stack.push(Expr::Bool(val));
+                    let val = apply_op(&mut out_stack, last, rest, self.custom_state)?;
+                    out_stack.push(val);
                 }
                 op_stack.push(op);
                 break;
@@ -662,7 +618,7 @@ impl<'b, C: CustomState, P: CustomParser<State = C>> Parser<'b, P> {
                     return Err(error);
                 }
             }
-            let val = match apply_op(&mut out_stack, op) {
+            let val = match apply_op(&mut out_stack, op, input, self.custom_state) {
                 Ok(o) => o,
                 Err(e) => {
                     return if matches!(error, Error::Eof) {
@@ -675,15 +631,12 @@ impl<'b, C: CustomState, P: CustomParser<State = C>> Parser<'b, P> {
                     }
                 }
             };
-            out_stack.push(Expr::Bool(val));
+            out_stack.push(val);
         }
         if out_stack.is_empty() {
             Err(error)
         } else {
-            match out_stack.remove(0) {
-                Expr::Bool(x) => Ok((x, input)),
-                Expr::Int(x) => Err(Error::NotBoolean(x)),
-            }
+            Ok((out_stack.remove(0), input))
         }
     }
 }

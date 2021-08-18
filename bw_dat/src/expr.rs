@@ -1,5 +1,5 @@
 pub use crate::parse_expr::{
-    IntFunc, IntFuncType, BoolFunc, BoolFuncType, CustomState, NoCustom, CustomParser,
+    IntFunc, IntFuncType, BoolFunc, BoolFuncType, CustomState, NoCustom, CustomParser, Expr,
 };
 pub use crate::parse_expr::{BoolExpr as BoolExprTree, IntExpr as IntExprTree};
 
@@ -301,6 +301,13 @@ impl IntExpr {
 }
 
 impl<C: CustomState> CustomIntExpr<C> {
+    pub fn from_tree(tree: parse_expr::IntExpr<C>) -> CustomIntExpr<C> {
+        CustomIntExpr {
+            required_context: int_expr_required_context(&tree),
+            ty: tree,
+        }
+    }
+
     pub fn parse_part_custom<'a, P: CustomParser<State = C>>(
         bytes: &'a [u8],
         custom: &mut P,
@@ -349,6 +356,13 @@ impl BoolExpr {
 }
 
 impl<C: CustomState> CustomBoolExpr<C> {
+    pub fn from_tree(tree: parse_expr::BoolExpr<C>) -> CustomBoolExpr<C> {
+        CustomBoolExpr {
+            required_context: bool_expr_required_context(&tree),
+            ty: tree,
+        }
+    }
+
     pub fn parse_part_custom<'a, P: CustomParser<State = C>>(
         bytes: &'a [u8],
         custom: &mut P,
