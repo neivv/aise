@@ -2,9 +2,6 @@
 #![allow(non_camel_case_types)]
 
 use std::ptr::{null, null_mut};
-use std::sync::atomic::Ordering;
-
-use libc::c_void;
 
 use bw_dat::{OrderId, TechId, UnitId, UpgradeId};
 
@@ -14,10 +11,6 @@ pub mod structs;
 
 pub use self::structs::*;
 pub use bw_dat::structs::*;
-
-pub fn is_scr() -> bool {
-    crate::IS_1161.load(Ordering::Acquire) == false
-}
 
 pub fn player_ai(player: u32) -> *mut PlayerAiData {
     samase::player_ai(player)
@@ -66,13 +59,6 @@ pub fn elapsed_seconds() -> u32 {
 
 pub fn location(location: u8) -> Location {
     unsafe { (**game()).locations[location as usize] }
-}
-
-pub fn point_from_rect(rect: Rect) -> Point {
-    Point {
-        x: rect.left + (rect.right - rect.left) / 2,
-        y: rect.top + (rect.bottom - rect.top) / 2,
-    }
 }
 
 pub unsafe fn issue_order(
@@ -225,6 +211,7 @@ pub fn tile_flags() -> *mut u32 {
     samase::map_tile_flags()
 }
 
+#[cfg(target_pointer_width = "32")]
 whack_hooks!(stdcall, 0x00400000,
     0x00488AF0 => increment_death_scores(@edi *mut Unit, @edx u8);
     0x004465C0 => choose_placement_position(u32, u32, *mut Point, u32, @ecx *mut Unit) -> u32;
@@ -232,9 +219,10 @@ whack_hooks!(stdcall, 0x00400000,
     0x004A13C0 => ai_spellcast(bool, @eax *mut Unit) -> u32;
     0x0047B090 => get_unit_name(@ecx u32) -> *const u8;
     0x0043FCF0 => ai_focus_unit_check(@ecx *mut Unit, @edx u32) -> u32;
-    0x00447980 => add_spending_request(u32, *mut c_void, @eax u16, @ecx u32, @edx u8);
+    0x00447980 => add_spending_request(u32, *mut libc::c_void, @eax u16, @ecx u32, @edx u8);
 );
 
+#[cfg(target_pointer_width = "32")]
 whack_funcs!(stdcall, init_funcs, 0x00400000,
     0x00473FB0 => update_building_placement_state(*mut Unit, u8, u32, u32, u16, u8, u8, u8, u8) -> u32;
     0x004936B0 => is_powered(u32, u32, u8, @eax u32) -> u32;
@@ -249,6 +237,7 @@ whack_funcs!(stdcall, init_funcs, 0x00400000,
     );
 );
 
+#[cfg(target_pointer_width = "32")]
 whack_vars!(init_vars, 0x00400000,
     0x0057EE9C => player_name: [u8; 0x19];
     0x0057F0B4 => is_multiplayer: u8;

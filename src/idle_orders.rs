@@ -174,7 +174,9 @@ impl IdleOrders {
             }
             let pos = unit.position();
             let distance = bw::distance(pos, ret.start_point);
-            if distance > 32 * 12 || ((**unit).move_target == pos && distance > 32 * 2) {
+            if distance > 32 * 12 ||
+                ((**unit).flingy.move_target.pos == pos && distance > 32 * 2)
+            {
                 unit.issue_secondary_order(bw_dat::order::DECLOAK);
                 false
             } else {
@@ -197,7 +199,7 @@ impl IdleOrders {
                 if let Some((user, target)) = pair {
                     let (order_target, pos) = target_pos(target, &decl);
                     let home = match user.order() {
-                        order::MOVE => (**user).order_target_pos,
+                        order::MOVE => (**user).order_target.pos,
                         _ => user.position(),
                     };
                     user.issue_order(decl.order, pos, order_target);
@@ -232,7 +234,8 @@ impl IdleOrders {
 unsafe fn step_cloak(order: &mut OngoingOrder, game: Game) {
     let user = order.user.0;
     if !order.cloaked && !user.is_invisible() {
-        let full_distance = bw::distance(order.home, (**user).move_target);
+        let move_target = (**user).flingy.move_target.pos;
+        let full_distance = bw::distance(order.home, move_target);
         if full_distance < 32 * 24 {
             // Don't cloak if the order is short range
             return;
@@ -247,7 +250,7 @@ unsafe fn step_cloak(order: &mut OngoingOrder, game: Game) {
         if user.energy() as u32 > min_energy {
             let has_tech = game.tech_researched(user.player(), tech) || user.id().is_hero();
             if has_tech {
-                let distance = bw::distance(user.position(), (**user).move_target);
+                let distance = bw::distance(user.position(), move_target);
                 if distance < 32 * 24 {
                     user.issue_secondary_order(bw_dat::order::CLOAK);
                     order.cloaked = true;

@@ -89,11 +89,11 @@ impl ListEntry for bw::MilitaryAi {
 
 impl ListEntry for bw::Unit {
     unsafe fn next(x: *mut Self) -> *mut *mut Self {
-        &mut (*x).next
+        &mut ((*x).flingy.next as *mut Self)
     }
 
     unsafe fn prev(x: *mut Self) -> *mut *mut Self {
-        &mut (*x).prev
+        &mut ((*x).flingy.prev as *mut Self)
     }
 }
 

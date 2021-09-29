@@ -103,9 +103,9 @@ impl Iterator for SaveIdMapping {
                 if self.in_subunit {
                     self.in_subunit = false;
                     let parent = (*unit).subunit;
-                    self.next = Unit::from_ptr((*parent).next);
+                    self.next = Unit::from_ptr((*parent).flingy.next as *mut bw::Unit);
                 } else {
-                    self.next = Unit::from_ptr((*unit).next);
+                    self.next = Unit::from_ptr((*unit).flingy.next as *mut bw::Unit);
                 }
             }
             Some(result)
@@ -212,9 +212,10 @@ impl UnitExt for Unit {
                 (**self).secondary_order = order.0;
                 (**self).secondary_order_state = 0;
                 // Uhh.. Is this sensible to allow to be done from AI scripts?
-                (**self).currently_building = null_mut();
-                (**self).unke8 = 0;
-                (**self).unkea = 0;
+                (**self).secondary_order_target = bw::PointAndUnit {
+                    pos: bw::Point { x: 0, y: 0 },
+                    unit: null_mut(),
+                };
             }
         }
     }
@@ -265,8 +266,8 @@ impl<'a> Iterator for Orders<'a> {
                 self.first = false;
                 Some(Order {
                     id: self.this.order(),
-                    position: (***self.this).order_target_pos,
-                    target: Unit::from_ptr((***self.this).target),
+                    position: (***self.this).order_target.pos,
+                    target: self.this.target(),
                 })
             } else if self.next != null_mut() {
                 let order = self.next;
@@ -301,7 +302,7 @@ impl Iterator for UnitListIter {
                 None
             } else {
                 let result = Unit::from_ptr(self.0);
-                self.0 = (*self.0).next;
+                self.0 = (*self.0).flingy.next as *mut bw::Unit;
                 result
             }
         }

@@ -1,3 +1,5 @@
+#![cfg(target_pointer_width = "32")]
+
 use std::mem;
 
 mod bw {

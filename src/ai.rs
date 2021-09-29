@@ -683,15 +683,15 @@ unsafe fn update_slowest_unit_in_region(region: *mut bw::AiRegion) {
     if let Some(unit) = Unit::from_ptr((*region).slowest_military) {
         if unit.is_air() {
             slowest_air = Some(unit);
-            air_speed = (**unit).flingy_top_speed;
+            air_speed = (**unit).flingy.top_speed;
         } else {
             slowest_ground = Some(unit);
-            ground_speed = (**unit).flingy_top_speed;
+            ground_speed = (**unit).flingy.top_speed;
         }
     }
     for ai in ListIter((*region).military.first) {
         let unit = Unit::from_ptr((*ai).parent).expect("Parentless military ai");
-        let speed = (**unit).flingy_top_speed;
+        let speed = (**unit).flingy.top_speed;
         if unit.is_air() {
             if speed < air_speed {
                 air_speed = speed;
@@ -916,8 +916,7 @@ unsafe fn check_town_delete(game: Game, player_ai: &PlayerAi, town: Town) {
     }
     for unit in active_units() {
         if unit.id().is_resource_container() {
-            // Resarea for resources
-            (**unit).unit_specific2[0x9] = 0;
+            (**unit).unit_specific2.resource.resource_area = 0;
         }
     }
     if (*town.0).resource_area != 0 {

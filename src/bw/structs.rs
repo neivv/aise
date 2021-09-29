@@ -2,7 +2,7 @@ use libc::c_void;
 
 use bw_dat::structs::*;
 
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct AiScript {
     pub next: *mut AiScript,
@@ -26,7 +26,7 @@ pub struct TownReq {
     pub id: u16,
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 pub struct AiTown {
     pub next: *mut AiTown,                    // 0x0
     pub prev: *mut AiTown,                    // 0x4
@@ -56,13 +56,13 @@ pub struct AiTownList {
     pub first: *mut AiTown,
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 pub struct AiTownArray {
     pub towns: [AiTown; 100],
     pub first_free: *mut AiTown,
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 pub struct WorkerAi {
     pub next: *mut WorkerAi,
     pub prev: *mut WorkerAi,
@@ -75,58 +75,55 @@ pub struct WorkerAi {
     pub town: *mut AiTown,
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 pub struct BuildingAi {
     pub next: *mut BuildingAi,
     pub prev: *mut BuildingAi,
     pub ai_type: u8,
     pub train_queue_types: [u8; 0x5],
-    pub padding_e: [u8; 0x2],
     pub parent: *mut Unit, // 0x10
     pub town: *mut AiTown,
     pub train_queue_values: [*mut c_void; 0x5],
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 pub struct WorkerAiArray {
     pub ais: [WorkerAi; 1000],
     pub first_free: *mut WorkerAi,
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 pub struct BuildingAiArray {
     pub ais: [BuildingAi; 1000],
     pub first_free: *mut BuildingAi,
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 pub struct GuardAiList {
     pub array: *mut GuardAiArray,
     pub first: *mut GuardAi,
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 pub struct GuardAiArray {
     pub ais: [GuardAi; 1000],
     pub first_free: *mut GuardAi,
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 pub struct GuardAi {
     pub next: *mut GuardAi,
     pub prev: *mut GuardAi,
     pub ai_type: u8,
     pub times_died: u8,
-    pub dca: [u8; 0x2],
     pub parent: *mut Unit,
     pub unit_id: u16,
     pub home: Point,
     pub other_home: Point,
-    pub padding1a: [u8; 0x2],
     pub previous_update: u32,
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 pub struct AiRegion {
     pub id: u16,
     pub target_region_id: u16,
@@ -153,19 +150,19 @@ pub struct AiRegion {
     pub military: MilitaryAiList,
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 pub struct MilitaryAiList {
     pub array: *mut MilitaryAiArray,
     pub first: *mut MilitaryAi,
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 pub struct MilitaryAiArray {
     pub ais: [MilitaryAi; 1000],
     pub first_free: *mut MilitaryAi,
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 pub struct MilitaryAi {
     pub next: *mut MilitaryAi,
     pub prev: *mut MilitaryAi,
@@ -176,7 +173,7 @@ pub struct MilitaryAi {
     pub region: *mut AiRegion,
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 pub struct PlayerAiData {
     pub mineral_need: u32,
     pub gas_need: u32,
@@ -186,9 +183,13 @@ pub struct PlayerAiData {
     pub supply_available: u32,
     pub requests: [AiSpendingRequest; 0x3f],
     pub request_count: u8,
-    pub dc211: [u8; 0x7],
+    pub currently_building_unk: u8,
+    pub nuke_rate_minutes: u8,
+    pub unk_attack: u8,
+    pub previous_nuke_timer: u32,
     pub flags: u16,
-    pub dc21a: [u8; 0x4],
+    pub panic_script_pos: u16,
+    pub max_ally_strength_in_region: u16,
     pub attack_grouping_region: u16,
     pub train_unit_id: u16,
     pub default_min_strength_for_regions: u8,
@@ -214,7 +215,7 @@ pub struct PlayerAiData {
     pub dc4e8: [u8; 0x10],
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Copy, Clone)]
 pub struct AiSpendingRequest {
     pub priority: u8,
@@ -226,18 +227,29 @@ pub struct AiSpendingRequest {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[cfg(target_pointer_width = "32")]
+    fn size(on32: usize, _on64: usize) -> usize {
+        on32
+    }
+
+    #[cfg(target_pointer_width = "64")]
+    fn size(_on32: usize, on64: usize) -> usize {
+        on64
+    }
+
     #[test]
     fn test_sizes() {
         use std::mem;
-        assert_eq!(mem::size_of::<AiScript>(), 0x34);
-        assert_eq!(mem::size_of::<AiRegion>(), 0x34);
-        assert_eq!(mem::size_of::<AiTown>(), 0x1cc);
-        assert_eq!(mem::size_of::<BuildingAi>(), 0x2c);
-        assert_eq!(mem::size_of::<WorkerAi>(), 0x18);
-        assert_eq!(mem::size_of::<GuardAi>(), 0x20);
-        assert_eq!(mem::size_of::<GuardAiArray>(), 0x7d04);
-        assert_eq!(mem::size_of::<MilitaryAi>(), 0x14);
-        assert_eq!(mem::size_of::<MilitaryAiArray>(), 0x4e24);
-        assert_eq!(mem::size_of::<PlayerAiData>(), 0x4e8);
+        assert_eq!(mem::size_of::<AiScript>(), size(0x34, 0x48));
+        assert_eq!(mem::size_of::<AiRegion>(), size(0x34, 0x50));
+        assert_eq!(mem::size_of::<AiTown>(), size(0x1cc, 0x200));
+        assert_eq!(mem::size_of::<BuildingAi>(), size(0x2c, 0x50));
+        assert_eq!(mem::size_of::<WorkerAi>(), size(0x18, 0x28));
+        assert_eq!(mem::size_of::<GuardAi>(), size(0x20, 0x30));
+        assert_eq!(mem::size_of::<GuardAiArray>(), size(0x7d04, 0xbb88));
+        assert_eq!(mem::size_of::<MilitaryAi>(), size(0x14, 0x28));
+        assert_eq!(mem::size_of::<MilitaryAiArray>(), size(0x4e24, 0x9c48));
+        assert_eq!(mem::size_of::<PlayerAiData>(), size(0x4e8, 0x6e8));
     }
 }

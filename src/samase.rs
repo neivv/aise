@@ -4,7 +4,7 @@ use std::ptr::null_mut;
 use libc::c_void;
 use winapi::um::processthreadsapi::{GetCurrentProcess, TerminateProcess};
 
-use samase_shim::PluginApi;
+use samase_plugin::PluginApi;
 
 use crate::bw;
 use crate::order::OrderId;

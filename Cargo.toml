@@ -55,11 +55,15 @@ features = ["heapapi", "libloaderapi", "processthreadsapi", "winuser", "wingdi"]
 path = "bw_dat"
 features = ["serde"]
 
-[dependencies.whack]
+[target.'cfg(target_arch = "x86")'.dependencies.whack]
 git = "https://github.com/neivv/whack/"
 rev = "e8e847864c2938735040ca3c68ef1cf9e03b692f"
 
-[dependencies.samase_shim]
+[target.'cfg(target_arch = "x86")'.dependencies.samase_shim]
+git = "https://github.com/neivv/samase_plugin"
+rev = "f2c737224a3429bf35e563a76b8802b68d7aa2f"
+
+[dependencies.samase_plugin]
 git = "https://github.com/neivv/samase_plugin"
 rev = "f2c737224a3429bf35e563a76b8802b68d7aa2f"
 

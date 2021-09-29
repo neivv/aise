@@ -20,7 +20,7 @@ pub mod structs {
 use std::mem;
 use std::num::NonZeroU32;
 use std::sync::atomic::{AtomicUsize, Ordering};
-#[cfg(not(feature = "scr-only"))]
+#[cfg(all(not(feature = "scr-only"), target_pointer_width = "32"))]
 use std::sync::atomic::AtomicBool;
 
 use bitflags::bitflags;
@@ -30,7 +30,7 @@ use serde::{Deserialize, Serialize};
 
 pub use bw::DatTable;
 
-#[cfg(not(feature = "scr-only"))]
+#[cfg(all(not(feature = "scr-only"), target_pointer_width = "32"))]
 static IS_SCR: AtomicBool = AtomicBool::new(false);
 static BW_MALLOC: AtomicUsize = AtomicUsize::new(0);
 static BW_FREE: AtomicUsize = AtomicUsize::new(0);
@@ -82,17 +82,20 @@ impl ExtendedArray {
     }
 }
 
-#[cfg(not(feature = "scr-only"))]
+#[cfg(all(not(feature = "scr-only"), target_pointer_width = "32"))]
 pub fn set_is_scr(value: bool) {
     IS_SCR.store(value, Ordering::Relaxed);
 }
 
-#[cfg(not(feature = "scr-only"))]
+#[cfg(all(not(feature = "scr-only"), target_pointer_width = "32"))]
 fn is_scr() -> bool {
     IS_SCR.load(Ordering::Relaxed) == true
 }
 
-#[cfg(feature = "scr-only")]
+#[cfg(all(not(feature = "scr-only"), target_pointer_width = "64"))]
+pub fn set_is_scr(_: bool) {}
+
+#[cfg(any(feature = "scr-only", target_pointer_width = "64"))]
 fn is_scr() -> bool {
     true
 }

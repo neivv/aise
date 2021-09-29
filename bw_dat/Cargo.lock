@@ -13,7 +13,6 @@ name = "bw_dat"
 version = "0.1.0"
 dependencies = [
  "bitflags",
- "byteorder",
  "fxhash",
  "libc",
  "once_cell",

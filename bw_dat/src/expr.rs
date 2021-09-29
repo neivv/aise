@@ -3,9 +3,7 @@ pub use crate::parse_expr::{
 };
 pub use crate::parse_expr::{BoolExpr as BoolExprTree, IntExpr as IntExprTree};
 
-
 use std::fmt;
-use std::ptr::null_mut;
 
 use bitflags::bitflags;
 
@@ -135,17 +133,11 @@ impl<E: CustomEval> EvalCtx<E> {
                         Tileset => (**game).tileset as i32,
                         Minerals => game.minerals(unit.player()) as i32,
                         Gas => game.gas(unit.player()) as i32,
-                        CarriedResourceAmount => {
-                            if unit.id().is_worker() {
-                                (**unit).unit_specific[0xf] as i32
-                            } else {
-                                0
-                            }
-                        }
+                        CarriedResourceAmount => unit.carried_resource_amount() as i32,
                         GroundCooldown => (**unit).ground_cooldown as i32,
                         AirCooldown => (**unit).air_cooldown as i32,
                         SpellCooldown => (**unit).spell_cooldown as i32,
-                        Speed => (**unit).current_speed,
+                        Speed => (**unit).flingy.current_speed,
                         SigOrder => (**unit).order_signal as i32,
                         Player => (**unit).player as i32,
                         UnitId => (**unit).unit_id as i32,
@@ -221,7 +213,7 @@ impl<E: CustomEval> EvalCtx<E> {
                         Blind => (**unit).is_blind != 0,
                         UnderStorm => (**unit).is_under_storm != 0,
                         LiftedOff => (**unit).flags & 0x2 == 0,
-                        BuildingUnit => (**unit).currently_building != null_mut(),
+                        BuildingUnit => unit.currently_building().is_some(),
                         InTransport => {
                             (**unit).flags & 0x20 == 0 && (**unit).flags & 0x40 != 0
                         }

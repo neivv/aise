@@ -24,7 +24,11 @@ impl Control {
         Control(NonNull::new(pointer).unwrap())
     }
 
+    #[cfg(target_pointer_width = "32")]
     pub fn string(&self) -> &str {
+        if crate::is_scr() {
+            return "";
+        }
         unsafe {
             let string = (*self.0.as_ptr()).string;
             if string.is_null() {
@@ -183,7 +187,8 @@ impl Control {
 
     pub fn contains_point(self, x: i16, y: i16) -> bool {
         unsafe {
-            (**self).area.contains_point(&bw::Point { x, y })
+            let area = (**self).area;
+            area.contains_point(&bw::Point { x, y })
         }
     }
 
@@ -452,13 +457,22 @@ pub struct EventHandler {
 #[derive(Copy, Clone)]
 pub struct InitedEventHandler {
     func: *mut c_void,
+    #[cfg(target_pointer_width = "32")]
     orig_offset: usize,
 }
 
 impl InitedEventHandler {
+    #[cfg(target_pointer_width = "32")]
     fn set_orig(&self, orig: usize) {
         unsafe {
             ((self.func as *mut u8).add(self.orig_offset) as *mut usize).write_unaligned(orig);
+        }
+    }
+
+    #[cfg(target_pointer_width = "64")]
+    fn set_orig(&self, orig: usize) {
+        unsafe {
+            ((self.func as *mut u8).add(0x18) as *mut usize).write_unaligned(orig);
         }
     }
 }
@@ -486,6 +500,7 @@ impl EventHandler {
         }
     }
 
+    #[cfg(target_pointer_width = "32")]
     pub fn init(&self, func: EventHandlerFn) -> InitedEventHandler {
         let func_ptr = self.func.load(Ordering::Relaxed);
         let (code, orig_offset) = if crate::is_scr() {
@@ -536,6 +551,34 @@ impl EventHandler {
             InitedEventHandler {
                 func: exec_code as *mut c_void,
                 orig_offset,
+            }
+        }
+    }
+
+    #[cfg(target_pointer_width = "64")]
+    pub fn init(&self, func: EventHandlerFn) -> InitedEventHandler {
+        let func_ptr = self.func.load(Ordering::Relaxed);
+        let code = &[
+            0x48, 0xb8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // mov rax, x (func)
+            0x49, 0xb8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // mov r8, x (orig_wrap)
+            0xff, 0xe0, // jmp rax
+            0x48, 0xb8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // mov rax, x (real orig)
+            0xff, 0xe0, // jmp rax
+        ];
+        if func_ptr != 0 {
+            return InitedEventHandler {
+                func: func_ptr as *mut c_void,
+            }
+        }
+        let exec_code = exec_alloc(code.len());
+        unsafe {
+            std::ptr::copy_nonoverlapping(code.as_ptr(), exec_code, code.len());
+            (exec_code.add(2) as *mut usize).write_unaligned(func as usize);
+            (exec_code.add(0xc) as *mut usize).write_unaligned(exec_code as usize + 0x16);
+
+            self.func.store(exec_code as usize, Ordering::Relaxed);
+            InitedEventHandler {
+                func: exec_code as *mut c_void,
             }
         }
     }

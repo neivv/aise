@@ -227,7 +227,7 @@ pub unsafe fn check_dat_requirements(
                 DatReq::IsNotUpgrading => unit.upgrade_in_progress().is_none(),
                 DatReq::IsLifted => unit.id().is_building() && !unit.is_landed_building(),
                 DatReq::IsNotLifted => unit.is_landed_building(),
-                DatReq::HasNoNydusExit => *((**unit).unit_specific2.as_ptr() as *const u32) == 0,
+                DatReq::HasNoNydusExit => unit.nydus_linked().is_none(),
                 DatReq::NotBurrowedOnly => !unit.is_burrowed(),
                 DatReq::BurrowedOnly => unit.is_burrowed(),
                 DatReq::NotLandedBuildingOnly => !unit.is_landed_building(),

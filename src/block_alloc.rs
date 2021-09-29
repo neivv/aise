@@ -195,6 +195,8 @@ fn alloc_bytes<T>(count: usize) -> *mut T {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[repr(align(16))] // Makes size large enough for 64bit
     struct S(u64);
 
     #[test]

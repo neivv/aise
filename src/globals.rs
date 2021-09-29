@@ -210,6 +210,7 @@ pub struct LiftLandBuilding {
     pub state: Option<LiftLandState>,
 }
 
+#[cfg(target_pointer_width = "32")]
 impl LiftLandBuilding {
     pub fn stage(&mut self) -> LiftLandStage {
         match self.state {

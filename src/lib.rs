@@ -3,12 +3,14 @@ extern crate bw_dat;
 #[macro_use]
 extern crate log;
 
+#[cfg(target_pointer_width = "32")]
 #[macro_use]
 extern crate whack;
 
 #[macro_use]
 mod macros;
 
+#[cfg(target_pointer_width = "32")]
 pub mod mpqdraft;
 pub mod samase;
 
@@ -43,6 +45,7 @@ use bw_dat::Unit;
 use crate::globals::Globals;
 use crate::unit::UnitExt;
 
+#[cfg(target_pointer_width = "32")]
 lazy_static::lazy_static! {
     static ref PATCHER: Mutex<whack::Patcher> = Mutex::new(whack::Patcher::new());
 }
@@ -88,10 +91,17 @@ fn init() {
     }));
 }
 
+#[cfg(target_pointer_width = "32")]
 static IS_1161: AtomicBool = AtomicBool::new(false);
 
+#[cfg(target_pointer_width = "32")]
 fn is_scr() -> bool {
     IS_1161.load(Ordering::Relaxed) == false
+}
+
+#[cfg(target_pointer_width = "64")]
+fn is_scr() -> bool {
+    true
 }
 
 #[cfg(debug_assertions)]
@@ -170,6 +180,7 @@ fn feature_disabled(_name: &str) -> bool {
 
 #[no_mangle]
 #[allow(non_snake_case)]
+#[cfg(target_pointer_width = "32")]
 pub extern fn Initialize() {
     IS_1161.store(true, Ordering::Release);
     // 1.16.1 init
@@ -224,6 +235,7 @@ unsafe extern fn frame_hook() {
     aiscript::under_attack_frame_hook(globals);
     ai::update_guard_needs(game, &mut globals.guards);
     ai::continue_incomplete_buildings();
+    #[cfg(target_pointer_width = "32")]
     aiscript::lift_land_hook(&mut globals.lift_lands, &search, game);
     aiscript::queues_frame_hook(&mut globals.queues, &search, game);
 

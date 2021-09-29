@@ -9,7 +9,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use bincode;
-use byteorder::{WriteBytesExt, LE};
 use directories::UserDirs;
 use parking_lot::Mutex;
 use serde::{self, Deserialize, Deserializer, Serialize, Serializer};
@@ -21,8 +20,8 @@ use crate::block_alloc::BlockAllocSet;
 use crate::bw;
 use crate::feature_disabled;
 use crate::globals::{
-    self, BankKey, BaseLayout, BuildMax, BunkerCondition, BunkerDecl, Globals, LiftLand,
-    LiftLandBuilding, LiftLandStage, Queues, RenameStatus, RevealState, RevealType, UnitQueue,
+    self, BankKey, BaseLayout, BuildMax, BunkerCondition, BunkerDecl, Globals,
+    LiftLandBuilding, Queues, RenameStatus, RevealState, RevealType, UnitQueue,
     UnitReplace,
 };
 use crate::list::ListIter;
@@ -32,6 +31,10 @@ use crate::samase;
 use crate::swap_retain::SwapRetain;
 use crate::unit::{self, UnitExt};
 use crate::unit_search::UnitSearch;
+
+#[cfg(target_pointer_width = "32")]
+use crate::globals::{LiftLand, LiftLandStage};
+
 
 pub fn init_save_mapping() {}
 
@@ -294,9 +297,7 @@ pub unsafe extern fn issue_order(script: *mut bw::AiScript) {
         match order {
             order::id::PLACE_ADDON | order::id::BUILD_ADDON => {
                 let unit_id = target_misc.get_one();
-                (&mut (**unit).unit_specific[4..])
-                    .write_u16::<LE>(unit_id.0)
-                    .unwrap();
+                (**unit).unit_specific.building.build_addon_unit_id = unit_id.0;
             }
             order::id::DRONE_BUILD |
             order::id::SCV_BUILD |
@@ -652,6 +653,7 @@ pub unsafe fn queues_frame_hook(queues: &mut Queues, unit_search: &UnitSearch, g
     }
 }
 
+#[cfg(target_pointer_width = "32")]
 pub unsafe fn lift_land_hook(lift_lands: &mut LiftLand, search: &UnitSearch, game: Game) {
     use bw_dat::order::{BUILDING_LAND, LIFTOFF, MOVE};
     lift_lands
@@ -693,7 +695,7 @@ pub unsafe fn lift_land_hook(lift_lands: &mut LiftLand, search: &UnitSearch, gam
                     if unit_in_area(unit, target_area) {
                         state.stage = LiftLandStage::FindLocation;
                     } else {
-                        unit.issue_order_ground(MOVE, bw::point_from_rect(target_area));
+                        unit.issue_order_ground(MOVE, target_area.center());
                     }
                 }
                 LiftLandStage::FindLocation => {
@@ -1289,7 +1291,7 @@ fn get_bank_path(name: &str) -> Option<PathBuf> {
     if bad_path {
         return None;
     }
-    let root = if bw::is_scr() {
+    let root = if crate::is_scr() {
         UserDirs::new()
             .and_then(|user_dirs| user_dirs.document_dir().map(|s| s.join("Starcraft")))
             .unwrap_or_else(|| ".".into())
@@ -1410,34 +1412,38 @@ pub unsafe extern fn bank_data(script: *mut bw::AiScript) {
 }
 
 pub unsafe extern fn remove_creep(script: *mut bw::AiScript) {
-    if bw::is_scr() {
-        bw_print!("remove_creep is not supported in SCR");
-        return;
-    }
+    #![cfg_attr(target_pointer_width = "64", allow(unused_variables, unused_mut))]
     let mut read = ScriptData::new(script);
     let mut src = read.read_position();
     let radius = read.read_u16();
+    if crate::is_scr() {
+        bw_print!("remove_creep is not supported in SCR");
+        return;
+    }
     if feature_disabled("remove_creep") {
         return;
     }
-    src.extend_area(radius as i16);
-    let rect_x = src.area.right / 32;
-    let rect_y = src.area.bottom / 32;
-    let pos_x = src.area.left / 32;
-    let pos_y = src.area.top / 32;
+    #[cfg(target_pointer_width = "32")]
+    {
+        src.extend_area(radius as i16);
+        let rect_x = src.area.right / 32;
+        let rect_y = src.area.bottom / 32;
+        let pos_x = src.area.left / 32;
+        let pos_y = src.area.top / 32;
 
-    for x_tile in pos_x..(rect_x + 1) {
-        for y_tile in pos_y..(rect_y + 1) {
-            let left = x_tile as u32 * 32;
-            let top = y_tile as u32 * 32;
-            unsafe extern "stdcall" fn nop(
-                _x_tile: u32,
-                _y_tile: u32,
-                _area: *mut bw::Rect32,
-            ) -> u32 {
-                0
+        for x_tile in pos_x..(rect_x + 1) {
+            for y_tile in pos_y..(rect_y + 1) {
+                let left = x_tile as u32 * 32;
+                let top = y_tile as u32 * 32;
+                unsafe extern "stdcall" fn nop(
+                    _x_tile: u32,
+                    _y_tile: u32,
+                    _area: *mut bw::Rect32,
+                ) -> u32 {
+                    0
+                }
+                bw::remove_creep_at_unit(left, top, unit::id::EGG.0 as u32, nop);
             }
-            bw::remove_creep_at_unit(left, top, unit::id::EGG.0 as u32, nop);
         }
     }
 }
@@ -1496,10 +1502,12 @@ pub unsafe extern fn attacking(script: *mut bw::AiScript) {
     }
 }
 
+#[cfg(target_pointer_width = "32")]
 fn unit_in_area(source: Unit, area: bw::Rect) -> bool {
     source.collision_rect().overlaps(&area)
 }
 
+#[cfg(target_pointer_width = "32")]
 pub unsafe fn add_spending_request_hook(
     priority: u32,
     c: *mut libc::c_void,
@@ -1524,6 +1532,7 @@ pub unsafe fn add_spending_request_hook(
     orig(priority, c, unit_id.0, ai_type, player);
 }
 
+#[cfg(target_pointer_width = "32")]
 pub unsafe fn ai_attack_focus_hook(
     unit: *mut bw::Unit,
     func_param: u32,
@@ -1539,6 +1548,7 @@ pub unsafe fn ai_attack_focus_hook(
     orig(unit, func_param)
 }
 
+#[cfg(target_pointer_width = "32")]
 pub unsafe fn unit_name_hook(unit_id: u32, orig: unsafe extern fn(u32) -> *const u8) -> *const u8 {
     let unit = bw::client_selection[0];
     let unit = match Unit::from_ptr(unit) {
@@ -1589,7 +1599,7 @@ pub unsafe extern fn unit_name(script: *mut bw::AiScript) {
             return;
         }
     };
-    if bw::is_scr() {
+    if crate::is_scr() {
         bw_print!("unit_name is not supported in SCR");
         return;
     }
@@ -1812,6 +1822,7 @@ pub unsafe extern fn kills_command(script: *mut bw::AiScript) {
     }
 }
 
+#[cfg(target_pointer_width = "32")]
 pub unsafe fn increment_deaths(
     target: *mut bw::Unit,
     attacker_p_id: u8,
@@ -1842,41 +1853,47 @@ pub unsafe extern fn aise_debug(script: *mut bw::AiScript) {
 }
 
 pub unsafe extern fn ping(script: *mut bw::AiScript) {
+    #![cfg_attr(target_pointer_width = "64", allow(unused_variables))]
     let mut read = ScriptData::new(script);
     let x = read.read_u16();
     let y = read.read_u16();
     let color = read.read_u8();
-    if bw::is_scr() {
+    if crate::is_scr() {
         bw_print!("ping is not supported in SCR");
         return;
     }
+    #[cfg(target_pointer_width = "32")]
     bw::ping_minimap(x as u32, y as u32, color);
 }
 
 pub unsafe extern fn player_jump(script: *mut bw::AiScript) {
+    #![cfg_attr(target_pointer_width = "64", allow(unused_variables))]
     let mut read = ScriptData::new(script);
     let player = read.read_string();
     let dest = read.read_jump_pos();
     if feature_disabled("player_jump") {
         return;
     }
-    if bw::is_scr() {
+    if crate::is_scr() {
         bw_print!("player_jump is not supported in SCR");
         return;
     }
-    if *bw::is_multiplayer != 0 {
-        // Not doing this since it'd desync
-        return;
-    }
-    let player_name = {
-        let len = bw::player_name
-            .iter()
-            .position(|&x| x == 0)
-            .unwrap_or_else(|| bw::player_name.len());
-        &bw::player_name[..len]
-    };
-    if player_name.eq_ignore_ascii_case(&player) {
-        (*script).pos = dest;
+    #[cfg(target_pointer_width = "32")]
+    {
+        if *bw::is_multiplayer != 0 {
+            // Not doing this since it'd desync
+            return;
+        }
+        let player_name = {
+            let len = bw::player_name
+                .iter()
+                .position(|&x| x == 0)
+                .unwrap_or_else(|| bw::player_name.len());
+            &bw::player_name[..len]
+        };
+        if player_name.eq_ignore_ascii_case(&player) {
+            (*script).pos = dest;
+        }
     }
 }
 
@@ -2651,12 +2668,10 @@ impl Script {
     }
 
     fn debug_string(&self) -> String {
-        unsafe {
-            format!(
-                "Player {}, pos {}, {}",
-                self.bw.player, self.bw.center.x, self.bw.center.y,
-            )
-        }
+        format!(
+            "Player {}, pos {}, {}",
+            self.bw.player, self.bw.center.x, self.bw.center.y,
+        )
     }
 }
 
@@ -2818,6 +2833,7 @@ unsafe fn take_bw_allocated_scripts(
     )
 }
 
+#[cfg(target_pointer_width = "32")]
 pub unsafe fn ai_spellcast_hook(
     revenge: bool,
     unit: *mut bw::Unit,
@@ -2832,6 +2848,7 @@ pub unsafe fn ai_spellcast_hook(
     }
 }
 
+#[cfg(target_pointer_width = "32")]
 pub unsafe fn update_placement_hook(
     builder: *mut bw::Unit,
     player: u8,
@@ -2858,6 +2875,7 @@ pub unsafe fn update_placement_hook(
     result
 }
 
+#[cfg(target_pointer_width = "32")]
 pub unsafe fn choose_building_placement(
     unit_id: u32,
     position_xy: u32,
@@ -2919,9 +2937,8 @@ pub unsafe fn choose_building_placement(
                         while workers != null_mut() {
                             let current = (*workers).parent;
                             if current != *builder {
-                                if (*current).order_target_pos.x == i * 32 &&
-                                    (*current).order_target_pos.y == j * 32
-                                {
+                                let point = bw::Point { x: i * 32, y: j * 32 };
+                                if (*current).order_target.pos == point {
                                     ok = false;
                                     break;
                                 }
@@ -2947,6 +2964,7 @@ pub unsafe fn choose_building_placement(
     result
 }
 
+#[cfg(target_pointer_width = "32")]
 unsafe fn check_placement(
     game: Game,
     unit_search: &UnitSearch,
@@ -3383,12 +3401,10 @@ pub unsafe extern fn guard_command(script: *mut bw::AiScript) {
             prev: (*new_ai).prev,
             ai_type: 1,
             times_died: 0,
-            dca: [0, 0],
             parent: null_mut(),
             unit_id: unit.0,
             home: target.center,
             other_home: target.center,
-            padding1a: [0, 0],
             previous_update: 0,
         };
         let new_first_free = (*new_ai).next;

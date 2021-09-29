@@ -1,8 +1,6 @@
 use std::mem;
 use std::ptr::{NonNull};
 
-use byteorder::{ReadBytesExt, LE};
-
 use crate::bw;
 use crate::game::Game;
 use crate::tech;
@@ -34,7 +32,7 @@ impl Unit {
     }
 
     pub fn sprite(self) -> Option<Sprite> {
-        unsafe { Sprite::from_ptr((**self).sprite) }
+        unsafe { Sprite::from_ptr((**self).flingy.sprite) }
     }
 
     pub fn player(self) -> u8 {
@@ -59,7 +57,7 @@ impl Unit {
     }
 
     pub fn position(self) -> bw::Point {
-        unsafe { (**self).position }
+        unsafe { (**self).flingy.position }
     }
 
     pub fn order(self) -> OrderId {
@@ -75,7 +73,7 @@ impl Unit {
     }
 
     pub fn hitpoints(self) -> i32 {
-        unsafe { (**self).hitpoints }
+        unsafe { (**self).flingy.hitpoints }
     }
 
     pub fn hp_percent(self) -> i32 {
@@ -142,9 +140,7 @@ impl Unit {
     pub fn fighter_parent(self) -> Option<Unit> {
         unsafe {
             if self.id() == SCARAB || self.id() == INTERCEPTOR {
-                Unit::from_ptr(
-                    (&(**self).unit_specific[..]).read_u32::<LE>().unwrap() as *mut bw::Unit
-                )
+                Unit::from_ptr((**self).unit_specific.interceptor.parent)
             } else {
                 None
             }
@@ -158,9 +154,7 @@ impl Unit {
     pub fn silo_nuke(self) -> Option<Unit> {
         unsafe {
             if self.id() == NUCLEAR_SILO {
-                let nuke = Unit::from_ptr(
-                    (&(**self).unit_specific2[..]).read_u32::<LE>().unwrap() as *mut bw::Unit
-                );
+                let nuke = Unit::from_ptr((**self).unit_specific2.nuke_silo.nuke);
                 // Will a nuke even be stored here if it's not completed?
                 nuke.filter(|x| x.is_completed())
             } else {
@@ -172,9 +166,7 @@ impl Unit {
     pub fn powerup_worker(self) -> Option<Unit> {
         unsafe {
             if self.id().is_powerup() {
-                Unit::from_ptr(
-                    (&(**self).unit_specific2[4..]).read_u32::<LE>().unwrap() as *mut bw::Unit
-                )
+                Unit::from_ptr((**self).unit_specific2.powerup.worker)
             } else {
                 None
             }
@@ -184,9 +176,7 @@ impl Unit {
     pub fn nydus_linked(self) -> Option<Unit> {
         unsafe {
             if self.id() == NYDUS_CANAL {
-                Unit::from_ptr(
-                    (&(**self).unit_specific2[..]).read_u32::<LE>().unwrap() as *mut bw::Unit
-                )
+                Unit::from_ptr((**self).unit_specific2.nydus.linked)
             } else {
                 None
             }
@@ -196,9 +186,7 @@ impl Unit {
     pub fn rally_unit(self) -> Option<Unit> {
         unsafe {
             if self.id().is_building() && self.id() != PYLON {
-                Unit::from_ptr(
-                    (&(**self).rally_pylon[4..]).read_u32::<LE>().unwrap() as *mut bw::Unit
-                )
+                Unit::from_ptr((**self).rally_pylon.rally.unit)
             } else {
                 None
             }
@@ -247,7 +235,7 @@ impl Unit {
     }
 
     pub fn target(self) -> Option<Unit> {
-        unsafe { Unit::from_ptr((**self).target) }
+        unsafe { Unit::from_ptr((**self).order_target.unit) }
     }
 
     pub fn matches_id(self, other: UnitId) -> bool {
@@ -322,8 +310,7 @@ impl Unit {
     pub fn addon(self) -> Option<Unit> {
         unsafe {
             if self.id().is_building() {
-                let ptr = (&(**self).unit_specific[..]).read_u32::<LE>().unwrap() as *mut bw::Unit;
-                Unit::from_ptr(ptr)
+                Unit::from_ptr((**self).unit_specific.building.addon)
             } else {
                 None
             }
@@ -333,7 +320,7 @@ impl Unit {
     pub fn tech_in_progress(self) -> Option<TechId> {
         unsafe {
             if self.id().is_building() {
-                TechId::optional((**self).unit_specific[0x8].into())
+                TechId::optional((**self).unit_specific.building.tech.into())
             } else {
                 None
             }
@@ -343,7 +330,7 @@ impl Unit {
     pub fn upgrade_in_progress(self) -> Option<UpgradeId> {
         unsafe {
             if self.id().is_building() {
-                UpgradeId::optional((**self).unit_specific[0x9].into())
+                UpgradeId::optional((**self).unit_specific.building.upgrade.into())
             } else {
                 None
             }
@@ -389,12 +376,18 @@ impl Unit {
     pub fn powerup(self) -> Option<Unit> {
         if self.id().is_worker() {
             unsafe {
-                let powerup =
-                    (&(**self).unit_specific[..]).read_u32::<LE>().unwrap() as *mut bw::Unit;
-                Unit::from_ptr(powerup)
+                Unit::from_ptr((**self).unit_specific.worker.powerup)
             }
         } else {
             None
+        }
+    }
+
+    pub fn carried_resource_amount(self) -> u8 {
+        if self.id().is_worker() {
+            unsafe { (**self).unit_specific.worker.carried_resource_count }
+        } else {
+            0
         }
     }
 
@@ -402,7 +395,7 @@ impl Unit {
         let id = self.id();
         if id == VULTURE || id == JIM_RAYNOR_VULTURE {
             if id.is_hero() || game.tech_researched(self.player(), tech::SPIDER_MINES) {
-                unsafe { (**self).unit_specific[0] }
+                unsafe { (**self).unit_specific.vulture.mines }
             } else {
                 0
             }
@@ -424,10 +417,12 @@ impl Unit {
             unsafe {
                 match self.id() {
                     CARRIER | GANTRITHOR => {
-                        ((**self).unit_specific[8] as u32)
-                            .saturating_add((**self).unit_specific[9] as u32)
+                        ((**self).unit_specific.carrier.in_hangar_count as u32)
+                            .saturating_add(
+                                (**self).unit_specific.carrier.out_hangar_count as u32
+                            )
                     }
-                    _ => (**self).unit_specific[8] as u32,
+                    _ => ((**self).unit_specific.carrier.in_hangar_count as u32)
                 }
             }
         } else {
@@ -478,7 +473,7 @@ impl Unit {
     }
 
     pub fn currently_building(self) -> Option<Unit> {
-        unsafe { Unit::from_ptr((**self).currently_building) }
+        unsafe { Unit::from_ptr((**self).secondary_order_target.unit) }
     }
 
     pub fn is_building_addon(self) -> bool {
@@ -519,7 +514,7 @@ impl Unit {
     }
 
     pub fn resource_amount(self) -> u16 {
-        unsafe { (&(**self).unit_specific2[0..]).read_u16::<LE>().unwrap() }
+        unsafe { (**self).unit_specific2.resource.amount }
     }
 
     pub fn rank(self) -> u8 {
@@ -571,12 +566,12 @@ impl Unit {
 
     pub fn halt_distance(self) -> u32 {
         unsafe {
-            let speed = ((**self).next_speed).max(0) as u32;
-            if speed == 0 || (**self).flingy_movement_type != 0 {
+            let speed = ((**self).flingy.next_speed).max(0) as u32;
+            if speed == 0 || (**self).flingy.movement_type != 0 {
                 0
             } else {
                 speed.saturating_mul(speed)
-                    .checked_div((**self).acceleration as u32 * 2)
+                    .checked_div((**self).flingy.acceleration as u32 * 2)
                     .unwrap_or(0)
                     .max(0)
             }

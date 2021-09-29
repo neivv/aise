@@ -315,19 +315,15 @@ impl MatchRequirement {
 
 fn is_busy(unit: Unit) -> bool {
     if unit.id().is_building() {
-        unsafe {
-            if unit.currently_building().is_some() {
-                return true;
-            }
-            // Currently_building doesn't catch building morph,
-            // so check also for first queued unit
-            if unit.first_queued_unit().is_some() {
-                return true;
-            }
-            let tech = TechId((**unit).unit_specific[0x8] as u16);
-            let upgrade = UpgradeId((**unit).unit_specific[0x9] as u16);
-            tech != bw_dat::tech::NONE || upgrade != bw_dat::upgrade::NONE
+        if unit.currently_building().is_some() {
+            return true;
         }
+        // Currently_building doesn't catch building morph,
+        // so check also for first queued unit
+        if unit.first_queued_unit().is_some() {
+            return true;
+        }
+        unit.tech_in_progress().is_some() || unit.upgrade_in_progress().is_some()
     } else {
         // Don't consider workers ever busy for req satisfying
         false

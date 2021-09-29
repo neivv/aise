@@ -3,6 +3,15 @@ use libc::c_void;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+#[cfg(target_pointer_width = "64")]
+pub use self::scr::Dialog;
+#[cfg(target_pointer_width = "64")]
+pub use self::scr::Control;
+#[cfg(target_pointer_width = "64")]
+pub use self::scr::Sprite;
+#[cfg(target_pointer_width = "64")]
+pub use self::scr::ControlEvent;
+
 #[repr(C)]
 pub struct DatTable {
     pub data: *mut c_void,
@@ -124,8 +133,8 @@ pub struct Image {
     pub grp_bounds: Rect,
     pub grp: *mut c_void,
     pub drawfunc_param: *mut c_void,
-    pub draw: *mut c_void,
-    pub step_frame: *mut c_void,
+    pub draw: u32,
+    pub step_frame: u32,
     pub parent: *mut Sprite,
 }
 
@@ -138,6 +147,7 @@ pub struct Iscript {
     pub wait: u8,
 }
 
+#[cfg(target_pointer_width = "32")]
 #[repr(C)]
 pub struct Sprite {
     pub prev: *mut Sprite,
@@ -205,7 +215,7 @@ pub struct Point32 {
     pub y: i32,
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 pub struct LoneSprite {
     pub prev: *mut LoneSprite,
     pub next: *mut LoneSprite,
@@ -214,25 +224,24 @@ pub struct LoneSprite {
 }
 
 #[repr(C)]
-pub struct Unit {
-    pub prev: *mut Unit,
-    pub next: *mut Unit,
+pub struct Flingy {
+    pub prev: *mut Flingy,
+    pub next: *mut Flingy,
     pub hitpoints: i32,
     pub sprite: *mut Sprite,
-    pub move_target: Point,
-    pub move_target_unit: *mut Unit,
+    pub move_target: PointAndUnit,
     pub next_move_waypoint: Point,
     pub unk_move_waypoint: Point,
     pub flingy_flags: u8,
     pub facing_direction: u8,
-    pub flingy_turn_speed: u8,
+    pub turn_speed: u8,
     pub movement_direction: u8,
     pub flingy_id: u16,
     pub unk_26: u8,
-    pub flingy_movement_type: u8,
+    pub movement_type: u8,
     pub position: Point,
     pub exact_position: Point32,
-    pub flingy_top_speed: u32,
+    pub top_speed: u32,
     pub current_speed: i32,
     pub next_speed: i32,
     pub current_speed_x: i32,
@@ -240,7 +249,11 @@ pub struct Unit {
     pub acceleration: u16,
     pub new_direction: u8,
     pub target_direction: u8,
-    // Flingy end
+}
+
+#[repr(C)]
+pub struct Unit {
+    pub flingy: Flingy,
     pub player: u8,
     pub order: u8,
     pub order_state: u8,
@@ -251,8 +264,7 @@ pub struct Unit {
     pub ground_cooldown: u8,
     pub air_cooldown: u8,
     pub spell_cooldown: u8,
-    pub order_target_pos: Point,
-    pub target: *mut Unit,
+    pub order_target: PointAndUnit,
     // Entity end
     pub shields: i32,
     pub unit_id: u16,
@@ -292,26 +304,19 @@ pub struct Unit {
     pub remaining_build_time: u16,
     pub previous_hp: u16,
     pub loaded_units: [u16; 8],
-    pub unit_specific: [u8; 16],
-    pub unit_specific2: [u8; 12],
+    pub unit_specific: UnitSpecific1,
+    pub unit_specific2: UnitSpecific2,
     pub flags: u32,
     pub carried_powerup_flags: u8,
     pub wireframe_seed: u8,
     pub secondary_order_state: u8,
     pub move_target_update_timer: u8,
     pub detection_status: u32,
-    pub unke8: u16,
-    pub unkea: u16,
-    pub currently_building: *mut Unit,
+    pub secondary_order_target: PointAndUnit,
     pub next_invisible: *mut Unit,
     pub prev_invisible: *mut Unit,
-    pub rally_pylon: [u8; 8],
-    pub path: *mut c_void,
-    pub path_frame: u8,
-    pub pathing_flags: u8,
-    pub _unk106: u8,
-    pub _unk107: u8,
-    pub collision_points: [u16; 0x4],
+    pub rally_pylon: RallyPylon,
+    pub path: UnitPath,
     pub death_timer: u16,
     pub defensive_matrix_dmg: u16,
     pub matrix_timer: u8,
@@ -334,37 +339,160 @@ pub struct Unit {
     pub bullet_spread_seed: u16,
     pub scr_carried_unit_high_bits: u16,
     pub ai: *mut c_void,
-    pub _dc138: [u8; 0x18],
+    pub air_strength: u16,
+    pub ground_strength: u16,
+    pub position_search_indices: [u32; 4],
+    pub repulse_misc: u8,
+    pub repulse_direction: u8,
+    pub repulse_chunk_x: u8,
+    pub repulse_chunk_y: u8,
 }
 
-#[repr(C, packed)]
+#[repr(C)]
+pub struct UnitPath {
+    pub path: *mut c_void,
+    pub path_frame: u8,
+    pub pathing_flags: u8,
+    pub _unk106: u8,
+    pub _unk107: u8,
+    pub collision_points: [u16; 0x4],
+}
+
+#[repr(C)]
+pub struct PointAndUnit {
+    pub pos: Point,
+    pub unit: *mut Unit,
+}
+
+#[repr(C)]
+pub union UnitSpecific1 {
+    pub carrier: UnitCarrier,
+    pub interceptor: UnitInterceptor,
+    pub worker: UnitWorker1,
+    pub vulture: UnitVulture,
+    pub building: UnitBuilding,
+}
+
+#[repr(C)]
+pub union UnitSpecific2 {
+    pub worker: UnitWorker2,
+    pub nydus: UnitNydus,
+    pub resource: UnitResource,
+    pub powerup: UnitPowerup,
+    pub nuke_silo: UnitNukeSilo,
+}
+
+#[repr(C)]
+pub union RallyPylon {
+    pub rally: UnitRally,
+    pub pylon: UnitPylon,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct UnitVulture {
+    pub mines: u8,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct UnitCarrier {
+    pub first_inside_child: *mut Unit,
+    pub first_outside_child: *mut Unit,
+    pub in_hangar_count: u8,
+    pub out_hangar_count: u8,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct UnitInterceptor {
+    pub parent: *mut Unit,
+    pub next: *mut Unit,
+    pub prev: *mut Unit,
+    pub is_outside_hangar: u8,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct UnitBuilding {
+    pub addon: *mut Unit,
+    pub build_addon_unit_id: u16,
+    pub research_time_remaining: u16,
+    pub tech: u8,
+    pub upgrade: u8,
+    pub larva_timer: u8,
+    pub is_landing: u8,
+    pub creep_spread_cooldown: u8,
+    pub next_upgrade_level: u8,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct UnitNukeSilo {
+    pub nuke: *mut Unit,
+    pub has_nuke: u32,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct UnitWorker1 {
+    pub powerup: *mut Unit,
+    pub harvest_target_pos: Point,
+    pub current_harvest_target: *mut Unit,
+    pub repair_resource_loss_timer: u16,
+    pub is_harvesting: u8,
+    pub carried_resource_count: u8,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct UnitWorker2 {
+    pub harvest_target: *mut Unit,
+    pub previous_awaiting: *mut Unit,
+    pub next_awaiting: *mut Unit,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct UnitResource {
+    pub amount: u16,
+    pub iscript_anim: u8,
+    pub has_awaiting_workers: u8,
+    pub first_awaiting_worker: *mut Unit,
+    pub resource_area: u8,
+    pub ai_used_resource: u8,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct UnitNydus {
+    pub linked: *mut Unit,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct UnitPowerup {
+    pub orig_pos: Point,
+    pub worker: *mut Unit,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct UnitRally {
+    pub pos: Point,
+    pub unit: *mut Unit,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct UnitPylon {
+    pub prev: *mut Unit,
+    pub next: *mut Unit,
+}
+
+#[repr(C)]
 pub struct Bullet {
-    pub prev: *mut Bullet,
-    pub next: *mut Bullet,
-    pub hitpoints: i32,
-    pub sprite: *mut Sprite,
-    pub move_target: Point,
-    pub move_target_unit: *mut Unit,
-    pub next_move_waypoint: Point,
-    pub unk_move_waypoint: Point,
-    pub flingy_flags: u8,
-    pub facing_direction: u8,
-    pub flingy_turn_speed: u8,
-    pub movement_direction: u8,
-    pub flingy_id: u16,
-    pub unk_26: u8,
-    pub flingy_movement_type: u8,
-    pub position: Point,
-    pub exact_position: Point32,
-    pub flingy_top_speed: u32,
-    pub current_speed: i32,
-    pub next_speed: i32,
-    pub speed: i32,
-    pub speed2: i32,
-    pub acceleration: u16,
-    pub new_direction: u8,
-    pub target_direction: u8,
-    // Flingy end
+    pub flingy: Flingy,
     pub player: u8,
     pub state: u8,
     pub order_state: u8,
@@ -375,8 +503,7 @@ pub struct Bullet {
     pub ground_cooldown: u8,
     pub air_cooldown: u8,
     pub spell_cooldown: u8,
-    pub order_target_pos: Point,
-    pub target: *mut Unit,
+    pub target: PointAndUnit,
     // Entity end
     pub weapon_id: u8,
     pub death_timer: u8,
@@ -385,31 +512,35 @@ pub struct Bullet {
     pub parent: *mut Unit,
     pub previous_bounce_target: *mut Unit,
     pub spread_seed: u8,
-    pub padding: [u8; 0x3],
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 pub struct Pathing {
     pub region_count: u16,
-    pub _dc2: [u8; 0xa],
+    pub _dc2: [u8; 0x2],
+    pub unk_ids: *mut u16,
+    pub unk_split_region: *mut SplitRegion,
     pub map_tile_regions: [u16; 0x100 * 0x100],
     pub split_regions: [SplitRegion; 25000],
     pub regions: [Region; 5000],
     pub _dc92bfc: [u8; 0x4e24],
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 pub struct SplitRegion {
     pub minitile_flags: u16,
     pub region_false: u16,
     pub region_true: u16,
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 pub struct Region {
     pub unk: u16,
     pub group: u16,
-    pub _dc4: [u8; 0x14],
+    pub _dc4: [u8; 0x4],
+    pub temp_val: *mut c_void,
+    pub neighbour_ids: *mut u16,
+    pub center: [u32; 2],
     pub area: Rect,
     pub _dc20: [u8; 0x20],
 }
@@ -425,6 +556,7 @@ pub struct Player {
     pub name: [u8; 25],
 }
 
+#[cfg(target_pointer_width = "32")]
 #[repr(C, packed)]
 pub struct Dialog {
     pub control: Control,
@@ -433,6 +565,7 @@ pub struct Dialog {
     pub active: *mut Control,
 }
 
+#[cfg(target_pointer_width = "32")]
 #[repr(C, packed)]
 pub struct Control {
     pub next: *mut Control,
@@ -450,7 +583,8 @@ pub struct Control {
     pub parent: *mut Dialog,
 }
 
-#[repr(C, packed)]
+#[cfg(target_pointer_width = "32")]
+#[repr(C)]
 pub struct ControlEvent {
     pub ext_type: u32,
     pub ext_param: u32,
@@ -460,14 +594,22 @@ pub struct ControlEvent {
     pub y: i16,
 }
 
+#[repr(C)]
+pub struct Surface {
+    pub width: u16,
+    pub height: u16,
+    pub data: *mut u8,
+}
+
 pub mod scr {
     use libc::c_void;
-    use super::{Image, Rect};
+    use super::{Image, Rect, Surface};
 
     #[repr(C)]
     pub struct Dialog {
         pub control: Control,
-        pub unk50: [u8; 0xc],
+        pub surface: Surface,
+        pub highlighted: *mut Control,
         pub first_child: *mut Control,
         pub active: *mut Control,
     }
@@ -476,7 +618,7 @@ pub mod scr {
     pub struct Control {
         pub next: *mut Control,
         pub area: Rect,
-        pub image: [u8; 8],
+        pub image: Surface,
         pub string: BwString,
         pub flags: u32,
         pub flags2: u32,
@@ -550,8 +692,8 @@ pub mod scr {
         pub(crate) index: u16,
         pub(crate) width: u8,
         pub(crate) height: u8,
-        pub(crate) pos_x: u32,
-        pub(crate) pos_y: u32,
+        pub(crate) pos_x: usize,
+        pub(crate) pos_y: usize,
         pub(crate) main_image: *mut Image,
         pub(crate) first_image: *mut Image,
         pub(crate) last_image: *mut Image,
@@ -618,6 +760,13 @@ impl Rect {
         point.x >= self.left && point.x < self.right &&
             point.y >= self.top && point.y < self.bottom
     }
+
+    pub fn center(&self) -> Point {
+        Point {
+            x: self.left + (self.right - self.left) / 2,
+            y: self.top + (self.bottom - self.top) / 2,
+        }
+    }
 }
 
 impl Point {
@@ -652,26 +801,39 @@ impl Point {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[cfg(target_pointer_width = "32")]
+    fn size(on32: usize, _on64: usize) -> usize {
+        on32
+    }
+
+    #[cfg(target_pointer_width = "64")]
+    fn size(_on32: usize, on64: usize) -> usize {
+        on64
+    }
+
     #[test]
     fn test_sizes() {
         use std::mem;
         assert_eq!(mem::size_of::<Game>(), 0x17700);
-        assert_eq!(mem::size_of::<Unit>(), 0x150);
-        assert_eq!(mem::size_of::<Bullet>(), 0x70);
-        assert_eq!(mem::size_of::<Sprite>(), 0x24);
-        assert_eq!(mem::size_of::<Image>(), 0x40);
-        assert_eq!(mem::size_of::<Pathing>(), 0x97a20);
-        assert_eq!(mem::size_of::<Region>(), 0x40);
+        assert_eq!(mem::size_of::<Flingy>(), size(0x4c, 0x68));
+        assert_eq!(mem::size_of::<Unit>(), size(0x150, 0x1e8));
+        assert_eq!(mem::size_of::<Bullet>(), size(0x70, 0xa8));
+        assert_eq!(mem::size_of::<Sprite>(), size(0x24, 0x48));
+        assert_eq!(mem::size_of::<Image>(), size(0x40, 0x58));
+        assert_eq!(mem::size_of::<Pathing>(), size(0x97a20, 0xa1670));
+        assert_eq!(mem::size_of::<Region>(), size(0x40, 0x48));
         assert_eq!(mem::size_of::<Player>(), 0x24);
-        assert_eq!(mem::size_of::<ControlEvent>(), 0x12);
-        assert_eq!(mem::size_of::<Control>(), 0x36);
-        assert_eq!(mem::size_of::<Dialog>(), 0x4a);
-        assert_eq!(mem::size_of::<scr::ControlEvent>(), 0x1c);
-        assert_eq!(mem::size_of::<scr::Control>(), 0x50);
-        assert_eq!(mem::size_of::<scr::Dialog>(), 0x64);
+        assert_eq!(mem::size_of::<Surface>(), size(0x8, 0x10));
+        assert_eq!(mem::size_of::<ControlEvent>(), size(0x14, 0x28));
+        assert_eq!(mem::size_of::<Control>(), size(0x36, 0x78));
+        assert_eq!(mem::size_of::<Dialog>(), size(0x4a, 0xa0));
+        assert_eq!(mem::size_of::<scr::ControlEvent>(), size(0x1c, 0x28));
+        assert_eq!(mem::size_of::<scr::Control>(), size(0x50, 0x78));
+        assert_eq!(mem::size_of::<scr::Dialog>(), size(0x64, 0xa0));
         assert_eq!(mem::size_of::<scr::DrawCommand>(), 0xa0);
         assert_eq!(mem::size_of::<scr::DrawCommands>(), 0x160030);
-        assert_eq!(mem::size_of::<scr::BwString>(), 0x1c);
-        assert_eq!(mem::size_of::<scr::Sprite>(), 0x28);
+        assert_eq!(mem::size_of::<scr::BwString>(), size(0x1c, 0x28));
+        assert_eq!(mem::size_of::<scr::Sprite>(), size(0x28, 0x48));
     }
 }
