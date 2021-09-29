@@ -360,6 +360,8 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
         if result == 0 {
             fatal("Couldn't hook soi");
         }
+        // Not critical hook
+        ((*api).hook_ai_step_region)(crate::ai::step_region_hook);
     }
     let mut dat_len = 0usize;
     let units_dat = ((*api).extended_dat)(0).expect("units.dat")(&mut dat_len);

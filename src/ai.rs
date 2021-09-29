@@ -1143,6 +1143,26 @@ pub fn remove_unit_ai(game: Game, unit_search: &UnitSearch, unit: Unit, was_kill
     }
 }
 
+pub unsafe extern fn step_region_hook(
+    player: u32,
+    region_id: u32,
+    orig: unsafe extern fn(u32, u32),
+) {
+    let regions = bw::ai_regions(player);
+    let region = regions.add(region_id as usize);
+    if (*region).state == 6 {
+        // Fix melee ai wanting to set attacked region need to 1000/1000
+        // unconditionally, which is really dumb.
+        let old_needed_ground = (*region).needed_ground_strength;
+        let old_needed_air = (*region).needed_air_strength;
+        orig(player, region_id);
+        (*region).needed_ground_strength = old_needed_ground;
+        (*region).needed_air_strength = old_needed_air;
+    } else {
+        orig(player, region_id);
+    }
+}
+
 #[test]
 fn push_pop_requests() {
     use std::mem;
