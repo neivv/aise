@@ -809,18 +809,6 @@ impl IdleOrder {
         if unit.is_invincible() || !unit.is_completed() {
             return false;
         }
-        let flags_ok = self.target_flags.match_status(
-            unit,
-            self.player,
-            check_targeting,
-            ctx.current_unit,
-            ctx.game,
-            ctx.units,
-            ctx.tile_flags,
-        );
-        if !flags_ok {
-            return false;
-        }
         if !self.target_unit_id.matches(&unit) || !ctx.acceptable_players[player] {
             return false;
         }
@@ -840,6 +828,18 @@ impl IdleOrder {
             if fail {
                 return false;
             }
+        }
+        let flags_ok = self.target_flags.match_status(
+            unit,
+            self.player,
+            check_targeting,
+            ctx.current_unit,
+            ctx.game,
+            ctx.units,
+            ctx.tile_flags,
+        );
+        if !flags_ok {
+            return false;
         }
         if in_combat {
             if !ctx.step_state.in_combat_cache.is_in_combat(unit, ctx.game) {
@@ -1073,18 +1073,6 @@ impl IdleOrderFlags {
                     return false;
                 }
             }
-            if let Some(ref s) = self.count {
-                let mut position = Position::from_point(unit.position().x, unit.position().y);
-                position.extend_area(s.range as i16);
-                let unit_count = units
-                    .search_iter(&position.area)
-                    .filter(|u| s.players.matches(u.player()))
-                    .count();
-
-                if !s.modifier.compare(unit_count as u32, s.value as u32) {
-                    return false;
-                }
-            }
 
             #[cfg_attr(rustfmt, rustfmt_skip)]
             let status_ok = if self.status_required != 0 || self.status_not != 0 {
@@ -1153,7 +1141,7 @@ impl IdleOrderFlags {
                     return false;
                 }
             }
-            self.numeric.iter().all(|&(ty, compare, amount)| {
+            let numeric_ok = self.numeric.iter().all(|&(ty, compare, amount)| {
                 let id = unit.id();
                 let (val, max) = match ty {
                     IdleOrderNumeric::Hp => (unit.hitpoints(), id.hitpoints()),
@@ -1195,7 +1183,25 @@ impl IdleOrderFlags {
                         val.saturating_mul(100).checked_div(max).unwrap_or(0) > amount
                     }
                 }
-            })
+            });
+            if !numeric_ok {
+                return false;
+            }
+
+            if let Some(ref s) = self.count {
+                let mut position = Position::from_point(unit.position().x, unit.position().y);
+                position.extend_area(s.range as i16);
+                let unit_count = units
+                    .search_iter(&position.area)
+                    .filter(|u| s.players.matches(u.player()))
+                    .count();
+
+                if !s.modifier.compare(unit_count as u32, s.value as u32) {
+                    return false;
+                }
+            }
+
+            true
         }
     }
 }
