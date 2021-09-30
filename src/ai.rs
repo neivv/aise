@@ -449,14 +449,17 @@ enum GuardDeathResult {
 }
 
 impl GuardState {
-    pub fn new() -> GuardState {
-        // At least as of 1.22 there's still just 1000 guards?
+    pub const fn new() -> GuardState {
         GuardState {
-            guards: vec![Default::default(); 1000],
+            guards: Vec::new(),
         }
     }
 
     fn guard(&mut self, array: *mut bw::GuardAi, ai: *mut bw::GuardAi) -> &mut Guard {
+        if self.guards.is_empty() {
+            // At least as of 1.22 there's still just 1000 guards?
+            self.guards.resize_with(1000, Default::default);
+        }
         let index = (ai as usize - array as usize) / mem::size_of::<bw::GuardAi>();
         if index >= self.guards.len() {
             // Sanity check

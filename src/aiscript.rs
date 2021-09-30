@@ -149,7 +149,7 @@ pub struct AttackTimeoutState {
 }
 
 impl AttackTimeoutState {
-    pub fn new() -> AttackTimeoutState {
+    pub const fn new() -> AttackTimeoutState {
         AttackTimeoutState {
             value: None,
             original_start_second: None,
@@ -841,8 +841,8 @@ pub struct AiMode {
     pub focus_disabled_units: bool,
 }
 
-impl Default for AiMode {
-    fn default() -> AiMode {
+impl AiMode {
+    pub const fn default() -> AiMode {
         AiMode {
             wait_for_resources: true,
             build_gas: true,

@@ -21,9 +21,9 @@ pub struct MutexGuard<'a, T: 'a> {
 unsafe impl<T> Sync for Mutex<T> {}
 
 impl<T> Mutex<T> {
-    pub fn new(value: T) -> Mutex<T> {
+    pub const fn new(value: T) -> Mutex<T> {
         Mutex {
-            inner: parking_lot::Mutex::new(value),
+            inner: parking_lot::const_mutex(value),
             locking_thread: AtomicUsize::new(0),
             locking_call: UnsafeCell::new(""),
         }

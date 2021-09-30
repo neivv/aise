@@ -13,7 +13,7 @@ macro_rules! debug_fatal {
 /// from a single thread. Also can't run into windows's TLS limitations.
 ///
 /// The value can be easily accessed by calling $fun(), which will initialize it with expr if it
-/// has not been before. Otherwise thread_local::CachedThreadLocal api works as well. The
+/// has not been before. Otherwise thread_local::ThreadLocal api works as well. The
 /// initialization is not guaranteed to be run, and can reuse an older value from another thread.
 #[macro_export]
 macro_rules! ome2_thread_local {
@@ -25,8 +25,8 @@ macro_rules! ome2_thread_local {
     );
 
     ($name:ident: $ty:ty = $fun:ident($expr:expr)) => (
-        lazy_static::lazy_static!(static ref $name: ::thread_local::CachedThreadLocal<$ty> =
-            ::thread_local::CachedThreadLocal::new(););
+        lazy_static::lazy_static!(static ref $name: ::thread_local::ThreadLocal<$ty> =
+            ::thread_local::ThreadLocal::new(););
         fn $fun() -> &'static $ty {
             $name.get_or(|| $expr)
         }

@@ -19,10 +19,8 @@ use crate::rng::Rng;
 use crate::swap_retain::SwapRetain;
 use crate::unit::{self, SerializableUnit};
 
-lazy_static::lazy_static! {
-    static ref GLOBALS: Mutex<Globals> = Mutex::new(Globals::new());
-    static ref SAVE_STATE: Mutex<Option<SaveState>> = Default::default();
-}
+static GLOBALS: Mutex<Globals> = Mutex::new(Globals::new());
+static SAVE_STATE: Mutex<Option<SaveState>> = Mutex::new(None);
 
 pub struct SaveState {
     pub first_ai_script: SendPtr<bw::AiScript>,
@@ -88,12 +86,18 @@ pub struct BaseLayout {
     pub priority: u8,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BaseLayouts {
     pub layouts: Vec<BaseLayout>,
 }
 
 impl BaseLayouts {
+    const fn new() -> BaseLayouts {
+        BaseLayouts {
+            layouts: Vec::new(),
+        }
+    }
+
     pub fn try_add(&mut self, value: BaseLayout) {
         if !self.layouts.iter().any(|i| i == &value) {
             let insert_pos = self
@@ -158,12 +162,18 @@ impl UnitQueue {
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Queues {
     pub queue: Vec<UnitQueue>,
 }
 
 impl Queues {
+    const fn new() -> Queues {
+        Queues {
+            queue: Vec::new(),
+        }
+    }
+
     pub fn add(&mut self, value: UnitQueue) {
         if !self.queue.iter().any(|i| i == &value) {
             let insert_pos = self
@@ -174,11 +184,17 @@ impl Queues {
         }
     }
 }
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BuildMaxSet {
     pub buildmax: Vec<BuildMax>,
 }
 impl BuildMaxSet {
+    const fn new() -> BuildMaxSet {
+        BuildMaxSet {
+            buildmax: Vec::new(),
+        }
+    }
+
     pub fn add(&mut self, value: BuildMax) {
         if !self.buildmax.iter().any(|i| i == &value) {
             let insert_pos = self
@@ -243,12 +259,18 @@ pub enum LiftLandStage {
     End,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LiftLand {
     pub structures: Vec<LiftLandBuilding>,
 }
 
 impl LiftLand {
+    const fn new() -> LiftLand {
+        LiftLand {
+            structures: Vec::new(),
+        }
+    }
+
     pub fn add(&mut self, value: LiftLandBuilding, amount: u8) {
         for _ in 0..amount {
             self.structures.push(value);
@@ -267,12 +289,18 @@ impl LiftLand {
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KillsTable {
     pub kills: Vec<KillCount>,
 }
 
 impl KillsTable {
+    const fn new() -> KillsTable {
+        KillsTable {
+            kills: Vec::new(),
+        }
+    }
+
     pub fn try_add(&mut self, kt_pos: KCPos, amount: u32) {
         match self.kills.iter_mut().position(|i| i.pos == kt_pos) {
             Some(pos) => {
@@ -394,12 +422,18 @@ pub struct RenameStatus {
     pub players: PlayerMatch,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RenameUnitState {
     pub states: Vec<RenameStatus>,
 }
 
 impl RenameUnitState {
+    const fn new() -> RenameUnitState {
+        RenameUnitState {
+            states: Vec::new(),
+        }
+    }
+
     pub fn try_add(&mut self, value: RenameStatus) {
         fn area(x: &bw::Rect) -> u32 {
             (x.right.saturating_sub(x.left) as u32) * (x.bottom.saturating_sub(x.top) as u32)
@@ -444,12 +478,18 @@ impl BankValue {
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Bank {
     pub bank_data: Vec<BankValue>,
 }
 
 impl Bank {
+    const fn new() -> Bank {
+        Bank {
+            bank_data: Vec::new(),
+        }
+    }
+
     pub fn reset(&mut self) {
         self.bank_data.clear();
     }
@@ -481,12 +521,18 @@ impl Bank {
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BunkerCondition {
     pub bunker_states: Vec<(BunkerDecl, BunkerState)>,
 }
 
 impl BunkerCondition {
+    const fn new() -> BunkerCondition {
+        BunkerCondition {
+            bunker_states: Vec::new(),
+        }
+    }
+
     pub fn add(&mut self, decl: BunkerDecl) {
         let insert_pos = self
             .bunker_states
@@ -515,12 +561,18 @@ pub struct ReplaceValue {
     pub second: UnitId,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UnitReplace {
     pub unit_data: Vec<ReplaceValue>,
 }
 
 impl UnitReplace {
+    const fn new() -> UnitReplace {
+        UnitReplace {
+            unit_data: Vec::new(),
+        }
+    }
+
     pub fn replace_check(&self, unit_id: UnitId) -> UnitId {
         for u in &self.unit_data {
             if u.first == unit_id {
@@ -541,13 +593,20 @@ impl UnitReplace {
 
 /// Cycles through region ids, so each player do one heavy region-specific check per frame
 /// to distribute load.
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct RegionIdCycle {
     pos: [u16; 8],
     region_count: u16,
 }
 
 impl RegionIdCycle {
+    const fn new() -> RegionIdCycle {
+        RegionIdCycle {
+            pos: [0; 8],
+            region_count: 0,
+        }
+    }
+
     pub fn is_inited(&self) -> bool {
         self.region_count != 0
     }
@@ -623,28 +682,28 @@ pub struct Globals {
 }
 
 impl Globals {
-    fn new() -> Globals {
+    const fn new() -> Globals {
         Globals {
             attack_timeouts: [AttackTimeoutState::new(); 8],
-            idle_orders: Default::default(),
-            kills_table: Default::default(),
-            base_layouts: Default::default(),
-            lift_lands: Default::default(),
-            queues: Default::default(),
-            build_max: Default::default(),
+            idle_orders: IdleOrders::new(),
+            kills_table: KillsTable::new(),
+            base_layouts: BaseLayouts::new(),
+            lift_lands: LiftLand::new(),
+            queues: Queues::new(),
+            build_max: BuildMaxSet::new(),
             max_workers: Vec::new(),
             town_ids: Vec::new(),
             reveal_states: Vec::new(),
-            bunker_states: Default::default(),
-            renamed_units: Default::default(),
+            bunker_states: BunkerCondition::new(),
+            renamed_units: RenameUnitState::new(),
             guards: GuardState::new(),
-            bank: Default::default(),
-            unit_replace: Default::default(),
+            bank: Bank::new(),
+            unit_replace: UnitReplace::new(),
             under_attack_mode: [None; 8],
-            ai_mode: [Default::default(); 8],
-            region_safety_pos: RegionIdCycle::default(),
+            ai_mode: [AiMode::default(); 8],
+            region_safety_pos: RegionIdCycle::new(),
             towns: Vec::new(),
-            rng: Default::default(),
+            rng: Rng::new(),
             ai_scripts: BlockAllocSet::new(),
         }
     }

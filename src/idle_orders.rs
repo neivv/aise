@@ -13,7 +13,7 @@ use crate::swap_retain::SwapRetain;
 use crate::unit::{self, HashableUnit, SerializableUnit, UnitExt};
 use crate::unit_search::UnitSearch;
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IdleOrders {
     orders: Vec<(Arc<IdleOrder>, IdleOrderState)>,
     deathrattles: Vec<Arc<IdleOrder>>,
@@ -22,6 +22,15 @@ pub struct IdleOrders {
 }
 
 impl IdleOrders {
+    pub const fn new() -> IdleOrders {
+        IdleOrders {
+            orders: Vec::new(),
+            deathrattles: Vec::new(),
+            ongoing: Vec::new(),
+            returning_cloaked: Vec::new(),
+        }
+    }
+
     pub fn unit_removed(&mut self, unit: Unit) {
         for x in self
             .ongoing

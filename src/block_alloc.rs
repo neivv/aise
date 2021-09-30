@@ -18,10 +18,7 @@ pub struct BlockAllocSet<T> {
 
 impl<T> Default for BlockAllocSet<T> {
     fn default() -> BlockAllocSet<T> {
-        BlockAllocSet {
-            blocks: Vec::new(),
-            alloc_count: 0,
-        }
+        BlockAllocSet::new()
     }
 }
 
@@ -52,8 +49,11 @@ struct FreeChunk {
 }
 
 impl<T> BlockAllocSet<T> {
-    pub fn new() -> BlockAllocSet<T> {
-        Default::default()
+    pub const fn new() -> BlockAllocSet<T> {
+        BlockAllocSet {
+            blocks: Vec::new(),
+            alloc_count: 0,
+        }
     }
 
     /// Note: Returns true for dangling pointers that are inside blocks as well.
