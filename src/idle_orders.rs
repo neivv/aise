@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use bumpalo::Bump;
+use bumpalo::collections::Vec as BumpVec;
 use fxhash::FxHashMap;
 use serde::{Deserialize, Serialize};
 
@@ -13,12 +15,37 @@ use crate::swap_retain::SwapRetain;
 use crate::unit::{self, HashableUnit, SerializableUnit, UnitExt};
 use crate::unit_search::UnitSearch;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct IdleOrders {
     orders: Vec<(Arc<IdleOrder>, IdleOrderState)>,
     deathrattles: Vec<Arc<IdleOrder>>,
     ongoing: Vec<OngoingOrder>,
     returning_cloaked: Vec<ReturningCloaked>,
+    #[serde(skip)]
+    bump: Option<Bump>,
+}
+
+impl Clone for IdleOrders {
+    fn clone(&self) -> IdleOrders {
+        IdleOrders {
+            orders: self.orders.clone(),
+            deathrattles: self.deathrattles.clone(),
+            ongoing: self.ongoing.clone(),
+            returning_cloaked: self.returning_cloaked.clone(),
+            bump: None,
+        }
+    }
+}
+
+struct StepFrameState<'b> {
+    bump: &'b Bump,
+    /// Unit id -> buffer idx map.
+    /// If nonzero, index (+1) to unit_buffers.
+    unit_id_to_buf_idx: &'b mut [u16],
+    unit_buffers_reserved: u16,
+    /// Lists of units of specific unit id.
+    unit_buffers: BumpVec<'b, &'b [Unit]>,
+    in_combat_cache: InCombatCache,
 }
 
 impl IdleOrders {
@@ -28,6 +55,7 @@ impl IdleOrders {
             deathrattles: Vec::new(),
             ongoing: Vec::new(),
             returning_cloaked: Vec::new(),
+            bump: None,
         }
     }
 
@@ -44,7 +72,13 @@ impl IdleOrders {
         self.returning_cloaked.swap_retain(|x| unit != x.unit.0);
     }
 
-    pub unsafe fn step_frame(&mut self, rng: &mut Rng, units: &UnitSearch, tile_flags: *mut u32) {
+    pub unsafe fn step_frame(
+        &mut self,
+        rng: &mut Rng,
+        units: &UnitSearch,
+        tile_flags: *mut u32,
+        game: Game,
+    ) {
         for i in 0..8 {
             let ai = bw::player_ai(i);
             if (*ai).spell_cooldown > 200 {
@@ -52,13 +86,20 @@ impl IdleOrders {
                 (*ai).spell_cooldown = 250;
             }
         }
-        let game = bw::game();
         let pathing = bw::pathing();
         let current_frame = game.frame_count();
         let deathrattles = &self.deathrattles;
         let ongoing = &mut self.ongoing;
         let returning_cloaked = &mut self.returning_cloaked;
-        let mut cache = InCombatCache::new();
+        let bump = self.bump.get_or_insert_with(|| Bump::new());
+        bump.reset();
+        let mut step_state = StepFrameState::new(bump);
+        for &(ref decl, ref state) in self.orders.iter() {
+            if state.next_frame <= current_frame {
+                step_state.prepare_order_check(decl);
+            }
+        }
+        step_state.build_unit_buffers(game);
         // Handle ongoing orders.
         // Return home if finished, cloak if a cloaker, panic if health gets low.
         // Yes, it may consider an order ongoing even if the unit is targeting the
@@ -92,13 +133,13 @@ impl IdleOrders {
                         let mut ctx = decl.target_validation_context(
                             game,
                             units,
-                            &mut cache,
+                            &mut step_state,
                             Some(user),
                             pathing,
                             tile_flags,
                         );
                         if decl.unit_valid(user, &[], CheckTargetingFlags::Yes, &ctx) {
-                            let panic_target = find_target(user, &decl, &[], &mut ctx);
+                            let panic_target = ctx.find_target(user, &decl, &[]);
                             if let Some((target, distance)) = panic_target {
                                 if distance < decl.radius as u32 {
                                     let (target, pos) = target_pos(target, decl);
@@ -139,12 +180,12 @@ impl IdleOrders {
                                 let mut ctx = o.decl.target_validation_context(
                                     game,
                                     units,
-                                    &mut cache,
+                                    &mut step_state,
                                     Some(user),
                                     pathing,
                                     tile_flags,
                                 );
-                                new_target = find_target(user, &o.decl, &[], &mut ctx);
+                                new_target = ctx.find_target(user, &o.decl, &[]);
                                 // Drop the order unless new target is Some and good distance.
                                 retain = false;
                             }
@@ -196,7 +237,13 @@ impl IdleOrders {
         for &mut (ref decl, ref mut state) in self.orders.iter_mut().rev() {
             if state.next_frame <= current_frame {
                 let pair = find_user_target_pair(
-                    &decl, &ongoing, game, units, &mut cache, pathing, tile_flags,
+                    &decl,
+                    &ongoing,
+                    game,
+                    units,
+                    &mut step_state,
+                    pathing,
+                    tile_flags,
                 );
                 let rate = if decl.rate.lower == decl.rate.upper {
                     decl.rate.lower as u32
@@ -681,7 +728,7 @@ impl IdleOrder {
         user: Unit,
         ongoing: &[OngoingOrder],
         check_targeting: CheckTargetingFlags,
-        ctx: &IdleOrderTargetContext,
+        ctx: &IdleOrderTargetContext<'_, '_>,
     ) -> bool {
         let energy_cost = self.order.tech().map(|x| x.energy_cost() << 8).unwrap_or(0);
         user.player() == self.player &&
@@ -701,21 +748,21 @@ impl IdleOrder {
             !ongoing.iter().any(|x| x.user.0 == user)
     }
 
-    fn target_validation_context<'a>(
+    fn target_validation_context<'a, 'b>(
         &self,
         game: Game,
         units: &'a UnitSearch,
-        cache: &'a mut InCombatCache,
+        step_state: &'a mut StepFrameState<'b>,
         current_unit: Option<Unit>,
         pathing: *mut bw::Pathing,
         tile_flags: *mut u32,
-    ) -> IdleOrderTargetContext<'a> {
+    ) -> IdleOrderTargetContext<'a, 'b> {
         let mut result = IdleOrderTargetContext {
             acceptable_players: [false; 12],
             game,
             current_unit,
             units,
-            cache,
+            step_state,
             pathing,
             tile_flags,
         };
@@ -743,7 +790,7 @@ impl IdleOrder {
         unit: Unit,
         ongoing: &[OngoingOrder],
         check_targeting: CheckTargetingFlags,
-        ctx: &mut IdleOrderTargetContext,
+        ctx: &mut IdleOrderTargetContext<'_, '_>,
     ) -> bool {
         let accept_unseen = self.target_flags.simple & 0x8 != 0;
         let accept_invisible = self.target_flags.simple & 0x10 != 0;
@@ -787,7 +834,7 @@ impl IdleOrder {
             }
         }
         if in_combat {
-            if !ctx.cache.is_in_combat(unit, ctx.game) {
+            if !ctx.step_state.in_combat_cache.is_in_combat(unit, ctx.game) {
                 return false;
             }
         }
@@ -867,12 +914,12 @@ unsafe fn get_region(pathing: *mut bw::Pathing, position: &bw::Point) -> *mut bw
     }
 }
 
-struct IdleOrderTargetContext<'a> {
+struct IdleOrderTargetContext<'a, 'b> {
     acceptable_players: [bool; 12],
     game: Game,
     pathing: *mut bw::Pathing,
     units: &'a UnitSearch,
-    cache: &'a mut InCombatCache,
+    step_state: &'a mut StepFrameState<'b>,
     current_unit: Option<Unit>,
     tile_flags: *mut u32,
 }
@@ -897,24 +944,23 @@ fn find_user_target_pair(
     ongoing: &[OngoingOrder],
     game: Game,
     units: &UnitSearch,
-    cache: &mut InCombatCache,
+    step_state: &mut StepFrameState<'_>,
     pathing: *mut bw::Pathing,
     tile_flags: *mut u32,
 ) -> Option<(Unit, Unit)> {
     fn find_normal(
         decl: &IdleOrder,
         ongoing: &[OngoingOrder],
-        ctx: &mut IdleOrderTargetContext,
+        ctx: &mut IdleOrderTargetContext<'_, '_>,
     ) -> Option<(Unit, Unit, u32)> {
-        let unit = unit::active_units()
-            .find(|&u| decl.unit_valid(u, ongoing, CheckTargetingFlags::Yes, ctx))?;
+        let unit = ctx.find_unit_for_decl_normal(decl, ongoing)?;
         // Instead of a *perfect* solution of trying to find closest user-target pair,
         // find closest target for the first unit, and then find closest user for
         // the target (if the distance is large enough for it to matter)
-        let (target, distance) = find_target(unit, decl, &ongoing, ctx)?;
+        let (target, distance) = ctx.find_target(unit, decl, &ongoing)?;
         let (user, distance) = {
             if distance > 16 * 32 || distance > decl.radius as u32 {
-                match find_user(target, decl, &ongoing, ctx) {
+                match ctx.find_user(target, decl, &ongoing) {
                     None => (unit, distance),
                     Some(s) => s,
                 }
@@ -932,50 +978,25 @@ fn find_user_target_pair(
     fn both_targeting_each_other(
         decl: &IdleOrder,
         ongoing: &[OngoingOrder],
-        ctx: &mut IdleOrderTargetContext,
+        ctx: &mut IdleOrderTargetContext<'_, '_>,
     ) -> Option<(Unit, Unit, u32)> {
-        unit::active_units()
-            .filter_map(|x| x.target().map(|target| (x, target)))
-            .filter(|&(user, target)| target.target() == Some(user))
-            .filter(|&(user, target)| {
-                decl.target_valid(user, target, ongoing, CheckTargetingFlags::No, ctx) &&
-                    decl.unit_valid(user, ongoing, CheckTargetingFlags::No, ctx)
-            })
-            .map(|(user, tgt)| (user, tgt, bw::distance(user.position(), tgt.position())))
-            .min_by_key(|x| x.2)
-            .filter(|x| x.2 < decl.radius as u32)
+        ctx.find_unit_target_pair_targeting_each_other(decl, ongoing)
     }
 
     fn target_targeting_user(
         decl: &IdleOrder,
         ongoing: &[OngoingOrder],
-        ctx: &mut IdleOrderTargetContext,
+        ctx: &mut IdleOrderTargetContext<'_, '_>,
     ) -> Option<(Unit, Unit, u32)> {
-        unit::active_units()
-            .filter_map(|x| x.target().map(|user| (user, x)))
-            .filter(|&(user, target)| {
-                decl.target_valid(user, target, ongoing, CheckTargetingFlags::No, ctx) &&
-                    decl.unit_valid(user, ongoing, CheckTargetingFlags::Yes, ctx)
-            })
-            .map(|(user, tgt)| (user, tgt, bw::distance(user.position(), tgt.position())))
-            .min_by_key(|x| x.2)
-            .filter(|x| x.2 < decl.radius as u32)
+        ctx.find_unit_target_pair_with_target_targeting(decl, ongoing)
     }
 
     fn user_targeting_target(
         decl: &IdleOrder,
         ongoing: &[OngoingOrder],
-        ctx: &mut IdleOrderTargetContext,
+        ctx: &mut IdleOrderTargetContext<'_, '_>,
     ) -> Option<(Unit, Unit, u32)> {
-        unit::active_units()
-            .filter_map(|x| x.target().map(|target| (x, target)))
-            .filter(|&(user, target)| {
-                decl.target_valid(user, target, ongoing, CheckTargetingFlags::Yes, ctx) &&
-                    decl.unit_valid(user, ongoing, CheckTargetingFlags::No, ctx)
-            })
-            .map(|(user, tgt)| (user, tgt, bw::distance(user.position(), tgt.position())))
-            .min_by_key(|x| x.2)
-            .filter(|x| x.2 < decl.radius as u32)
+        ctx.find_unit_target_pair_with_user_targeting(decl, ongoing)
     }
 
     fn update_best(best: &mut Option<(Unit, Unit, u32)>, new: Option<(Unit, Unit, u32)>) {
@@ -1000,7 +1021,13 @@ fn find_user_target_pair(
         .contains(TargetingFlags::CURRENT_UNIT);
     let target_normal = decl.target_flags.targeting_filter != TargetingFlags::CURRENT_UNIT;
 
-    let mut ctx = decl.target_validation_context(game, units, cache, None, pathing, tile_flags);
+    let mut ctx =
+        decl.target_validation_context(game, units, step_state, None, pathing, tile_flags);
+
+    if ctx.has_no_users_or_targets(decl) {
+        return None;
+    }
+
     if self_current_unit && target_current_unit {
         update_best(
             &mut best,
@@ -1017,31 +1044,6 @@ fn find_user_target_pair(
         update_best(&mut best, find_normal(decl, ongoing, &mut ctx));
     }
     best.map(|x| (x.0, x.1))
-}
-
-fn find_target(
-    user: Unit,
-    decl: &IdleOrder,
-    ongoing: &[OngoingOrder],
-    ctx: &mut IdleOrderTargetContext,
-) -> Option<(Unit, u32)> {
-    ctx.units.find_nearest(user.position(), |unit| {
-        if unit == user {
-            return false;
-        }
-        decl.target_valid(user, unit, ongoing, CheckTargetingFlags::Yes, ctx)
-    })
-}
-
-fn find_user(
-    target: Unit,
-    decl: &IdleOrder,
-    ongoing: &[OngoingOrder],
-    ctx: &IdleOrderTargetContext,
-) -> Option<(Unit, u32)> {
-    ctx.units.find_nearest(target.position(), |unit| {
-        unit != target && decl.unit_valid(unit, ongoing, CheckTargetingFlags::Yes, ctx)
-    })
 }
 
 impl IdleOrderFlags {
@@ -1278,5 +1280,371 @@ impl InCombatCache {
             let in_range = units.any(|&(_, enemy)| is_unit_in_combat(enemy, unit));
             in_range
         })
+    }
+}
+
+impl<'b> StepFrameState<'b> {
+    fn new(bump: &'b Bump) -> StepFrameState<'b> {
+        let unit_id_to_buf_idx = bump.alloc_slice_fill_copy(UnitId::entry_amount() as usize, 0);
+        StepFrameState {
+            bump,
+            unit_id_to_buf_idx,
+            unit_buffers_reserved: 0,
+            unit_buffers: BumpVec::new_in(bump),
+            in_combat_cache: InCombatCache::new(),
+        }
+    }
+
+    fn prepare_order_check(&mut self, decl: &IdleOrder) {
+        if !unit_match_has_groups(&decl.unit_id) {
+            for id in decl.unit_id.iter_no_group_flattening() {
+                self.prepare_unit_buffer(id);
+            }
+        }
+        if !unit_match_has_groups(&decl.target_unit_id) {
+            for id in decl.target_unit_id.iter_no_group_flattening() {
+                self.prepare_unit_buffer(id);
+            }
+        }
+    }
+
+    fn prepare_unit_buffer(&mut self, id: UnitId) {
+        if let Some(val) = self.unit_id_to_buf_idx.get_mut(id.0 as usize) {
+            if *val == 0 {
+                self.unit_buffers_reserved += 1;
+                *val = self.unit_buffers_reserved;
+            }
+        }
+    }
+
+    /// Walks through active units, filling self.unit_buffers with
+    /// units that were requested.
+    fn build_unit_buffers(&mut self, game: Game) {
+        let buffer_count = self.unit_buffers_reserved as usize;
+        if buffer_count == 0 {
+            return;
+        }
+        let mut unit_buffers = BumpVec::from_iter_in(
+            (0..buffer_count).map(|_| BumpVec::new_in(self.bump)),
+            self.bump,
+        );
+        for (i, &val) in self.unit_id_to_buf_idx.iter().enumerate() {
+            if val != 0 {
+                let index = val as usize - 1;
+                let unit_id = UnitId(i as u16);
+                let count = approximate_active_unit_count(game, unit_id);
+                unit_buffers[index].reserve(count as usize);
+            }
+        }
+        for unit in unit::active_units() {
+            if let Some(&val) = self.unit_id_to_buf_idx.get(unit.id().0 as usize) {
+                if val != 0 {
+                    let index = val as usize - 1;
+                    unit_buffers[index].push(unit);
+                }
+            }
+        }
+        self.unit_buffers = BumpVec::from_iter_in(
+            unit_buffers.into_iter().map(|x| x.into_bump_slice()),
+            self.bump,
+        );
+    }
+
+    fn unit_buffer(&mut self, game: Game, id: UnitId) -> &'b [Unit] {
+        let val = match self.unit_id_to_buf_idx.get(id.0 as usize) {
+            Some(s) => *s,
+            None => {
+                warn!("Invalid unit id accessed {:x}", id.0);
+                return &[];
+            }
+        };
+        if val != 0 {
+            let index = val as usize - 1;
+            return self.unit_buffers[index];
+        }
+        // The specific unit id wasn't buffered yet, do expensive iteration through
+        // all active units to add it.
+        // Can happen if the user switches targets mid order / deathrattle order.
+
+        let count = approximate_active_unit_count(game, id);
+        let mut results = BumpVec::with_capacity_in(count as usize, self.bump);
+        for unit in unit::active_units() {
+            if unit.id() == id {
+                results.push(unit);
+            }
+        }
+        let results = results.into_bump_slice();
+        self.unit_buffers.push(results);
+        self.unit_id_to_buf_idx[id.0 as usize] = self.unit_buffers.len() as u16;
+        results
+    }
+}
+
+impl<'a, 'b> IdleOrderTargetContext<'a, 'b> {
+    fn find_unit_for_decl_normal(
+        &mut self,
+        decl: &IdleOrder,
+        ongoing: &[OngoingOrder],
+    ) -> Option<Unit> {
+        self.find_user_for(
+            decl,
+            |ctx, u| decl.unit_valid(u, ongoing, CheckTargetingFlags::Yes, ctx),
+        )
+    }
+
+    fn find_unit_target_pair_targeting_each_other(
+        &mut self,
+        decl: &IdleOrder,
+        ongoing: &[OngoingOrder],
+    ) -> Option<(Unit, Unit, u32)> {
+        let mut best = None;
+        let mut best_distance = u32::MAX;
+        self.iter_users_for(
+            decl,
+            |ctx, user| {
+                let target = match user.target() {
+                    Some(s) if s.target() == Some(user) => s,
+                    _ => return,
+                };
+                let ok =
+                    decl.target_valid(user, target, ongoing, CheckTargetingFlags::No, ctx) &&
+                    decl.unit_valid(user, ongoing, CheckTargetingFlags::No, ctx);
+                if !ok {
+                    return;
+                }
+                let distance = bw::distance(user.position(), target.position());
+                if distance < best_distance {
+                    best = Some((user, target, distance));
+                    best_distance = distance;
+                }
+            },
+        );
+        best
+    }
+
+    fn find_unit_target_pair_with_target_targeting(
+        &mut self,
+        decl: &IdleOrder,
+        ongoing: &[OngoingOrder],
+    ) -> Option<(Unit, Unit, u32)> {
+        let mut best = None;
+        let mut best_distance = u32::MAX;
+        self.iter_targets_for(
+            decl,
+            |ctx, target| {
+                let user = match target.target() {
+                    Some(s) => s,
+                    None => return,
+                };
+                let ok =
+                    decl.target_valid(user, target, ongoing, CheckTargetingFlags::No, ctx) &&
+                    decl.unit_valid(user, ongoing, CheckTargetingFlags::Yes, ctx);
+                if !ok {
+                    return;
+                }
+                let distance = bw::distance(user.position(), target.position());
+                if distance < best_distance {
+                    best = Some((user, target, distance));
+                    best_distance = distance;
+                }
+            },
+        );
+        best
+    }
+
+    fn find_unit_target_pair_with_user_targeting(
+        &mut self,
+        decl: &IdleOrder,
+        ongoing: &[OngoingOrder],
+    ) -> Option<(Unit, Unit, u32)> {
+        let mut best = None;
+        let mut best_distance = u32::MAX;
+        self.iter_users_for(
+            decl,
+            |ctx, user| {
+                let target = match user.target() {
+                    Some(s) => s,
+                    None => return,
+                };
+                let ok =
+                    decl.target_valid(user, target, ongoing, CheckTargetingFlags::Yes, ctx) &&
+                    decl.unit_valid(user, ongoing, CheckTargetingFlags::No, ctx);
+                if !ok {
+                    return;
+                }
+                let distance = bw::distance(user.position(), target.position());
+                if distance < best_distance {
+                    best = Some((user, target, distance));
+                    best_distance = distance;
+                }
+            },
+        );
+        best
+    }
+
+    fn find_target(
+        &mut self,
+        user: Unit,
+        decl: &IdleOrder,
+        ongoing: &[OngoingOrder],
+    ) -> Option<(Unit, u32)> {
+        let mut best = None;
+        let mut best_distance = u32::MAX;
+        self.iter_targets_for(
+            decl,
+            |ctx, target| {
+                let ok = target != user &&
+                    decl.target_valid(user, target, ongoing, CheckTargetingFlags::Yes, ctx);
+                if !ok {
+                    return;
+                }
+                let distance = bw::distance(user.position(), target.position());
+                if distance < best_distance {
+                    best = Some((target, distance));
+                    best_distance = distance;
+                }
+            },
+        );
+        best
+    }
+
+    fn find_user(
+        &mut self,
+        target: Unit,
+        decl: &IdleOrder,
+        ongoing: &[OngoingOrder],
+    ) -> Option<(Unit, u32)> {
+        let mut best = None;
+        let mut best_distance = u32::MAX;
+        self.iter_users_for(
+            decl,
+            |ctx, user| {
+                let ok = target != user &&
+                    decl.unit_valid(user, ongoing, CheckTargetingFlags::Yes, ctx);
+                if !ok {
+                    return;
+                }
+                let distance = bw::distance(user.position(), target.position());
+                if distance < best_distance {
+                    best = Some((user, distance));
+                    best_distance = distance;
+                }
+            },
+        );
+        best
+    }
+
+    fn find_user_for<F>(&mut self, decl: &IdleOrder, mut filter: F) -> Option<Unit>
+    where F: FnMut(&mut IdleOrderTargetContext<'_, '_>, Unit) -> bool,
+    {
+        let mut result = None;
+        self.iter_units_in_match(&decl.unit_id, |ctx, unit| {
+            if filter(ctx, unit) {
+                result = Some(unit);
+                Iter::Stop
+            } else {
+                Iter::Continue
+            }
+        });
+        result
+    }
+
+    /// Calls callback with all units that can be used as an user for `decl`.
+    /// Does not guarantee that the units passed to callback actually are usable
+    /// for `decl` at all; a valid implementation can just pass all active units
+    /// to callback.
+    fn iter_users_for<F>(&mut self, decl: &IdleOrder, mut callback: F)
+    where F: FnMut(&mut IdleOrderTargetContext<'_, '_>, Unit)
+    {
+        self.iter_units_in_match(&decl.unit_id, |ctx, user| {
+            callback(ctx, user);
+            Iter::Continue
+        });
+    }
+
+    /// Calls callback with all units that can be used as a target for `decl`.
+    /// Does not guarantee that the units passed to callback actually are usable
+    /// for `decl` at all; a valid implementation can just pass all active units
+    /// to callback.
+    fn iter_targets_for<F>(&mut self, decl: &IdleOrder, mut callback: F)
+    where F: FnMut(&mut IdleOrderTargetContext<'_, '_>, Unit)
+    {
+        self.iter_units_in_match(&decl.target_unit_id, |ctx, target| {
+            callback(ctx, target);
+            Iter::Continue
+        });
+    }
+
+    fn iter_units_in_match<F>(&mut self, units: &UnitMatch, mut callback: F)
+    where F: FnMut(&mut IdleOrderTargetContext<'_, '_>, Unit) -> Iter,
+    {
+        if unit_match_has_groups(&units) {
+            // Just walk through all units.
+            // Ineffective so callers should try to handle groups in more effective way
+            // instead (As of writing this they don't)
+            for unit in unit::active_units() {
+                callback(self, unit);
+            }
+        } else {
+            for id in units.iter_no_group_flattening() {
+                let units = self.step_state.unit_buffer(self.game, id);
+                for &unit in units {
+                    callback(self, unit);
+                }
+            }
+        }
+    }
+
+    /// A cheap check to early exit if no user-target pairs cannot definitely be found
+    /// (Can return false even if there won't be user-target pair in the end)
+    fn has_no_users_or_targets(
+        &mut self,
+        decl: &IdleOrder,
+    ) -> bool {
+        let game = self.game;
+        if !unit_match_has_groups(&decl.unit_id) {
+            let none = decl.unit_id.iter_no_group_flattening()
+                .all(|id| game.completed_count(decl.player, id) == 0);
+            if none {
+                return true;
+            }
+        }
+        if !unit_match_has_groups(&decl.target_unit_id) {
+            let none = decl.target_unit_id.iter_no_group_flattening()
+                .all(|id| {
+                    (0..12).all(|player| {
+                        self.acceptable_players[player as usize] == false ||
+                            game.unit_count(player, id) == 0
+                    })
+                });
+            if none {
+                return true;
+            }
+        }
+        false
+    }
+}
+
+fn unit_match_has_groups(units: &UnitMatch) -> bool {
+    units.iter_no_group_flattening()
+        .any(|x| x.0 >= unit::id::ANY_UNIT.0 && x.0 <= unit::id::GROUP_FACTORIES.0)
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+enum Iter {
+    Stop,
+    Continue,
+}
+
+fn approximate_active_unit_count(game: Game, unit_id: UnitId) -> u32 {
+    // Assuming that non-egg non-building units are hidden if incomplete
+    if unit_id.is_building() ||
+        unit_id == unit::id::EGG ||
+        unit_id == unit::id::LURKER_EGG ||
+        unit_id == unit::id::COCOON
+    {
+        (0..12).map(|i| game.unit_count(i, unit_id)).sum::<u32>()
+    } else {
+        (0..12).map(|i| game.completed_count(i, unit_id)).sum::<u32>()
     }
 }

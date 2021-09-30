@@ -10,10 +10,11 @@ checksum = "5d2e7343e7fc9de883d1b0341e0b13970f764c14101234857d2ddafa1cb1cac2"
 
 [[package]]
 name = "aise"
-version = "2.34.2"
+version = "2.34.3"
 dependencies = [
  "bincode",
  "bitflags",
+ "bumpalo",
  "bw_dat",
  "byteorder",
  "cgmath",
@@ -137,6 +138,12 @@ dependencies = [
  "arrayvec 0.5.1",
  "constant_time_eq",
 ]
+
+[[package]]
+name = "bumpalo"
+version = "3.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d9df67f7bf9ef8498769f994239c45613ef0c5899415fb58e9add412d2c1a538"
 
 [[package]]
 name = "bw_dat"

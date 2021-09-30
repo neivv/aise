@@ -972,6 +972,12 @@ impl UnitMatch {
         self.units.iter().cloned()
     }
 
+    pub fn iter_no_group_flattening<'a>(&'a self) -> impl Iterator<Item = UnitId> + 'a {
+        self.units
+            .iter()
+            .copied()
+    }
+
     pub fn matches(&self, unit: &Unit) -> bool {
         self.units.iter().any(|&x| unit.matches_id(x))
     }

@@ -231,7 +231,7 @@ unsafe extern fn frame_hook() {
     aiscript::attack_timeouts_frame_hook(globals, game);
     globals
         .idle_orders
-        .step_frame(&mut globals.rng, &search, tile_flags);
+        .step_frame(&mut globals.rng, &search, tile_flags, game);
     aiscript::under_attack_frame_hook(globals);
     ai::update_guard_needs(game, &mut globals.guards);
     ai::continue_incomplete_buildings();

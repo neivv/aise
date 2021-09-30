@@ -1,6 +1,6 @@
 [package]
 name = "aise"
-version = "2.34.2"
+version = "2.34.3"
 authors = ["Markus Heikkinen <ittevien@gmail.com>"]
 edition = "2018"
 
@@ -22,6 +22,7 @@ lto = true
 [dependencies]
 bincode = "1.0"
 bitflags = "1.0"
+bumpalo = { version = "3.7", features = ["collections"] }
 byteorder = "1.1"
 chrono = "0.4"
 directories = "2.0"
