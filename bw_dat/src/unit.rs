@@ -193,6 +193,16 @@ impl Unit {
         }
     }
 
+    pub fn pylon_aura(self) -> Option<Sprite> {
+        unsafe {
+            if self.id() == PYLON {
+                Sprite::from_ptr((**self).unit_specific2.pylon.aura)
+            } else {
+                None
+            }
+        }
+    }
+
     pub fn shields(self) -> i32 {
         if self.id().has_shields() {
             unsafe { (**self).shields }

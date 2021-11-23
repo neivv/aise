@@ -380,6 +380,7 @@ pub union UnitSpecific2 {
     pub resource: UnitResource,
     pub powerup: UnitPowerup,
     pub nuke_silo: UnitNukeSilo,
+    pub pylon: UnitPylonAura,
 }
 
 #[repr(C)]
@@ -431,6 +432,12 @@ pub struct UnitBuilding {
 pub struct UnitNukeSilo {
     pub nuke: *mut Unit,
     pub has_nuke: u32,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct UnitPylonAura {
+    pub aura: *mut Sprite,
 }
 
 #[repr(C)]
