@@ -463,17 +463,21 @@ pub struct InitedEventHandler {
 
 impl InitedEventHandler {
     #[cfg(target_pointer_width = "32")]
-    fn set_orig(&self, orig: usize) {
+    pub fn set_orig(&self, orig: usize) {
         unsafe {
             ((self.func as *mut u8).add(self.orig_offset) as *mut usize).write_unaligned(orig);
         }
     }
 
     #[cfg(target_pointer_width = "64")]
-    fn set_orig(&self, orig: usize) {
+    pub fn set_orig(&self, orig: usize) {
         unsafe {
             ((self.func as *mut u8).add(0x18) as *mut usize).write_unaligned(orig);
         }
+    }
+
+    pub fn func(&self) -> *mut c_void {
+        self.func
     }
 }
 
