@@ -26,16 +26,20 @@ impl Control {
 
     #[cfg(target_pointer_width = "32")]
     pub fn string(&self) -> &str {
-        if crate::is_scr() {
-            return "";
-        }
         unsafe {
-            let string = (*self.0.as_ptr()).string;
-            if string.is_null() {
-                ""
-            } else {
-                std::ffi::CStr::from_ptr(string as *const i8).to_str()
+            if crate::is_scr() {
+                let this = (**self) as *mut bw::scr::Control;
+                let ptr = (*this).string.data;
+                std::ffi::CStr::from_ptr(ptr as *const i8).to_str()
                     .unwrap_or_else(|_| "")
+            } else {
+                let string = (*self.0.as_ptr()).string;
+                if string.is_null() {
+                    ""
+                } else {
+                    std::ffi::CStr::from_ptr(string as *const i8).to_str()
+                        .unwrap_or_else(|_| "")
+                }
             }
         }
     }
