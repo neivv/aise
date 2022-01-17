@@ -556,8 +556,12 @@ impl UnitId {
         self.get(21) as u8
     }
 
-    pub fn ai_return_to_idle_order(self) -> OrderId {
+    pub fn ai_init_order(self) -> OrderId {
         OrderId(self.get(12) as u8)
+    }
+
+    pub fn human_init_order(self) -> OrderId {
+        OrderId(self.get(13) as u8)
     }
 
     pub fn return_to_idle_order(self) -> OrderId {
