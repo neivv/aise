@@ -361,12 +361,47 @@ pub struct Unit {
 
 #[repr(C)]
 pub struct UnitPath {
-    pub path: *mut c_void,
+    pub path: *mut Path,
     pub path_frame: u8,
     pub pathing_flags: u8,
     pub _unk106: u8,
     pub _unk107: u8,
     pub collision_points: [u16; 0x4],
+}
+
+#[repr(C)]
+pub struct Path {
+    pub header: PathHeader,
+    pub start_frame: u32,
+    pub dodge_unit_uid: u32,
+    pub xy_speed: u32,
+    pub flags: u8,
+    pub collision_recheck_timer: u8,
+    pub direction: u8,
+    pub total_region_count: u8,
+    pub unk1c: [u8; 4],
+    pub values: [u16; 0x30],
+}
+
+#[repr(C)]
+pub union PathHeader {
+    pub allocated: AllocatedPathHeader,
+    pub free: FreePathHeader,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct AllocatedPathHeader {
+    pub start: Point,
+    pub next_pos: Point,
+    pub end: Point,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct FreePathHeader {
+    pub next_path_index: u32,
+    pub self_index: u32,
 }
 
 #[repr(C)]
@@ -846,6 +881,7 @@ mod test {
         assert_eq!(mem::size_of::<ControlEvent>(), size(0x14, 0x28));
         assert_eq!(mem::size_of::<Control>(), size(0x36, 0x78));
         assert_eq!(mem::size_of::<Dialog>(), size(0x4a, 0xa0));
+        assert_eq!(mem::size_of::<Path>(), 0x80);
         assert_eq!(mem::size_of::<scr::ControlEvent>(), size(0x1c, 0x28));
         assert_eq!(mem::size_of::<scr::Control>(), size(0x50, 0x78));
         assert_eq!(mem::size_of::<scr::Dialog>(), size(0x64, 0xa0));
