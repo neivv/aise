@@ -24,7 +24,6 @@ impl Control {
         Control(NonNull::new(pointer).unwrap())
     }
 
-    #[cfg(target_pointer_width = "32")]
     pub fn string(&self) -> &str {
         unsafe {
             if crate::is_scr() {
@@ -33,12 +32,19 @@ impl Control {
                 std::ffi::CStr::from_ptr(ptr as *const i8).to_str()
                     .unwrap_or_else(|_| "")
             } else {
-                let string = (*self.0.as_ptr()).string;
-                if string.is_null() {
+                #[cfg(all(not(feature = "scr-only"), target_pointer_width = "32"))]
+                {
+                    let string = (*self.0.as_ptr()).string;
+                    if string.is_null() {
+                        ""
+                    } else {
+                        std::ffi::CStr::from_ptr(string as *const i8).to_str()
+                            .unwrap_or_else(|_| "")
+                    }
+                }
+                #[cfg(any(feature = "scr-only", target_pointer_width = "64"))]
+                {
                     ""
-                } else {
-                    std::ffi::CStr::from_ptr(string as *const i8).to_str()
-                        .unwrap_or_else(|_| "")
                 }
             }
         }
@@ -123,6 +129,12 @@ impl Control {
                 false => (*self.0.as_ptr()).flags & 0x8 == 0,
                 true => (*(self.0.as_ptr() as *mut bw::scr::Control)).flags & 0x2 == 0,
             }
+        }
+    }
+
+    pub fn dialog_coords(self) -> bw::Rect {
+        unsafe {
+            (*self.0.as_ptr()).area
         }
     }
 

@@ -92,7 +92,7 @@ fn is_scr() -> bool {
     IS_SCR.load(Ordering::Relaxed) == true
 }
 
-#[cfg(all(not(feature = "scr-only"), target_pointer_width = "64"))]
+#[cfg(any(feature = "scr-only", target_pointer_width = "64"))]
 pub fn set_is_scr(_: bool) {}
 
 #[cfg(any(feature = "scr-only", target_pointer_width = "64"))]

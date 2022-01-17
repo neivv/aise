@@ -3,13 +3,13 @@ use libc::c_void;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-#[cfg(target_pointer_width = "64")]
+#[cfg(any(feature = "scr-only", target_pointer_width = "64"))]
 pub use self::scr::Dialog;
-#[cfg(target_pointer_width = "64")]
+#[cfg(any(feature = "scr-only", target_pointer_width = "64"))]
 pub use self::scr::Control;
-#[cfg(target_pointer_width = "64")]
+#[cfg(any(feature = "scr-only", target_pointer_width = "64"))]
 pub use self::scr::Sprite;
-#[cfg(target_pointer_width = "64")]
+#[cfg(any(feature = "scr-only", target_pointer_width = "64"))]
 pub use self::scr::ControlEvent;
 
 #[repr(C)]
@@ -158,7 +158,7 @@ pub struct Iscript {
     pub wait: u8,
 }
 
-#[cfg(target_pointer_width = "32")]
+#[cfg(all(not(feature = "scr-only"), target_pointer_width = "32"))]
 #[repr(C)]
 pub struct Sprite {
     pub prev: *mut Sprite,
@@ -609,7 +609,7 @@ pub struct Player {
     pub name: [u8; 25],
 }
 
-#[cfg(target_pointer_width = "32")]
+#[cfg(all(not(feature = "scr-only"), target_pointer_width = "32"))]
 #[repr(C, packed)]
 pub struct Dialog {
     pub control: Control,
@@ -618,7 +618,7 @@ pub struct Dialog {
     pub active: *mut Control,
 }
 
-#[cfg(target_pointer_width = "32")]
+#[cfg(all(not(feature = "scr-only"), target_pointer_width = "32"))]
 #[repr(C, packed)]
 pub struct Control {
     pub next: *mut Control,
@@ -636,7 +636,7 @@ pub struct Control {
     pub parent: *mut Dialog,
 }
 
-#[cfg(target_pointer_width = "32")]
+#[cfg(all(not(feature = "scr-only"), target_pointer_width = "32"))]
 #[repr(C)]
 pub struct ControlEvent {
     pub ext_type: u32,
@@ -657,6 +657,25 @@ pub struct Surface {
 pub mod scr {
     use libc::c_void;
     use super::{Image, Rect, Surface};
+
+    #[repr(C)]
+    pub struct ListBox {
+        pub control: Control,
+        pub label: *mut Control,
+        pub entry_strings: *mut *const u8,
+        pub entry_flags: *mut u8,
+        pub entry_data: *mut usize,
+        pub entries: u8,
+        pub max_entries: u8,
+        pub selected_entry1: u8,
+        pub entry_height: u8,
+        pub visible_entries: u8,
+        pub not_visible_entries: u8,
+        pub flags: u8,
+        pub unk67: u8,
+        pub selected_entry2: u8,
+        pub draw_entry: usize,
+    }
 
     #[repr(C)]
     pub struct Dialog {
