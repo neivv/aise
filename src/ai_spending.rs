@@ -520,8 +520,12 @@ fn start_unit_building(game: Game, unit: Unit, unit_id: UnitId, cost: &Cost) -> 
     unsafe {
         (**unit).build_queue[slot] = unit_id.0;
     }
-    game.reduce_minerals(player, cost.minerals);
-    game.reduce_gas(player, cost.gas);
+    // Building build orders reduce money when they execute for first frame,
+    // units need to be reduced now.
+    if !unit_id.is_building() {
+        game.reduce_minerals(player, cost.minerals);
+        game.reduce_gas(player, cost.gas);
+    }
     Ok(())
 }
 
