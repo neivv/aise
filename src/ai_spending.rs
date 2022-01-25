@@ -185,20 +185,29 @@ pub unsafe fn can_satisfy_request(
             if player_ai.is_at_limit(unit_id, game) {
                 return Err(RequestSatisfyError::BuildLimit);
             }
-            if request.ty == 3 && !ai_mode.build_gas && ai::is_gas_building(unit_id) {
+            if request.ty == 3 && ai::is_gas_building(unit_id) {
                 let town = request.val as *mut bw::AiTown;
-                let existing_gas_buildings = ListIter((*town).buildings)
-                    .filter_map(|x| Unit::from_ptr((*x).parent))
-                    .filter(|x| x.id() == unit_id)
-                    .count();
-                let explicitly_requested_buildings = (*town)
-                    .town_units
-                    .iter()
-                    .filter(|x| x.flags_and_count & 0x6 == 0 && x.id == unit_id.0)
-                    .map(|x| ((x.flags_and_count & 0xf8) >> 3) as usize)
-                    .sum();
-                if existing_gas_buildings >= explicitly_requested_buildings {
-                    return Err(RequestSatisfyError::BuildLimit);
+                if !ai_mode.build_gas {
+                    // Ai only builds the gas buildings that script explicitly requested
+                    let existing_gas_buildings = ListIter((*town).buildings)
+                        .filter_map(|x| Unit::from_ptr((*x).parent))
+                        .filter(|x| x.id() == unit_id)
+                        .count();
+                    let explicitly_requested_buildings = (*town)
+                        .town_units
+                        .iter()
+                        .filter(|x| x.flags_and_count & 0x6 == 0 && x.id == unit_id.0)
+                        .map(|x| ((x.flags_and_count & 0xf8) >> 3) as usize)
+                        .sum();
+                    if existing_gas_buildings >= explicitly_requested_buildings {
+                        return Err(RequestSatisfyError::BuildLimit);
+                    }
+                }
+                let has_free_gas = (0..3)
+                    .filter_map(|i| Unit::from_ptr((*town).gas_buildings[i]))
+                    .any(|u| u.id() == bw_dat::unit::VESPENE_GEYSER);
+                if !has_free_gas {
+                    return Err(RequestSatisfyError::NoGeysers);
                 }
             }
             if !wait_resources && !has_resources(game, player, &ai::unit_cost(unit_id)) {
@@ -274,6 +283,8 @@ pub enum RequestSatisfyError {
     DatReq(Vec<DatReqSatisfyError>),
     /// Dat reqs are required for request type (Units default success on no reqs)
     NeedDatReqs,
+    /// No empty vespene geysers in town
+    NoGeysers,
 }
 
 #[derive(Copy, Clone)]
