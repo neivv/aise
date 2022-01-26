@@ -174,6 +174,20 @@ impl PlayerAi {
         }
     }
 
+    pub fn has_resources(&self, game: Game, players: *mut bw::Player, cost: &Cost) -> bool {
+        unsafe {
+            let player = self.1;
+            let race_flags = Race::from_id((*players.add(player as usize)).race)
+                .map(|x| x.as_flags())
+                .unwrap_or(RaceFlags::empty());
+            let consider_supply = cost.races.intersects(race_flags);
+            (*self.0).minerals_available >= cost.minerals &&
+                (*self.0).gas_available >= cost.gas &&
+                (!consider_supply || (*self.0).supply_available >= cost.supply) &&
+                has_resources(game, player, cost)
+        }
+    }
+
     /// spent_money is true when the ai actually built something, false on failures
     pub fn remove_resource_need(&self, cost: &Cost, spent_money: bool) {
         unsafe {

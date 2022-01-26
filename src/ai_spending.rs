@@ -10,23 +10,28 @@ use crate::list::ListIter;
 use crate::unit::{self, UnitExt};
 use crate::unit_search::UnitSearch;
 
-pub unsafe fn frame_hook(game: Game, unit_search: &UnitSearch, ai_mode: &[AiMode; 8]) {
+pub unsafe fn frame_hook(
+    game: Game,
+    players: *mut bw::Player,
+    unit_search: &UnitSearch,
+    ai_mode: &[AiMode; 8],
+) {
     for player in 0..8 {
         let ai_mode = &ai_mode[player as usize];
-        let player_ai = PlayerAi::get(player);
-        while let Some(request) = player_ai.first_request() {
-            let can = can_satisfy_request(game, &player_ai, player, &request, ai_mode).is_ok();
+        let ai = PlayerAi::get(player);
+        while let Some(request) = ai.first_request() {
+            let can = can_satisfy_request(game, players, &ai, player, &request, ai_mode).is_ok();
             let mut handled = false;
             if can {
                 // Handle building morphs since preplaced colonies don't check for requests
                 // (Since their order switches to idle because they don't have a town on frame 0)
                 // Could handle other requests as well, but no need at the moment.
-                if handle_building_morph(game, &request, player) == Ok(()) {
+                if handle_building_morph(game, players, &ai, &request, player) == Ok(()) {
                     handled = true;
                 }
                 // Handle military/guard training as well since train opcode is otherwise
                 // bad at spreading work across buildings
-                if handle_training(game, unit_search, &request, player) == Ok(()) {
+                if handle_training(game, players, &ai, unit_search, &request, player) == Ok(()) {
                     handled = true;
                 }
                 if !handled {
@@ -40,21 +45,23 @@ pub unsafe fn frame_hook(game: Game, unit_search: &UnitSearch, ai_mode: &[AiMode
                 0
             };
             let cost = ai::request_cost(&request, level);
-            player_ai.remove_resource_need(&cost, handled);
-            player_ai.pop_request()
+            ai.remove_resource_need(&cost, handled);
+            ai.pop_request()
         }
     }
 }
 
 fn handle_building_morph(
     game: Game,
+    players: *mut bw::Player,
+    ai: &PlayerAi,
     request: &bw::AiSpendingRequest,
     player: u8,
 ) -> Result<(), ()> {
     if request.ty == 3 {
         let unit_id = UnitId(request.id);
         let cost = ai::unit_cost(unit_id);
-        if has_resources(game, player, &cost) && game.unit_available(player, unit_id) {
+        if ai.has_resources(game, players, &cost) && game.unit_available(player, unit_id) {
             let town = Town(request.val as *mut bw::AiTown);
             let reqs = match bw::unit_dat_requirements(unit_id) {
                 Some(s) => s,
@@ -87,6 +94,8 @@ fn handle_building_morph(
 
 fn handle_training(
     game: Game,
+    players: *mut bw::Player,
+    ai: &PlayerAi,
     unit_search: &UnitSearch,
     request: &bw::AiSpendingRequest,
     player: u8,
@@ -94,7 +103,7 @@ fn handle_training(
     if request.ty == 1 || request.ty == 2 {
         let unit_id = UnitId(request.id);
         let cost = ai::unit_cost(unit_id);
-        if has_resources(game, player, &cost) && game.unit_available(player, unit_id) {
+        if ai.has_resources(game, players, &cost) && game.unit_available(player, unit_id) {
             let reqs = match bw::unit_dat_requirements(unit_id) {
                 Some(s) => s,
                 None => return Err(()),
@@ -161,6 +170,7 @@ fn handle_training(
 
 pub unsafe fn can_satisfy_request(
     game: Game,
+    players: *mut bw::Player,
     player_ai: &PlayerAi,
     player: u8,
     request: &bw::AiSpendingRequest,
@@ -210,7 +220,9 @@ pub unsafe fn can_satisfy_request(
                     return Err(RequestSatisfyError::NoGeysers);
                 }
             }
-            if !wait_resources && !has_resources(game, player, &ai::unit_cost(unit_id)) {
+            if !wait_resources &&
+                !player_ai.has_resources(game, players, &ai::unit_cost(unit_id))
+            {
                 return Err(RequestSatisfyError::Resources);
             }
             let reqs = match bw::unit_dat_requirements(unit_id) {
@@ -242,7 +254,7 @@ pub unsafe fn can_satisfy_request(
             }
             if !wait_resources {
                 let cost = ai::upgrade_cost(upgrade_id, current_level + 1);
-                if !has_resources(game, player, &cost) {
+                if !player_ai.has_resources(game, players, &cost) {
                     return Err(RequestSatisfyError::Resources);
                 }
             }
@@ -258,7 +270,9 @@ pub unsafe fn can_satisfy_request(
             if !game.tech_available(player, tech_id) {
                 return Err(RequestSatisfyError::NotAvailable);
             }
-            if !wait_resources && !has_resources(game, player, &ai::tech_cost(tech_id)) {
+            if !wait_resources &&
+                !player_ai.has_resources(game, players, &ai::tech_cost(tech_id))
+            {
                 return Err(RequestSatisfyError::Resources);
             }
             let reqs = match bw::tech_research_dat_requirements(tech_id) {

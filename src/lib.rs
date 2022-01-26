@@ -313,9 +313,10 @@ unsafe extern fn step_order_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_v
         FIRST_STEP_ORDER_OF_FRAME.store(false, Ordering::Relaxed);
         let globals = Globals::get("step order hook (start)");
         let game = bw::game();
+        let players = bw::players();
         // TODO Init lazily
         let unit_search = unit_search::UnitSearch::from_bw();
-        ai_spending::frame_hook(game, &unit_search, &globals.ai_mode);
+        ai_spending::frame_hook(game, players, &unit_search, &globals.ai_mode);
     }
 
     let unit = Unit::from_ptr(u as *mut bw::Unit).unwrap();

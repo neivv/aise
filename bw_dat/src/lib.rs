@@ -206,6 +206,18 @@ impl Race {
     pub fn id(self) -> u8 {
         self as u8
     }
+
+    pub fn from_id(val: u8) -> Option<Race> {
+        if val < 3 {
+            Some(unsafe { mem::transmute(val) })
+        } else {
+            None
+        }
+    }
+
+    pub fn as_flags(self) -> RaceFlags {
+        RaceFlags::from_bits_truncate(1 << (self as u8))
+    }
 }
 
 #[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
