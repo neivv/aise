@@ -2,7 +2,7 @@ use smallvec::SmallVec;
 
 use bw_dat::{self, order, Game, TechId, Unit, UnitId, UpgradeId};
 
-use crate::ai::{self, has_resources, Cost, PlayerAi};
+use crate::ai::{self, has_resources, Cost, PlayerAi, PlayerAiArray};
 use crate::aiscript::{AiMode, Town};
 use crate::bw;
 use crate::datreq::{check_dat_requirements, DatReq, ReadDatReqs};
@@ -12,13 +12,14 @@ use crate::unit_search::UnitSearch;
 
 pub unsafe fn frame_hook(
     game: Game,
+    player_ai: PlayerAiArray,
     players: *mut bw::Player,
     unit_search: &UnitSearch,
     ai_mode: &[AiMode; 8],
 ) {
     for player in 0..8 {
         let ai_mode = &ai_mode[player as usize];
-        let ai = PlayerAi::get(player);
+        let ai = player_ai.player(player);
         while let Some(request) = ai.first_request() {
             let can = can_satisfy_request(game, players, &ai, player, &request, ai_mode).is_ok();
             let mut handled = false;

@@ -226,6 +226,7 @@ unsafe extern fn frame_hook() {
     let globals = &mut *globals;
     let game = bw::game();
     let tile_flags = bw::tile_flags();
+    let player_ai = ai::PlayerAiArray::get();
     aiscript::claim_bw_allocated_scripts(globals);
     ai::update_region_safety(&mut globals.region_safety_pos, game, &search);
     aiscript::attack_timeouts_frame_hook(globals, game);
@@ -233,7 +234,7 @@ unsafe extern fn frame_hook() {
         .idle_orders
         .step_frame(&mut globals.rng, &search, tile_flags, game);
     aiscript::under_attack_frame_hook(globals);
-    ai::update_guard_needs(game, &mut globals.guards);
+    ai::update_guard_needs(game, player_ai, &mut globals.guards);
     ai::continue_incomplete_buildings();
     #[cfg(target_pointer_width = "32")]
     aiscript::lift_land_hook(&mut globals.lift_lands, &search, game);
@@ -316,7 +317,8 @@ unsafe extern fn step_order_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_v
         let players = bw::players();
         // TODO Init lazily
         let unit_search = unit_search::UnitSearch::from_bw();
-        ai_spending::frame_hook(game, players, &unit_search, &globals.ai_mode);
+        let player_ai = ai::PlayerAiArray::get();
+        ai_spending::frame_hook(game, player_ai, players, &unit_search, &globals.ai_mode);
     }
 
     let unit = Unit::from_ptr(u as *mut bw::Unit).unwrap();

@@ -13,8 +13,22 @@ use crate::list::{ListEntry, ListIter};
 use crate::unit::{active_units, UnitExt};
 use crate::unit_search::UnitSearch;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct PlayerAi(pub *mut bw::PlayerAiData, pub u8);
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct PlayerAiArray(pub *mut bw::PlayerAiData);
+
+impl PlayerAiArray {
+    pub fn get() -> PlayerAiArray {
+        PlayerAiArray(bw::player_ai(0))
+    }
+
+    pub fn player(self, player: u8) -> PlayerAi {
+        assert!(player < 8);
+        unsafe { PlayerAi(self.0.add(player.into()), player) }
+    }
+}
 
 impl PlayerAi {
     pub fn get(player: u8) -> PlayerAi {
@@ -545,11 +559,15 @@ impl GuardState {
     }
 }
 
-pub unsafe fn update_guard_needs(game: Game, guards: &mut GuardState) {
+pub unsafe fn update_guard_needs(
+    game: Game,
+    player_ai: PlayerAiArray,
+    guards: &mut GuardState,
+) {
     let guard_array = (*bw::guard_array()).ais.as_mut_ptr();
     let seconds = (**game).elapsed_seconds;
     for player in 0..8 {
-        let ai = PlayerAi::get(player);
+        let ai = player_ai.player(player);
         let ai_regions = bw::ai_regions(player as u32);
         let mut guard = bw::guard_ais(player);
         while guard != null_mut() {
