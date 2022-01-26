@@ -281,27 +281,49 @@ impl PlayerAi {
 
 /// Returns unit ids which are counted for request satisfication for request of `unit_id`
 /// So practically higher tier buildings with morph.
-pub fn request_equivalent_unit_ids(unit_id: UnitId) -> Vec<UnitId> {
+pub fn request_equivalent_unit_ids(unit_id: UnitId) -> [UnitId; 4] {
     use bw_dat::unit::*;
     match unit_id {
-        SIEGE_TANK_TANK | SIEGE_TANK_SIEGE => vec![SIEGE_TANK_SIEGE, SIEGE_TANK_TANK],
-        SPIRE => vec![SPIRE, GREATER_SPIRE],
-        CREEP_COLONY => vec![CREEP_COLONY, SPORE_COLONY, SUNKEN_COLONY],
-        HATCHERY => vec![HATCHERY, LAIR, HIVE],
-        LAIR => vec![LAIR, HIVE],
-        _ => vec![unit_id],
+        SIEGE_TANK_TANK | SIEGE_TANK_SIEGE => [SIEGE_TANK_SIEGE, SIEGE_TANK_TANK, NONE, NONE],
+        SPIRE => [SPIRE, GREATER_SPIRE, NONE, NONE],
+        CREEP_COLONY => [CREEP_COLONY, SPORE_COLONY, SUNKEN_COLONY, NONE],
+        HATCHERY => [HATCHERY, LAIR, HIVE, NONE],
+        LAIR => [LAIR, HIVE, NONE, NONE],
+        _ => [unit_id, NONE, NONE, NONE],
+    }
+}
+
+fn completed_id(unit: Unit) -> Option<UnitId> {
+    use bw_dat::unit::*;
+    if unit.is_completed() {
+        Some(unit.id())
+    } else {
+        let dest_id = unit.first_queued_unit()?;
+        match dest_id {
+            LAIR | HIVE | GREATER_SPIRE | SUNKEN_COLONY | SPORE_COLONY => Some(unit.id()),
+            _ => None,
+        }
     }
 }
 
 pub fn count_town_units(town: Town, unit_id: UnitId, must_be_completed: bool) -> u32 {
     let unit_ids = request_equivalent_unit_ids(unit_id);
-    let buildings = unsafe { town.buildings().flat_map(|x| Unit::from_ptr((*x).parent)) };
     let workers = unsafe { town.workers().flat_map(|x| Unit::from_ptr((*x).parent)) };
-    let units_in_town = buildings
-        .chain(workers)
+    let buildings = unsafe { town.buildings().flat_map(|x| Unit::from_ptr((*x).parent)) };
+    let is_worker = unit_id.is_worker();
+    let units = workers.take_while(|_| is_worker)
+        .chain(buildings.take_while(|_| !is_worker));
+    let units_in_town = units
         .filter(|&x| {
-            unit_ids.iter().any(|&id| id == x.id()) &&
-                ((x.is_completed() && must_be_completed) || !must_be_completed)
+            let id = if must_be_completed {
+                match completed_id(x) {
+                    Some(s) => s,
+                    None => return false,
+                }
+            } else {
+                x.building_morph_displayed_id()
+            };
+            unit_ids.iter().any(|&x| id == x)
         })
         .count() as u32;
     units_in_town
