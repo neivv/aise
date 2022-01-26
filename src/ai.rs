@@ -129,23 +129,14 @@ impl PlayerAi {
     }
 
     fn push_request(&self, req: bw::AiSpendingRequest) {
-        let requests = unsafe { &mut (*self.0).requests[..] };
-        let mut pos = unsafe {
-            if usize::from((*self.0).request_count) < requests.len() {
-                (*self.0).request_count += 1;
+        unsafe {
+            let requests = &mut (*self.0).requests[..];
+            let request_count = usize::from((*self.0).request_count);
+            if request_count >= requests.len() {
+                return;
             }
-            isize::from((*self.0).request_count) - 1
-        };
-        let mut prev = pos;
-        requests[pos as usize] = req;
-        pos = (pos - 1) >> 1;
-        while prev > 0 {
-            if requests[prev as usize].priority <= requests[pos as usize].priority {
-                break;
-            }
-            requests.swap(prev as usize, pos as usize);
-            prev = pos;
-            pos = (pos - 1) >> 1;
+            (*self.0).request_count += 1;
+            request_heap_push(requests, request_count, req);
         }
     }
 
@@ -188,6 +179,25 @@ impl PlayerAi {
         }
     }
 
+    pub fn copy_requests(&self) -> SpendingRequestsCopy {
+        unsafe {
+            SpendingRequestsCopy {
+                buffer: (*self.0).requests,
+                count: (*self.0).request_count,
+                deleted: 0,
+            }
+        }
+    }
+
+    pub fn set_to_copied_requests(&self, copy: &SpendingRequestsCopy) {
+        unsafe {
+            let len = copy.count as usize;
+            let slice = &copy.buffer[..len];
+            (&mut (*self.0).requests[..len]).copy_from_slice(slice);
+            (*self.0).request_count = copy.count;
+        }
+    }
+
     pub fn has_resources(&self, game: Game, players: *mut bw::Player, cost: &Cost) -> bool {
         unsafe {
             let player = self.1;
@@ -199,6 +209,16 @@ impl PlayerAi {
                 (*self.0).gas_available >= cost.gas &&
                 (!consider_supply || (*self.0).supply_available >= cost.supply) &&
                 has_resources(game, player, cost)
+        }
+    }
+
+    pub fn available_resources(&self) -> AiResources {
+        unsafe {
+            AiResources {
+                minerals: (*self.0).minerals_available,
+                gas: (*self.0).gas_available,
+                supply: (*self.0).supply_available,
+            }
         }
     }
 
@@ -228,23 +248,7 @@ impl PlayerAi {
                 return;
             }
         }
-        requests[0] = requests[new_count];
-        let mut prev = 0;
-        let mut pos = 1;
-        while pos <= new_count - 1 {
-            let index =
-                if pos + 1 >= new_count || requests[pos].priority > requests[pos + 1].priority {
-                    pos
-                } else {
-                    pos + 1
-                };
-            if requests[prev].priority >= requests[index].priority {
-                break;
-            }
-            requests.swap(prev, index);
-            prev = index;
-            pos = (index << 1) + 1;
-        }
+        request_heap_pop(requests);
     }
 
     fn is_guard_being_trained(&self, guard: *mut bw::GuardAi) -> bool {
@@ -290,6 +294,106 @@ impl PlayerAi {
                 }
             }
         }
+    }
+}
+
+pub struct SpendingRequestsCopy {
+    buffer: [bw::AiSpendingRequest; 0x3f],
+    count: u8,
+    /// Deleted requests are placed at end of buffer in reverse, as long
+    /// as there is space for them
+    deleted: u8,
+}
+
+impl SpendingRequestsCopy {
+    pub fn first_request(&self) -> Option<bw::AiSpendingRequest> {
+        if self.count == 0 {
+            None
+        } else {
+            Some(self.buffer[0])
+        }
+    }
+
+    pub fn pop_request_save(&mut self) {
+        let request = match self.first_request() {
+            Some(s) => s,
+            None => return,
+        };
+        self.pop_request_dont_save();
+        if (self.count as usize + self.deleted as usize) < self.buffer.len() {
+            let free_index = self.buffer.len() - 1 - self.deleted as usize;
+            self.buffer[free_index] = request;
+            self.deleted += 1;
+        }
+    }
+
+    pub fn pop_request_dont_save(&mut self) {
+        if self.count == 0 {
+            return;
+        }
+        request_heap_pop(&mut self.buffer[..(self.count as usize)]);
+        self.count -= 1;
+    }
+
+    pub fn restore_popped_requests(&mut self) {
+        while self.deleted > 0 {
+            let index = self.buffer.len() - self.deleted as usize;
+            let request = self.buffer[index];
+            self.deleted -= 1;
+            self.push_request(request);
+        }
+    }
+
+    pub fn push_request(&mut self, request: bw::AiSpendingRequest) {
+        let count = usize::from(self.count);
+        if count >= self.buffer.len() {
+            return;
+        }
+        self.count += 1;
+        request_heap_push(&mut self.buffer, count, request);
+    }
+}
+
+fn request_heap_push(
+    requests: &mut [bw::AiSpendingRequest],
+    current_size: usize,
+    req: bw::AiSpendingRequest,
+) {
+    let mut pos = current_size as isize;
+    let mut prev = pos;
+    requests[pos as usize] = req;
+    pos = (pos - 1) >> 1;
+    while prev > 0 {
+        if requests[prev as usize].priority <= requests[pos as usize].priority {
+            break;
+        }
+        requests.swap(prev as usize, pos as usize);
+        prev = pos;
+        pos = (pos - 1) >> 1;
+    }
+}
+
+fn request_heap_pop(requests: &mut [bw::AiSpendingRequest]) {
+    if requests.len() < 2 {
+        return;
+    }
+    let new_count = requests.len() - 1;
+    requests[0] = requests[new_count];
+    let mut prev = 0;
+    let mut pos = 1;
+    while pos <= new_count - 1 {
+        let index =
+            if pos + 1 >= new_count || requests[pos].priority > requests[pos + 1].priority {
+                pos
+            } else {
+                pos + 1
+            };
+        if requests[prev].priority >= requests[index].priority {
+            break;
+        }
+        requests.swap(prev, index);
+        prev = index;
+        pos = (index << 1) + 1;
     }
 }
 
@@ -403,9 +507,30 @@ pub fn count_units(player: u8, unit_id: UnitId, game: Game) -> u32 {
     morphing + existing
 }
 
+pub struct AiResources {
+    pub minerals: u32,
+    pub gas: u32,
+    pub supply: u32,
+}
+
+impl AiResources {
+    pub fn has_enough_for_cost(&self, cost: &Cost) -> bool {
+        self.minerals >= cost.minerals &&
+            self.gas >= cost.gas &&
+            self.supply >= cost.supply
+    }
+
+    pub fn reduce_cost(&mut self, cost: &Cost) {
+        self.minerals = self.minerals.saturating_sub(cost.minerals);
+        self.gas = self.gas.saturating_sub(cost.gas);
+        self.supply = self.supply.saturating_sub(cost.supply);
+    }
+}
+
 pub struct Cost {
     pub minerals: u32,
     pub gas: u32,
+    /// Includes supply cost for both units if the unit is dual birth unit.
     pub supply: u32,
     pub races: RaceFlags,
 }

@@ -20,25 +20,8 @@ pub unsafe fn frame_hook(
     for player in 0..8 {
         let ai_mode = &ai_mode[player as usize];
         let ai = player_ai.player(player);
+        let mut remaining_money = ai.available_resources();
         while let Some(request) = ai.first_request() {
-            let can = can_satisfy_request(game, players, &ai, player, &request, ai_mode).is_ok();
-            let mut handled = false;
-            if can {
-                // Handle building morphs since preplaced colonies don't check for requests
-                // (Since their order switches to idle because they don't have a town on frame 0)
-                // Could handle other requests as well, but no need at the moment.
-                if handle_building_morph(game, players, &ai, &request, player) == Ok(()) {
-                    handled = true;
-                }
-                // Handle military/guard training as well since train opcode is otherwise
-                // bad at spreading work across buildings
-                if handle_training(game, players, &ai, unit_search, &request, player) == Ok(()) {
-                    handled = true;
-                }
-                if !handled {
-                    break;
-                }
-            }
             let level = if request.ty == 5 {
                 game.upgrade_level(player as u8, UpgradeId(request.id))
                     .saturating_add(1)
@@ -46,9 +29,100 @@ pub unsafe fn frame_hook(
                 0
             };
             let cost = ai::request_cost(&request, level);
+            if !remaining_money.has_enough_for_cost(&cost) {
+                if ai_mode.wait_for_resources {
+                    try_handle_single_resource_request(game, players, &ai, unit_search, ai_mode);
+                    break;
+                }
+            }
+            let can = can_satisfy_request(game, players, &ai, player, &request, ai_mode).is_ok();
+            let mut handled = false;
+            if can {
+                handled = try_handle_request(game, players, &ai, unit_search, &request);
+                if !handled {
+                    break;
+                } else {
+                    remaining_money.reduce_cost(&cost);
+                }
+            }
             ai.remove_resource_need(&cost, handled);
             ai.pop_request()
         }
+    }
+}
+
+fn try_handle_request(
+    game: Game,
+    players: *mut bw::Player,
+    ai: &PlayerAi,
+    unit_search: &UnitSearch,
+    request: &bw::AiSpendingRequest,
+) -> bool {
+    let player = ai.1;
+    // Handle building morphs since preplaced colonies don't check for requests
+    // (Since their order switches to idle because they don't have a town on frame 0)
+    // Could handle other requests as well, but no need at the moment.
+    if handle_building_morph(game, players, &ai, &request, player) == Ok(()) {
+        return true;
+    }
+    // Handle military/guard training as well since train opcode is otherwise
+    // bad at spreading work across buildings
+    if handle_training(game, players, &ai, unit_search, &request, player) == Ok(()) {
+        return true;
+    }
+    false
+}
+
+unsafe fn try_handle_single_resource_request(
+    game: Game,
+    players: *mut bw::Player,
+    ai: &PlayerAi,
+    unit_search: &UnitSearch,
+    ai_mode: &AiMode,
+) {
+    // If the first request cannot be satisfied, but there would be enough
+    // money for single-resource request, handle that request instead.
+    // E.g. protoss has 400 minerals and 100 gas, requests are
+    // [build robo fac, train zealot], it should train the zealot without
+    // waiting for robo gas.
+    //
+    // Since the request queue is awkwardly a heap, this pops requests from copied heap,
+    // and if any requests manage to be handled, re-pushes any popped requests back
+    // and writes that to global state.
+    let mut remaining_money = ai.available_resources();
+    let mut request_copy = ai.copy_requests();
+    let mut any_handled = false;
+    let player = ai.1;
+    while let Some(request) = request_copy.first_request() {
+        if remaining_money.minerals == 0 && remaining_money.gas == 0 {
+            break;
+        }
+        let level = if request.ty == 5 {
+            game.upgrade_level(player as u8, UpgradeId(request.id))
+                .saturating_add(1)
+        } else {
+            0
+        };
+        let cost = ai::request_cost(&request, level);
+        if remaining_money.has_enough_for_cost(&cost) {
+            let can = can_satisfy_request(game, players, &ai, player, &request, ai_mode).is_ok();
+            if can {
+                let handled = try_handle_request(game, players, ai, unit_search, &request);
+                if handled {
+                    any_handled = true;
+                    ai.remove_resource_need(&cost, true);
+                    remaining_money.reduce_cost(&cost);
+                    request_copy.pop_request_dont_save();
+                    continue;
+                }
+            }
+        }
+        remaining_money.reduce_cost(&cost);
+        request_copy.pop_request_save();
+    }
+    if any_handled {
+        request_copy.restore_popped_requests();
+        ai.set_to_copied_requests(&request_copy);
     }
 }
 
