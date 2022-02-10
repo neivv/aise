@@ -3829,3 +3829,19 @@ mod test {
         }
     }
 }
+
+pub unsafe extern fn panic_opcode(script: *mut bw::AiScript) {
+    let mut read = ScriptData::new(script);
+    let offset = read.read_u16();
+    if (*script).flags & 0x1 != 0 {
+        let script = Script::ptr_from_bw(script);
+        bw_print!(
+            "Script {}: Cannot use panic in script placed to bwscript.bin",
+            (*script).debug_string(),
+        );
+        return;
+    }
+    let player = (*script).player as u8;
+    let ai = ai::PlayerAi::get(player);
+    (*ai.0).panic_script_pos = offset;
+}
