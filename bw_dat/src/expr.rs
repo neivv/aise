@@ -212,7 +212,9 @@ impl<E: CustomEval> EvalCtx<E> {
                         Parasited => (**unit).parasited_by_players != 0,
                         Blind => (**unit).is_blind != 0,
                         UnderStorm => (**unit).is_under_storm != 0,
-                        LiftedOff => (**unit).flags & 0x2 == 0,
+                        LiftedOff => !unit.is_landed_building() && unit.id().is_building(),
+                        IsBuilding => unit.id().is_building(),
+                        LandedBuilding => unit.is_landed_building(),
                         BuildingUnit => unit.currently_building().is_some(),
                         InTransport => {
                             (**unit).flags & 0x20 == 0 && (**unit).flags & 0x40 != 0
@@ -386,7 +388,8 @@ fn bool_expr_required_context<C: CustomState>(expr: &parse_expr::BoolExpr<C>) ->
         Not(x) => bool_expr_required_context(&x),
         Func(x) => match x.ty {
             True | False => RequiredContext::empty(),
-            Parasited | Blind | UnderStorm | LiftedOff | BuildingUnit | InTransport |
+            Parasited | Blind | UnderStorm | LiftedOff | IsBuilding | LandedBuilding |
+                BuildingUnit | InTransport |
                 InBunker | CarryingPowerup | CarryingMinerals | CarryingGas | Burrowed |
                 Disabled | Completed | SelfCloaked | ArbiterCloaked | Cloaked |
                 UnderDweb | Hallucination => RequiredContext::UNIT,

@@ -165,6 +165,8 @@ decl_funcc!(
     b"blind", Blind,
     b"under_storm", UnderStorm,
     b"lifted_off", LiftedOff,
+    b"building", IsBuilding,
+    b"landed_building", LandedBuilding,
     b"building_unit", BuildingUnit,
     b"in_transport", InTransport,
     b"in_bunker", InBunker,
