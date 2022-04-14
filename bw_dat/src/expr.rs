@@ -61,7 +61,7 @@ pub struct EvalCtx<E: CustomEval> {
     pub custom: E,
 }
 
-struct DefaultEval;
+pub struct DefaultEval;
 impl CustomEval for DefaultEval {
     type State = NoCustom;
 
@@ -104,6 +104,11 @@ impl<E: CustomEval> EvalCtx<E> {
             return i32::min_value();
         }
         if expr.required_context.contains(RequiredContext::GAME) && self.game.is_none() {
+            return i32::min_value();
+        }
+        if expr.required_context.contains(RequiredContext::MAP_TILE_FLAGS) &&
+            self.map_tile_flags.is_none()
+        {
             return i32::min_value();
         }
         self.eval_int_r(&expr.ty)
@@ -267,6 +272,11 @@ impl<E: CustomEval> EvalCtx<E> {
         if expr.required_context.contains(RequiredContext::GAME) && self.game.is_none() {
             return false;
         }
+        if expr.required_context.contains(RequiredContext::MAP_TILE_FLAGS) &&
+            self.map_tile_flags.is_none()
+        {
+            return false;
+        }
         self.eval_bool_r(&expr.ty)
     }
 
@@ -425,6 +435,10 @@ impl<C: CustomState> CustomIntExpr<C> {
     pub fn inner(&self) -> &IntExprTree<C> {
         &self.ty
     }
+
+    pub fn required_context(&self) -> RequiredContext {
+        self.required_context
+    }
 }
 
 impl BoolExpr {
@@ -485,6 +499,10 @@ impl<C: CustomState> CustomBoolExpr<C> {
 
     pub fn inner(&self) -> &BoolExprTree<C> {
         &self.ty
+    }
+
+    pub fn required_context(&self) -> RequiredContext {
+        self.required_context
     }
 }
 
