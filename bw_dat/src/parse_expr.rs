@@ -173,6 +173,7 @@ decl_funcc!(
     b"max", Max(2),
     b"clamp", Clamp(3),
     b"tile_height", TileHeight,
+    b"dat", Dat(3),
 );
 
 decl_funcc!(

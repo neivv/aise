@@ -231,6 +231,29 @@ impl<E: CustomEval> EvalCtx<E> {
                                 0
                             }
                         }
+                        Dat => {
+                            let dat = match self.eval_int_r(&x.args[0]) {
+                                0 => &crate::UNITS_DAT,
+                                1 => &crate::WEAPONS_DAT,
+                                2 => &crate::FLINGY_DAT,
+                                3 => &crate::SPRITES_DAT,
+                                4 => &crate::IMAGES_DAT,
+                                5 => &crate::ORDERS_DAT,
+                                6 => &crate::UPGRADES_DAT,
+                                7 => &crate::TECHDATA_DAT,
+                                8 => &crate::SFXDATA_DAT,
+                                9 => &crate::PORTDATA_DAT,
+                                10 => &crate::BUTTONS_DAT,
+                                _ => return 0,
+                            };
+                            let field = self.eval_int_r(&x.args[1]) as u32;
+                            // Assuming that anything outside u16 range is wrong
+                            let id = match u16::try_from(self.eval_int_r(&x.args[2])) {
+                                Ok(o) => o as u32,
+                                Err(_) => return 0,
+                            };
+                            crate::dat_read_opt(dat, id, field).unwrap_or(0) as i32
+                        }
                     }
                 }
             }
@@ -520,8 +543,8 @@ fn int_expr_required_context<C: CustomState>(expr: &parse_expr::IntExpr<C>) -> R
             }
             FrameCount | Tileset => RequiredContext::GAME,
             Sin | Cos | Tan | Asin | Acos | Atan => int_expr_required_context(&x.args[0]),
-            Min | Max | Clamp => {
-                let argc = if x.ty == Clamp { 3 } else { 2 };
+            Min | Max | Clamp | Dat => {
+                let argc = if matches!(x.ty, Clamp | Dat) { 3 } else { 2 };
                 let mut ret = RequiredContext::empty();
                 for i in 0..argc {
                     ret |= int_expr_required_context(&x.args[i]);
