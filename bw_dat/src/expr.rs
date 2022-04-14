@@ -74,6 +74,28 @@ impl CustomEval for DefaultEval {
     }
 }
 
+static SIN_TABLE: [u16; 91] = [
+    0, 4, 8, 13, 17, 22, 26, 31, 35, 40, 44, 48,
+    53, 57, 61, 66, 70, 74, 79, 83, 87, 91, 95, 100,
+    104, 108, 112, 116, 120, 124, 127, 131, 135, 139, 143, 146,
+    150, 154, 157, 161, 164, 167, 171, 174, 177, 181, 184, 187,
+    190, 193, 196, 198, 201, 204, 207, 209, 212, 214, 217, 219,
+    221, 223, 226, 228, 230, 232, 233, 235, 237, 238, 240, 242,
+    243, 244, 246, 247, 248, 249, 250, 251, 252, 252, 253, 254,
+    254, 255, 255, 255, 255, 255, 256,
+];
+
+static TAN_TABLE: [i32; 91] = [
+    0, 4, 9, 13, 18, 22, 27, 31, 36, 41, 45, 50,
+    54, 59, 64, 69, 73, 78, 83, 88, 93, 98, 103, 109,
+    114, 119, 125, 130, 136, 142, 148, 154, 160, 166, 173, 179,
+    186, 193, 200, 207, 215, 223, 231, 239, 247, 256, 265, 275,
+    284, 294, 305, 316, 328, 340, 352, 366, 380, 394, 410, 426,
+    443, 462, 481, 502, 525, 549, 575, 603, 634, 667, 703, 743,
+    788, 837, 893, 955, 1027, 1109, 1204, 1317, 1452, 1616, 1822, 2085,
+    2436, 2926, 3661, 4885, 7331, 14666, i32::MAX,
+];
+
 impl<E: CustomEval> EvalCtx<E> {
     pub fn eval_int(&mut self, expr: &CustomIntExpr<E::State>) -> i32 {
         if expr.required_context.contains(RequiredContext::UNIT) && self.unit.is_none() {
@@ -152,13 +174,13 @@ impl<E: CustomEval> EvalCtx<E> {
                         Player => (**unit).player as i32,
                         UnitId => (**unit).unit_id as i32,
                         Order => unit.order().0 as i32,
-                        Sin => {
+                        Sin | Cos | Tan => {
                             let val = self.eval_int_r(&x.args[0]);
-                            ((val as f32).to_radians().sin() * 256.0) as i32
+                            sin_cos_tan(val, x.ty)
                         }
-                        Cos => {
+                        Asin | Acos | Atan => {
                             let val = self.eval_int_r(&x.args[0]);
-                            ((val as f32).to_radians().cos() * 256.0) as i32
+                            asin_acos_atan(val, x.ty)
                         }
                         Deaths | UnitCountCompleted | UnitCountAny => {
                             let player = match self.eval_int_r(&x.args[0]) {
@@ -436,12 +458,170 @@ fn int_expr_required_context<C: CustomState>(expr: &parse_expr::IntExpr<C>) -> R
                 RequiredContext::UNIT | RequiredContext::GAME
             }
             FrameCount | Tileset => RequiredContext::GAME,
-            Sin | Cos => int_expr_required_context(&x.args[0]),
+            Sin | Cos | Tan | Asin | Acos | Atan => int_expr_required_context(&x.args[0]),
             Deaths | Upgrade | UnitCountCompleted | UnitCountAny => {
                 int_expr_required_context(&x.args[0]) | int_expr_required_context(&x.args[1]) |
                     RequiredContext::GAME
             }
         },
         Custom(_) => RequiredContext::empty(),
+    }
+}
+
+fn sin_cos_tan(mut val: i32, ty: IntFuncType) -> i32 {
+    if ty == IntFuncType::Cos {
+        val = val.checked_add(90)
+            .unwrap_or_else(|| val.rem_euclid(360) + 90);
+    }
+    if val < 0 {
+        val += 360;
+    } else if val >= 360 {
+        val -= 360;
+    }
+    if val < 0 || val >= 360 {
+        val = val.rem_euclid(360);
+    }
+    let mut val = val as usize;
+    if ty == IntFuncType::Tan {
+        if val >= 180 {
+            val -= 180;
+        }
+        if val < 91 {
+            // tan(90) is +INF / -INF; give positive max value
+            TAN_TABLE[val]
+        } else {
+            -TAN_TABLE[90 - (val - 90)]
+        }
+    } else {
+        if val < 180 {
+            if val < 90 {
+                SIN_TABLE[val] as i32
+            } else {
+                SIN_TABLE[90 - (val - 90)] as i32
+            }
+        } else {
+            if val < 270 {
+                -(SIN_TABLE[val - 180] as i32)
+            } else {
+                -(SIN_TABLE[90 - (val - 270)] as i32)
+            }
+        }
+    }
+}
+
+fn asin_acos_atan(val: i32, ty: IntFuncType) -> i32 {
+    let key = if val < 0 {
+        val.checked_neg().unwrap_or(i32::MAX)
+    } else {
+        val
+    };
+    let index = if ty == IntFuncType::Atan {
+        match TAN_TABLE.binary_search_by(|&x| x.cmp(&key)) {
+            Ok(x) | Err(x) => x.min(90),
+        }
+    } else {
+        let idx = match SIN_TABLE
+            .binary_search_by(|&x| (x as i32).cmp(&key))
+        {
+            Ok(x) | Err(x) => x.min(90),
+        };
+        if ty == IntFuncType::Acos {
+            90 - idx
+        } else {
+            idx
+        }
+    };
+    if val < 0 {
+        if ty == IntFuncType::Asin {
+            -(index as i32)
+        } else {
+            // Correct for both acos/atan which are symmetric at 90 degrees
+            180 - index as i32
+        }
+    } else {
+        index as i32
+    }
+}
+
+#[test]
+fn test_sin_asin() {
+    for i in -720..720 {
+        let sin = sin_cos_tan(i, IntFuncType::Sin);
+        let asin = asin_acos_atan(sin, IntFuncType::Asin);
+        let mut expected_asin = i;
+        while expected_asin > 180 {
+            expected_asin -= 360;
+        }
+        while expected_asin < -180 {
+            expected_asin += 360;
+        }
+        if expected_asin > 90 {
+            expected_asin = 90 - (expected_asin - 90);
+        }
+        if expected_asin < -90 {
+            expected_asin = -90 + (expected_asin + 90);
+        }
+        if asin != expected_asin {
+            // Near 90/270 degrees several degrees give same result
+            let ok = sin_cos_tan(asin, IntFuncType::Sin) ==
+                sin_cos_tan(expected_asin, IntFuncType::Sin);
+            if !ok {
+                panic!(
+                    "sin/asin not reverse at {} degrees; sin {}, asin {}; expected {}",
+                    i, sin, asin, expected_asin,
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn test_cos_acos() {
+    for i in -720..720 {
+        let cos = sin_cos_tan(i, IntFuncType::Cos);
+        let acos = asin_acos_atan(cos, IntFuncType::Acos);
+        let mut expected_acos = i;
+        while expected_acos < -0 {
+            expected_acos += 360;
+        }
+        if expected_acos > 180 {
+            expected_acos = 180 - (expected_acos - 180);
+        }
+        if acos != expected_acos {
+            let ok = sin_cos_tan(acos, IntFuncType::Cos) ==
+                sin_cos_tan(expected_acos, IntFuncType::Cos);
+            if !ok {
+                panic!(
+                    "cos/acos not reverse at {} degrees; cos {}, acos {}; expected {}",
+                    i, cos, acos, expected_acos,
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn test_tan_atan() {
+    //for i in -720..720 {
+    for i in 0..720 {
+        let tan = sin_cos_tan(i, IntFuncType::Tan);
+        let atan = asin_acos_atan(tan, IntFuncType::Atan);
+        let mut expected_atan = i;
+        while expected_atan < -0 {
+            expected_atan += 180;
+        }
+        while expected_atan > 1800 {
+            expected_atan -= 180;
+        }
+        if atan != expected_atan {
+            let ok = sin_cos_tan(atan, IntFuncType::Tan) ==
+                sin_cos_tan(expected_atan, IntFuncType::Tan);
+            if !ok {
+                panic!(
+                    "tan/atan not reverse at {} degrees; tan {}, atan {}; expected {}",
+                    i, tan, atan, expected_atan,
+                );
+            }
+        }
     }
 }
