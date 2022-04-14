@@ -169,6 +169,9 @@ decl_funcc!(
     b"upgrade", Upgrade(2),
     b"unit_count_completed", UnitCountCompleted(2),
     b"unit_count_any", UnitCountAny(2),
+    b"min", Min(2),
+    b"max", Max(2),
+    b"clamp", Clamp(3),
 );
 
 decl_funcc!(

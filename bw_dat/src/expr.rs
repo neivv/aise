@@ -182,6 +182,19 @@ impl<E: CustomEval> EvalCtx<E> {
                             let val = self.eval_int_r(&x.args[0]);
                             asin_acos_atan(val, x.ty)
                         }
+                        Min | Max | Clamp => {
+                            let a1 = self.eval_int_r(&x.args[0]);
+                            let a2 = self.eval_int_r(&x.args[1]);
+                            if x.ty == Max {
+                                a1.max(a2)
+                            } else if x.ty == Min {
+                                a1.min(a2)
+                            } else {
+                                let a3 = self.eval_int_r(&x.args[2]);
+                                // Not using a2.clamp(a1, a2) to never panic
+                                a1.max(a2).min(a3)
+                            }
+                        }
                         Deaths | UnitCountCompleted | UnitCountAny => {
                             let player = match self.eval_int_r(&x.args[0]) {
                                 x if x >= 0 && x < 12 => x,
@@ -459,6 +472,14 @@ fn int_expr_required_context<C: CustomState>(expr: &parse_expr::IntExpr<C>) -> R
             }
             FrameCount | Tileset => RequiredContext::GAME,
             Sin | Cos | Tan | Asin | Acos | Atan => int_expr_required_context(&x.args[0]),
+            Min | Max | Clamp => {
+                let argc = if x.ty == Clamp { 3 } else { 2 };
+                let mut ret = RequiredContext::empty();
+                for i in 0..argc {
+                    ret |= int_expr_required_context(&x.args[i]);
+                }
+                ret
+            }
             Deaths | Upgrade | UnitCountCompleted | UnitCountAny => {
                 int_expr_required_context(&x.args[0]) | int_expr_required_context(&x.args[1]) |
                     RequiredContext::GAME
