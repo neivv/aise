@@ -68,6 +68,12 @@ pub enum IntExpr<C: CustomState> {
     Mul(Box<(IntExpr<C>, IntExpr<C>)>),
     Div(Box<(IntExpr<C>, IntExpr<C>)>),
     Modulo(Box<(IntExpr<C>, IntExpr<C>)>),
+    BitAnd(Box<(IntExpr<C>, IntExpr<C>)>),
+    BitOr(Box<(IntExpr<C>, IntExpr<C>)>),
+    BitXor(Box<(IntExpr<C>, IntExpr<C>)>),
+    LeftShift(Box<(IntExpr<C>, IntExpr<C>)>),
+    RightShift(Box<(IntExpr<C>, IntExpr<C>)>),
+    Not(Box<IntExpr<C>>),
     Integer(i32),
     Func(IntFunc<C>),
     Custom(C::IntExt),
@@ -82,6 +88,11 @@ enum Operator {
     Mod,
     And,
     Or,
+    BitAnd,
+    BitOr,
+    BitXor,
+    LeftShift,
+    RightShift,
     Eq,
     Neq,
     LessThan,
@@ -383,7 +394,8 @@ impl<'b, C: CustomState, P: CustomParser<State = C>> Parser<'b, P> {
                 }
                 Operator::GreaterThan | Operator::GreaterOrEq | Operator::LessThan |
                     Operator::LessOrEq | Operator::Add | Operator::Sub | Operator::Mul |
-                    Operator::Div | Operator::Mod =>
+                    Operator::Div | Operator::Mod | Operator::BitAnd | Operator::BitOr |
+                    Operator::BitXor | Operator::LeftShift | Operator::RightShift =>
                 {
                     if left.is_none() {
                         return Err(Error::Eof);
@@ -401,6 +413,11 @@ impl<'b, C: CustomState, P: CustomParser<State = C>> Parser<'b, P> {
                         Operator::Mul => Expr::Int(IntExpr::Mul(val)),
                         Operator::Div => Expr::Int(IntExpr::Div(val)),
                         Operator::Mod => Expr::Int(IntExpr::Modulo(val)),
+                        Operator::BitAnd => Expr::Int(IntExpr::BitAnd(val)),
+                        Operator::BitOr => Expr::Int(IntExpr::BitOr(val)),
+                        Operator::BitXor => Expr::Int(IntExpr::BitXor(val)),
+                        Operator::LeftShift => Expr::Int(IntExpr::LeftShift(val)),
+                        Operator::RightShift => Expr::Int(IntExpr::RightShift(val)),
                         Operator::GreaterThan => Expr::Bool(BoolExpr::GreaterThan(val)),
                         Operator::GreaterOrEq => Expr::Bool(BoolExpr::GreaterOrEqual(val)),
                         Operator::LessThan => Expr::Bool(BoolExpr::LessThan(val)),
@@ -421,7 +438,7 @@ impl<'b, C: CustomState, P: CustomParser<State = C>> Parser<'b, P> {
                     }
                     match right {
                         Expr::Bool(r) => Ok(Expr::Bool(BoolExpr::Not(Box::new(r)))),
-                        Expr::Int(e) => Err(Error::NotBoolean(e)),
+                        Expr::Int(r) => Ok(Expr::Int(IntExpr::Not(Box::new(r)))),
                     }
                 }
             }
@@ -514,17 +531,26 @@ impl<'b, C: CustomState, P: CustomParser<State = C>> Parser<'b, P> {
                             input = &rest[1..];
                             Operator::Or
                         } else {
-                            break 'outer_loop;
+                            input = rest;
+                            Operator::BitOr
                         },
                         b'&' => if rest.get(0).cloned() == Some(b'&') {
                             input = &rest[1..];
                             Operator::And
                         } else {
-                            break 'outer_loop;
+                            input = rest;
+                            Operator::BitAnd
                         },
+                        b'^' => {
+                            input = rest;
+                            Operator::BitXor
+                        }
                         b'<' => if rest.get(0).cloned() == Some(b'=') {
                             input = &rest[1..];
                             Operator::LessOrEq
+                        } else if rest.get(0).cloned() == Some(b'<') {
+                            input = &rest[1..];
+                            Operator::LeftShift
                         } else {
                             input = rest;
                             Operator::LessThan
@@ -532,6 +558,9 @@ impl<'b, C: CustomState, P: CustomParser<State = C>> Parser<'b, P> {
                         b'>' => if rest.get(0).cloned() == Some(b'=') {
                             input = &rest[1..];
                             Operator::GreaterOrEq
+                        } else if rest.get(0).cloned() == Some(b'>') {
+                            input = &rest[1..];
+                            Operator::RightShift
                         } else {
                             input = rest;
                             Operator::GreaterThan
@@ -582,6 +611,10 @@ impl<'b, C: CustomState, P: CustomParser<State = C>> Parser<'b, P> {
                                 Operator::Not => 255,
                                 Operator::Mul | Operator::Div | Operator::Mod => 20,
                                 Operator::Add | Operator::Sub => 19,
+                                Operator::LeftShift | Operator::RightShift => 10,
+                                Operator::BitAnd => 9,
+                                Operator::BitXor => 8,
+                                Operator::BitOr => 7,
                                 Operator::Or | Operator::And => 5,
                                 Operator::Eq | Operator::Neq | Operator::LessThan |
                                     Operator::LessOrEq | Operator::GreaterThan |
@@ -811,6 +844,25 @@ mod test {
         );
         assert_error_contains(parse(b"4294967295"), "Invalid integer literal");
         assert!(parse(b"54k").is_err());
+        assert_eq!(
+            empty_unwrap(parse(b"(unit_id & 0x800) >> 5")),
+            IntExpr::RightShift(Box::new((
+                IntExpr::BitAnd(Box::new((
+                    IntExpr::Func(noarg(IntFuncType::UnitId)),
+                    IntExpr::Integer(0x800),
+                ))),
+                IntExpr::Integer(5),
+            )))
+        );
+        assert_eq!(
+            empty_unwrap(parse(b"!(unit_id & 0x800)")),
+            IntExpr::Not(Box::new(
+                IntExpr::BitAnd(Box::new((
+                    IntExpr::Func(noarg(IntFuncType::UnitId)),
+                    IntExpr::Integer(0x800),
+                )))
+            ))
+        );
     }
 
     #[test]

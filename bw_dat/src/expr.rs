@@ -104,6 +104,16 @@ impl<E: CustomEval> EvalCtx<E> {
                     self.eval_int_r(&x.0) % div
                 }
             }
+            BitAnd(x) => self.eval_int_r(&x.0) & self.eval_int_r(&x.1),
+            BitOr(x) => self.eval_int_r(&x.0) | self.eval_int_r(&x.1),
+            BitXor(x) => self.eval_int_r(&x.0) ^ self.eval_int_r(&x.1),
+            LeftShift(x) => (self.eval_int_r(&x.0) as u32)
+                .checked_shl(self.eval_int_r(&x.1) as u32)
+                .unwrap_or(0) as i32,
+            RightShift(x) => (self.eval_int_r(&x.0) as u32)
+                .checked_shr(self.eval_int_r(&x.1) as u32)
+                .unwrap_or(0) as i32,
+            Not(x) => !self.eval_int_r(x),
             Integer(i) => *i,
             Custom(x) => self.custom.eval_int(x),
             Func(x) => {
@@ -406,9 +416,11 @@ fn int_expr_required_context<C: CustomState>(expr: &parse_expr::IntExpr<C>) -> R
     use crate::parse_expr::IntExpr::*;
     use crate::parse_expr::IntFuncType::*;
     match expr {
-        Add(x) | Sub(x) | Mul(x) | Div(x) | Modulo(x) => {
+        Add(x) | Sub(x) | Mul(x) | Div(x) | Modulo(x) | BitAnd(x) | BitOr(x) | BitXor(x) |
+            LeftShift(x) | RightShift(x) => {
             int_expr_required_context(&x.0) | int_expr_required_context(&x.1)
         }
+        Not(x) => int_expr_required_context(x),
         Integer(_) => RequiredContext::empty(),
         Func(x) => match x.ty {
             StimTimer | EnsnareTimer | MaelstromTimer | DeathTimer | LockdownTimer |
