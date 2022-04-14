@@ -172,6 +172,7 @@ decl_funcc!(
     b"min", Min(2),
     b"max", Max(2),
     b"clamp", Clamp(3),
+    b"tile_height", TileHeight,
 );
 
 decl_funcc!(
@@ -200,6 +201,9 @@ decl_funcc!(
     b"under_dweb", UnderDweb,
     b"hallucination", Hallucination,
     b"tech", Tech(2),
+    b"on_creep", OnCreep,
+    b"terrain_protection", TerrainProtection,
+    b"on_unbuildable", Unbuildable,
 );
 
 #[derive(Debug, Eq, PartialEq, Hash)]

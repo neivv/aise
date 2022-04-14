@@ -44,6 +44,7 @@ bitflags! {
     pub struct RequiredContext: u8 {
         const UNIT = 0x1;
         const GAME = 0x2;
+        const MAP_TILE_FLAGS = 0x4;
     }
 }
 
@@ -56,6 +57,7 @@ pub trait CustomEval: Sized {
 pub struct EvalCtx<E: CustomEval> {
     pub unit: Option<Unit>,
     pub game: Option<Game>,
+    pub map_tile_flags: Option<*mut u32>,
     pub custom: E,
 }
 
@@ -217,6 +219,18 @@ impl<E: CustomEval> EvalCtx<E> {
                             let upgrade = self.eval_int_r(&x.args[1]);
                             game.upgrade_level(player, UpgradeId(upgrade as u16)).into()
                         }
+                        TileHeight => {
+                            let map_width = game.map_width_tiles();
+                            let pos =  unit.position();
+                            let x = pos.x >> 5;
+                            let y = pos.y >> 5;
+                            let index = (y as usize) * (map_width as usize) + (x as usize);
+                            if let Some(flags) = self.map_tile_flags {
+                                ((*flags.add(index) & 0x0600_0000) >> 0x19) as i32
+                            } else {
+                                0
+                            }
+                        }
                     }
                 }
             }
@@ -289,6 +303,25 @@ impl<E: CustomEval> EvalCtx<E> {
                             let tech = self.eval_int_r(&x.args[1]);
                             game.tech_researched(player, TechId(tech as u16))
                         }
+                        OnCreep | TerrainProtection | Unbuildable => {
+                            let mask = if x.ty == OnCreep {
+                                0x0040_0000
+                            } else if x.ty == TerrainProtection {
+                                0x0010_0000
+                            } else {
+                                0x0080_0000
+                            };
+                            let map_width = game.map_width_tiles();
+                            let pos =  unit.position();
+                            let x = pos.x >> 5;
+                            let y = pos.y >> 5;
+                            let index = (y as usize) * (map_width as usize) + (x as usize);
+                            if let Some(flags) = self.map_tile_flags {
+                                (*flags.add(index) & mask) != 0
+                            } else {
+                                false
+                            }
+                        }
                     }
                 }
             }
@@ -329,10 +362,16 @@ impl IntExpr {
         IntExpr::parse_part_custom(bytes, &mut DefaultParser)
     }
 
-    pub fn eval_with_unit(&self, unit: Unit, game: Game) -> i32 {
+    pub fn eval_with_unit(
+        &self,
+        unit: Unit,
+        game: Game,
+        map_tile_flags: *mut u32,
+    ) -> i32 {
         let mut ctx = EvalCtx {
             unit: Some(unit),
             game: Some(game),
+            map_tile_flags: Some(map_tile_flags),
             custom: DefaultEval,
         };
         ctx.eval_int(&self)
@@ -384,10 +423,16 @@ impl BoolExpr {
         BoolExpr::parse_part_custom(bytes, &mut DefaultParser)
     }
 
-    pub fn eval_with_unit(&self, unit: Unit, game: Game) -> bool {
+    pub fn eval_with_unit(
+        &self,
+        unit: Unit,
+        game: Game,
+        map_tile_flags: *mut u32,
+    ) -> bool {
         let mut ctx = EvalCtx {
             unit: Some(unit),
             game: Some(game),
+            map_tile_flags: Some(map_tile_flags),
             custom: DefaultEval,
         };
         ctx.eval_bool(&self)
@@ -442,6 +487,9 @@ fn bool_expr_required_context<C: CustomState>(expr: &parse_expr::BoolExpr<C>) ->
                 int_expr_required_context(&x.args[0]) | int_expr_required_context(&x.args[1]) |
                     RequiredContext::GAME
             }
+            OnCreep | TerrainProtection | Unbuildable => {
+                RequiredContext::UNIT | RequiredContext::GAME | RequiredContext::MAP_TILE_FLAGS
+            }
         },
         Custom(_) => RequiredContext::empty(),
     }
@@ -483,6 +531,9 @@ fn int_expr_required_context<C: CustomState>(expr: &parse_expr::IntExpr<C>) -> R
             Deaths | Upgrade | UnitCountCompleted | UnitCountAny => {
                 int_expr_required_context(&x.args[0]) | int_expr_required_context(&x.args[1]) |
                     RequiredContext::GAME
+            }
+            TileHeight => {
+                RequiredContext::UNIT | RequiredContext::GAME | RequiredContext::MAP_TILE_FLAGS
             }
         },
         Custom(_) => RequiredContext::empty(),
