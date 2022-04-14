@@ -701,10 +701,20 @@ fn parse_i32<C: CustomState>(input: &[u8]) -> Result<(i32, &[u8]), Error<C>> {
     };
     let end = input.iter().position(|&x| !x.is_ascii_alphanumeric()).unwrap_or(input.len());
     let text = unsafe { std::str::from_utf8_unchecked(&input[..end]) };
-    let val = i32::from_str_radix(text, base)
-        .map_err(|_| Error::Msg(input, "Invalid integer literal"))?;
+    let val = i32::from_str_radix(text, base).ok()
+        .or_else(|| {
+            if base == 16 {
+                // Allow casting overflowing u32 hex constants to i32
+                u32::from_str_radix(text, base).ok()
+                    .filter(|&x| !neg || x == 0x8000_0000)
+                    .map(|x| x as i32)
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| Error::Msg(input, "Invalid integer literal"))?;
     if neg {
-        Ok((0 - val, &input[end..]))
+        Ok((0i32.wrapping_sub(val), &input[end..]))
     } else {
         Ok((val, &input[end..]))
     }
@@ -1051,5 +1061,18 @@ mod test {
             parser.bool_expr(text)
         };
         assert_error_contains(parse(b"(1 == 2) && (asd > 90)"), "Invalid name");
+    }
+
+    #[test]
+    fn parse_hex_u32() {
+        let default = &mut DefaultParser;
+        let mut parser = Parser::new(default);
+        let mut parse = |text| {
+            parser.int_expr(text)
+        };
+        assert_eq!(empty_unwrap(parse(b"0xc0000000")), IntExpr::Integer(0xc000_0000u32 as i32));
+        assert_eq!(empty_unwrap(parse(b"0x80000000")), IntExpr::Integer(0x8000_0000u32 as i32));
+        assert_eq!(empty_unwrap(parse(b"-0x80000000")), IntExpr::Integer(0x8000_0000u32 as i32));
+        assert_error_contains(parse(b"-0x80000001"), "Invalid integer literal");
     }
 }
