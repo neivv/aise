@@ -10,6 +10,7 @@ use bw_dat::{Unit, UnitId};
 use crate::ai::GuardState;
 use crate::aiscript::{
     self, AiMode, AttackTimeoutState, MaxWorkers, PlayerMatch, Town, TownId, UnitMatch,
+    GlobalAiMode,
 };
 use crate::block_alloc::BlockAllocSet;
 use crate::bw;
@@ -669,6 +670,7 @@ pub struct Globals {
     pub reveal_states: Vec<RevealState>,
     pub under_attack_mode: [Option<bool>; 8],
     pub ai_mode: [AiMode; 8],
+    pub global_ai_mode: GlobalAiMode,
     pub region_safety_pos: RegionIdCycle,
     // For tracking deleted towns.
     // If the tracking is updated after step_objects, it shouldn't be possible for a town
@@ -701,6 +703,7 @@ impl Globals {
             unit_replace: UnitReplace::new(),
             under_attack_mode: [None; 8],
             ai_mode: [AiMode::default(); 8],
+            global_ai_mode: GlobalAiMode::default(),
             region_safety_pos: RegionIdCycle::new(),
             towns: Vec::new(),
             rng: Rng::new(),

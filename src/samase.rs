@@ -213,7 +213,7 @@ unsafe fn aiscript_opcode(
 #[no_mangle]
 pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
     bw_dat::set_is_scr(crate::is_scr());
-    let required_version = 30;
+    let required_version = 36;
     if (*api).version < required_version {
         fatal(&format!(
             "Newer samase is required. (Plugin API version {}, this plugin requires version {})",
@@ -363,6 +363,8 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
         }
         // Not critical hook
         ((*api).hook_ai_step_region)(crate::ai::step_region_hook);
+        ((*api).hook_ai_focus_disabled)(crate::ai::focus_disabled_hook);
+        ((*api).hook_ai_focus_air)(crate::ai::focus_air_hook);
     }
     let mut dat_len = 0usize;
     let units_dat = ((*api).extended_dat)(0).expect("units.dat")(&mut dat_len);

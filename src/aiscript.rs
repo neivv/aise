@@ -852,6 +852,23 @@ impl AiMode {
     }
 }
 
+#[derive(Serialize, Deserialize, Copy, Clone)]
+pub struct GlobalAiMode {
+    pub disable_spell_focus: bool,
+    pub disable_carrier_focus: bool,
+    pub disable_acid_spore_focus: bool,
+}
+
+impl GlobalAiMode {
+    pub const fn default() -> GlobalAiMode {
+        GlobalAiMode {
+            disable_spell_focus: false,
+            disable_carrier_focus: false,
+            disable_acid_spore_focus: false,
+        }
+    }
+}
+
 pub unsafe extern fn aicontrol(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let mode = read.read_u8();
@@ -860,7 +877,9 @@ pub unsafe extern fn aicontrol(script: *mut bw::AiScript) {
     }
     let player = (*script).player as usize;
     let mut globals = Globals::get("ais aicontrol");
+    let globals = &mut *globals;
     let out = &mut globals.ai_mode[player];
+    let global_out = &mut globals.global_ai_mode;
 
     match mode {
         0 => out.wait_for_resources = true,
@@ -871,6 +890,12 @@ pub unsafe extern fn aicontrol(script: *mut bw::AiScript) {
         5 => out.retaliation = false,
         6 => out.focus_disabled_units = true,
         7 => out.focus_disabled_units = false,
+        8 => global_out.disable_spell_focus = false,
+        9 => global_out.disable_spell_focus = true,
+        0xa => global_out.disable_acid_spore_focus = false,
+        0xb => global_out.disable_acid_spore_focus = true,
+        0xc => global_out.disable_carrier_focus = false,
+        0xd => global_out.disable_carrier_focus = true,
         _ => panic!("Invalid aicontrol {:x}", mode),
     };
 }

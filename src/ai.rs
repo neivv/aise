@@ -8,7 +8,7 @@ use bw_dat::{Game, order, unit, Race, RaceFlags, TechId, Unit, UnitId, UpgradeId
 
 use crate::aiscript::Town;
 use crate::bw;
-use crate::globals::RegionIdCycle;
+use crate::globals::{Globals, RegionIdCycle};
 use crate::list::{ListEntry, ListIter};
 use crate::unit::{active_units, UnitExt};
 use crate::unit_search::UnitSearch;
@@ -1342,6 +1342,29 @@ pub unsafe extern fn step_region_hook(
     } else {
         orig(player, region_id);
     }
+}
+
+pub unsafe extern fn focus_disabled_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_void)) {
+    let globals = Globals::get("focus_air");
+    if !globals.global_ai_mode.disable_spell_focus {
+        orig(u);
+    }
+}
+
+pub unsafe extern fn focus_air_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_void)) {
+    if let Some(unit) = Unit::from_ptr(u as *mut bw::Unit) {
+        let globals = Globals::get("focus_air");
+        if unit.acid_spore_count() >= 4 {
+            if globals.global_ai_mode.disable_acid_spore_focus {
+                return;
+            }
+        } else {
+            if globals.global_ai_mode.disable_carrier_focus {
+                return;
+            }
+        }
+    }
+    orig(u);
 }
 
 #[test]
