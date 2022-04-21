@@ -1,6 +1,6 @@
 [package]
 name = "aise"
-version = "2.36.3"
+version = "2.36.4"
 authors = ["Markus Heikkinen <ittevien@gmail.com>"]
 edition = "2018"
 
@@ -62,11 +62,11 @@ rev = "e8e847864c2938735040ca3c68ef1cf9e03b692f"
 
 [target.'cfg(target_arch = "x86")'.dependencies.samase_shim]
 git = "https://github.com/neivv/samase_plugin"
-rev = "1660aa7eb13daf1b903911ecf571c2b4a4c33fc8"
+rev = "4286c88cef7079aebb4046cf7194e1afe1ff22bd"
 
 [dependencies.samase_plugin]
 git = "https://github.com/neivv/samase_plugin"
-rev = "1660aa7eb13daf1b903911ecf571c2b4a4c33fc8"
+rev = "4286c88cef7079aebb4046cf7194e1afe1ff22bd"
 
 [features]
 opengl = ["cgmath", "euclid", "font-kit", "glium", "gl"]

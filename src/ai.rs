@@ -1345,8 +1345,11 @@ pub unsafe extern fn step_region_hook(
 }
 
 pub unsafe extern fn focus_disabled_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_void)) {
-    let globals = Globals::get("focus_air");
-    if !globals.global_ai_mode.disable_spell_focus {
+    let skip = {
+        let globals = Globals::get("focus_air");
+        globals.global_ai_mode.disable_spell_focus
+    };
+    if !skip {
         orig(u);
     }
 }
