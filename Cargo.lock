@@ -10,7 +10,7 @@ checksum = "5d2e7343e7fc9de883d1b0341e0b13970f764c14101234857d2ddafa1cb1cac2"
 
 [[package]]
 name = "aise"
-version = "2.36.1"
+version = "2.36.2"
 dependencies = [
  "bincode",
  "bitflags",
@@ -828,7 +828,7 @@ checksum = "4c691c0e608126e00913e33f0ccf3727d5fc84573623b8d65b2df340b5201783"
 [[package]]
 name = "samase_plugin"
 version = "0.5.0"
-source = "git+https://github.com/neivv/samase_plugin?rev=d19a090253b5b419ba1573fbb4c1f6ef2125cd7f#d19a090253b5b419ba1573fbb4c1f6ef2125cd7f"
+source = "git+https://github.com/neivv/samase_plugin?rev=574a20e4abf0b4146257dd49504a3a490e85bd86#574a20e4abf0b4146257dd49504a3a490e85bd86"
 dependencies = [
  "byteorder",
  "flate2",
@@ -843,7 +843,7 @@ dependencies = [
 [[package]]
 name = "samase_shim"
 version = "0.5.0"
-source = "git+https://github.com/neivv/samase_plugin?rev=d19a090253b5b419ba1573fbb4c1f6ef2125cd7f#d19a090253b5b419ba1573fbb4c1f6ef2125cd7f"
+source = "git+https://github.com/neivv/samase_plugin?rev=574a20e4abf0b4146257dd49504a3a490e85bd86#574a20e4abf0b4146257dd49504a3a490e85bd86"
 dependencies = [
  "byteorder",
  "libc",
