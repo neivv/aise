@@ -875,6 +875,18 @@ impl WeaponId {
         self.get(0)
     }
 
+    pub fn error_msg(&self) -> u32 {
+        self.get(22)
+    }
+
+    pub fn flingy(self) -> FlingyId {
+        FlingyId(self.get(1) as u16)
+    }
+
+    pub fn flags(&self) -> u32 {
+        self.get(3)
+    }
+
     pub fn max_range(&self) -> u32 {
         self.get(5)
     }
@@ -887,8 +899,44 @@ impl WeaponId {
         self.get(7) as u8
     }
 
+    pub fn behaviour(&self) -> u8 {
+        self.get(8) as u8
+    }
+
+    pub fn death_time(&self) -> u32 {
+        self.get(9)
+    }
+
+    pub fn effect(&self) -> u8 {
+        self.get(10) as u8
+    }
+
+    pub fn inner_splash(&self) -> u32 {
+        self.get(11)
+    }
+
+    pub fn middle_splash(&self) -> u32 {
+        self.get(12)
+    }
+
+    pub fn outer_splash(&self) -> u32 {
+        self.get(13)
+    }
+
     pub fn attack_angle(&self) -> u8 {
         self.get(18) as u8
+    }
+
+    pub fn launch_spin(&self) -> u8 {
+        self.get(19) as u8
+    }
+
+    pub fn x_offset(&self) -> u8 {
+        self.get(20) as u8
+    }
+
+    pub fn y_offset(&self) -> u8 {
+        self.get(21) as u8
     }
 
     pub fn cooldown(&self) -> u32 {
