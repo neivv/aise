@@ -825,7 +825,7 @@ impl SpriteId {
     }
 
     pub fn selection_circle(self) -> u8 {
-        self.get(0x04) asu8
+        self.get(0x04) as u8
     }
 
     pub fn selection_y(self) -> i8 {
