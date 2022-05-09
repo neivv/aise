@@ -807,6 +807,32 @@ impl FlingyId {
     }
 }
 
+impl SpriteId {
+    pub fn get(&self, id: u32) -> u32 {
+        unsafe { crate::dat_read(&SPRITES_DAT, self.0 as u32, id) }
+    }
+
+    pub fn image(self) -> ImageId {
+        ImageId(self.get(0x00) as u16)
+    }
+
+    pub fn health_bar_width(self) -> u32 {
+        self.get(0x01)
+    }
+
+    pub fn start_as_visible(self) -> bool {
+        self.get(0x03) != 0
+    }
+
+    pub fn selection_circle(self) -> u8 {
+        self.get(0x04) asu8
+    }
+
+    pub fn selection_y(self) -> i8 {
+        self.get(0x05) as i8
+    }
+}
+
 #[derive(Eq, PartialEq, Copy, Clone)]
 #[repr(C)]
 pub struct Rect {
