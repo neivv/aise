@@ -249,7 +249,7 @@ pub struct ImageId(pub u16);
 pub struct ButtonSetId(pub u16);
 
 unsafe fn dat_read(dat: &'static [AtomicUsize; 2], id: u32, field: u32) -> u32 {
-    dat_read_opt(dat, id, field).unwrap_or_else(|| panic!("Missing field {:x}", field))
+    dat_read_opt(dat, id, field).unwrap_or(0)
 }
 
 unsafe fn dat_read_opt(dat: &'static [AtomicUsize; 2], id: u32, field: u32) -> Option<u32> {
@@ -258,12 +258,15 @@ unsafe fn dat_read_opt(dat: &'static [AtomicUsize; 2], id: u32, field: u32) -> O
     }
     let dat = dat[0].load(Ordering::Relaxed) as *const bw::DatTable;
     let dat = &*dat.add(field as usize);
-    assert!(dat.entries > id);
+    if dat.entries <= id {
+        return None;
+    }
+    let data = dat.data;
     Some(match dat.entry_size {
-        1 => *(dat.data as *const u8).offset(id as isize) as u32,
-        2 => *(dat.data as *const u16).offset(id as isize) as u32,
-        4 => *(dat.data as *const u32).offset(id as isize),
-        x => panic!("Invalid dat entry size: {}", x),
+        1 => *(data as *const u8).add(id as usize) as u32,
+        2 => *(data as *const u16).add(id as usize) as u32,
+        4 => *(data as *const u32).add(id as usize),
+        _ => return None,
     })
 }
 
@@ -760,6 +763,10 @@ impl UnitId {
         Some(self.get(51)).filter(|&x| x != 0)
     }
 
+    pub fn misc_flags(self) -> u32 {
+        self.get(53)
+    }
+
     pub fn fighter_id(self) -> Option<UnitId> {
         match self {
             unit::REAVER | unit::WARBRINGER => Some(unit::SCARAB),
@@ -777,6 +784,10 @@ impl UnitId {
 impl FlingyId {
     pub fn get(&self, id: u32) -> u32 {
         unsafe { crate::dat_read(&FLINGY_DAT, self.0 as u32, id) }
+    }
+
+    pub fn sprite(self) -> SpriteId {
+        SpriteId(self.get(0x00) as u16)
     }
 
     pub fn top_speed(self) -> u32 {

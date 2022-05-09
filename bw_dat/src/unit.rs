@@ -56,6 +56,18 @@ impl Unit {
         self.id()
     }
 
+    pub fn is_morphing_building(self) -> bool {
+        if !self.is_completed() {
+            if let Some(dest_id) = self.first_queued_unit() {
+                return match dest_id {
+                    LAIR | HIVE | GREATER_SPIRE | SUNKEN_COLONY | SPORE_COLONY => true,
+                    _ => false,
+                }
+            }
+        }
+        false
+    }
+
     pub fn position(self) -> bw::Point {
         unsafe { (**self).flingy.position }
     }
