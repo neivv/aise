@@ -10,7 +10,7 @@ checksum = "5d2e7343e7fc9de883d1b0341e0b13970f764c14101234857d2ddafa1cb1cac2"
 
 [[package]]
 name = "aise"
-version = "2.36.4"
+version = "2.36.5"
 dependencies = [
  "bincode",
  "bitflags",
@@ -29,6 +29,7 @@ dependencies = [
  "lazy_static",
  "libc",
  "log",
+ "once_cell",
  "parking_lot",
  "rand",
  "rand_xorshift",
@@ -607,9 +608,9 @@ dependencies = [
 
 [[package]]
 name = "once_cell"
-version = "1.7.2"
+version = "1.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af8b08b04175473088b46763e51ee54da5f9a164bc162f615b91bc179dbf15a3"
+checksum = "7709cef83f0c1f58f666e746a08b21e0085f7440fa6a29cc194d68aac97a4225"
 
 [[package]]
 name = "parking_lot"

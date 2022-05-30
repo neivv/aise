@@ -652,7 +652,7 @@ impl<'a> Iterator for RegionCycleIter<'a> {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct Globals {
+pub(crate) struct Globals {
     pub attack_timeouts: [AttackTimeoutState; 8],
     pub idle_orders: IdleOrders,
     pub kills_table: KillsTable,

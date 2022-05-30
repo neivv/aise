@@ -1,6 +1,7 @@
 use std::iter::FromIterator;
 
 use bw_dat::Unit;
+use once_cell::unsync::OnceCell;
 
 use crate::bw::{self, Point, Rect};
 use crate::unit;
@@ -8,6 +9,18 @@ use crate::unit;
 pub struct UnitSearch {
     values: Vec<(Unit, Rect)>,
     max_width: u16,
+}
+
+pub struct LazyUnitSearch(OnceCell<UnitSearch>);
+
+impl LazyUnitSearch {
+    pub fn new() -> LazyUnitSearch {
+        LazyUnitSearch(OnceCell::new())
+    }
+
+    pub fn get(&self) -> &UnitSearch {
+        self.0.get_or_init(|| unsafe { UnitSearch::from_bw() })
+    }
 }
 
 const DEFAULT_CAPACITY: usize = 2048;

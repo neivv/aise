@@ -2,21 +2,22 @@ use std::sync::Arc;
 
 use bumpalo::Bump;
 use bumpalo::collections::Vec as BumpVec;
-use fxhash::FxHashMap;
 use serde::{Deserialize, Serialize};
 
-use bw_dat::{self, order, Game, OrderId, Unit, UnitId, WeaponId};
+use bw_dat::{self, order, Game, OrderId, Unit, UnitId};
 
 use crate::aiscript::{PlayerMatch, Position, ReadModifierType, ScriptData, UnitMatch};
 use crate::bw;
 use crate::globals::Globals;
+use crate::in_combat::InCombatCache;
 use crate::rng::Rng;
 use crate::swap_retain::SwapRetain;
-use crate::unit::{self, HashableUnit, SerializableUnit, UnitExt};
-use crate::unit_search::UnitSearch;
+use crate::unit::{self, SerializableUnit, UnitExt};
+use crate::unit_search::LazyUnitSearch;
+use crate::StepUnitsCtx;
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct IdleOrders {
+pub(crate) struct IdleOrders {
     orders: Vec<(Arc<IdleOrder>, IdleOrderState)>,
     deathrattles: Vec<Arc<IdleOrder>>,
     ongoing: Vec<OngoingOrder>,
@@ -37,7 +38,7 @@ impl Clone for IdleOrders {
     }
 }
 
-struct StepFrameState<'b> {
+struct StepFrameState<'b, 'f> {
     bump: &'b Bump,
     /// Unit id -> buffer idx map.
     /// If nonzero, index (+1) to unit_buffers.
@@ -45,7 +46,8 @@ struct StepFrameState<'b> {
     unit_buffers_reserved: u16,
     /// Lists of units of specific unit id.
     unit_buffers: BumpVec<'b, &'b [Unit]>,
-    in_combat_cache: InCombatCache,
+    in_combat_cache: &'f mut InCombatCache,
+    unit_search: &'f LazyUnitSearch,
 }
 
 impl IdleOrders {
@@ -75,9 +77,8 @@ impl IdleOrders {
     pub unsafe fn step_frame(
         &mut self,
         rng: &mut Rng,
-        units: &UnitSearch,
+        ctx: &mut StepUnitsCtx<'_>,
         tile_flags: *mut u32,
-        game: Game,
     ) {
         for i in 0..8 {
             let ai = bw::player_ai(i);
@@ -86,6 +87,7 @@ impl IdleOrders {
                 (*ai).spell_cooldown = 250;
             }
         }
+        let game = ctx.game;
         let pathing = bw::pathing();
         let current_frame = game.frame_count();
         let deathrattles = &self.deathrattles;
@@ -93,7 +95,7 @@ impl IdleOrders {
         let returning_cloaked = &mut self.returning_cloaked;
         let bump = self.bump.get_or_insert_with(|| Bump::new());
         bump.reset();
-        let mut step_state = StepFrameState::new(bump);
+        let mut step_state = StepFrameState::new(bump, ctx);
         for &(ref decl, ref state) in self.orders.iter() {
             if state.next_frame <= current_frame {
                 step_state.prepare_order_check(decl);
@@ -132,13 +134,12 @@ impl IdleOrders {
                     for decl in deathrattles {
                         let mut ctx = decl.target_validation_context(
                             game,
-                            units,
                             &mut step_state,
                             Some(user),
                             pathing,
                             tile_flags,
                         );
-                        if decl.unit_valid(user, &[], CheckTargetingFlags::Yes, &ctx) {
+                        if decl.unit_valid(user, &[], CheckTargetingFlags::Yes, &mut ctx) {
                             let panic_target = ctx.find_target(user, &decl, &[]);
                             if let Some((target, distance)) = panic_target {
                                 if distance < decl.radius as u32 {
@@ -159,7 +160,7 @@ impl IdleOrders {
                     }
                     // Check every 32 frames if target is still valid, pick something
                     // else otherwise.
-                    if game.frame_count() & 0x1f == o.start_frame & 0x1f {
+                    if current_frame & 0x1f == o.start_frame & 0x1f {
                         let mut new_target = None;
                         if let Some(target) = o.target {
                             // This only checks the "common" flags and invincibility,
@@ -173,13 +174,12 @@ impl IdleOrders {
                                 CheckTargetingFlags::No,
                                 Some(user),
                                 game,
-                                units,
+                                step_state.unit_search,
                                 tile_flags,
                             );
                             if !flags_valid || target.is_invincible() {
                                 let mut ctx = o.decl.target_validation_context(
                                     game,
-                                    units,
                                     &mut step_state,
                                     Some(user),
                                     pathing,
@@ -240,7 +240,6 @@ impl IdleOrders {
                     &decl,
                     &ongoing,
                     game,
-                    units,
                     &mut step_state,
                     pathing,
                     tile_flags,
@@ -262,7 +261,7 @@ impl IdleOrders {
                     user.issue_order(decl.order, pos, order_target);
                     ongoing.push(OngoingOrder {
                         user: SerializableUnit(user),
-                        start_frame: game.frame_count(),
+                        start_frame: current_frame,
                         target: order_target.map(SerializableUnit),
                         decl: decl.clone(),
                         home,
@@ -736,7 +735,7 @@ impl IdleOrder {
         user: Unit,
         ongoing: &[OngoingOrder],
         check_targeting: CheckTargetingFlags,
-        ctx: &IdleOrderTargetContext<'_, '_>,
+        ctx: &mut IdleOrderTargetContext<'_, '_, '_>,
     ) -> bool {
         let energy_cost = self.order.tech().map(|x| x.energy_cost() << 8).unwrap_or(0);
         user.player() == self.player &&
@@ -750,26 +749,24 @@ impl IdleOrder {
                 check_targeting,
                 None,
                 ctx.game,
-                ctx.units,
+                ctx.step_state.unit_search,
                 ctx.tile_flags,
             ) &&
             !ongoing.iter().any(|x| x.user.0 == user)
     }
 
-    fn target_validation_context<'a, 'b>(
+    fn target_validation_context<'a, 'b, 'f>(
         &self,
         game: Game,
-        units: &'a UnitSearch,
-        step_state: &'a mut StepFrameState<'b>,
+        step_state: &'a mut StepFrameState<'b, 'f>,
         current_unit: Option<Unit>,
         pathing: *mut bw::Pathing,
         tile_flags: *mut u32,
-    ) -> IdleOrderTargetContext<'a, 'b> {
+    ) -> IdleOrderTargetContext<'a, 'b, 'f> {
         let mut result = IdleOrderTargetContext {
             acceptable_players: [false; 12],
             game,
             current_unit,
-            units,
             step_state,
             pathing,
             tile_flags,
@@ -798,7 +795,7 @@ impl IdleOrder {
         unit: Unit,
         ongoing: &[OngoingOrder],
         check_targeting: CheckTargetingFlags,
-        ctx: &mut IdleOrderTargetContext<'_, '_>,
+        ctx: &mut IdleOrderTargetContext<'_, '_, '_>,
     ) -> bool {
         let accept_unseen = self.target_flags.simple & 0x8 != 0;
         let accept_invisible = self.target_flags.simple & 0x10 != 0;
@@ -835,7 +832,7 @@ impl IdleOrder {
             check_targeting,
             ctx.current_unit,
             ctx.game,
-            ctx.units,
+            ctx.step_state.unit_search,
             ctx.tile_flags,
         );
         if !flags_ok {
@@ -922,12 +919,11 @@ unsafe fn get_region(pathing: *mut bw::Pathing, position: &bw::Point) -> *mut bw
     }
 }
 
-struct IdleOrderTargetContext<'a, 'b> {
+struct IdleOrderTargetContext<'a, 'b, 'f> {
     acceptable_players: [bool; 12],
     game: Game,
     pathing: *mut bw::Pathing,
-    units: &'a UnitSearch,
-    step_state: &'a mut StepFrameState<'b>,
+    step_state: &'a mut StepFrameState<'b, 'f>,
     current_unit: Option<Unit>,
     tile_flags: *mut u32,
 }
@@ -951,8 +947,7 @@ fn find_user_target_pair(
     decl: &IdleOrder,
     ongoing: &[OngoingOrder],
     game: Game,
-    units: &UnitSearch,
-    step_state: &mut StepFrameState<'_>,
+    step_state: &mut StepFrameState<'_, '_>,
     pathing: *mut bw::Pathing,
     tile_flags: *mut u32,
     state: &mut IdleOrderState,
@@ -961,7 +956,7 @@ fn find_user_target_pair(
         decl: &IdleOrder,
         search_pos: &mut SearchPos,
         ongoing: &[OngoingOrder],
-        ctx: &mut IdleOrderTargetContext<'_, '_>,
+        ctx: &mut IdleOrderTargetContext<'_, '_, '_>,
     ) -> Option<(Unit, Unit, u32)> {
         let unit = ctx.find_unit_for_decl_normal(decl, search_pos, ongoing)?;
         // Instead of a *perfect* solution of trying to find closest user-target pair,
@@ -988,7 +983,7 @@ fn find_user_target_pair(
     fn both_targeting_each_other(
         decl: &IdleOrder,
         ongoing: &[OngoingOrder],
-        ctx: &mut IdleOrderTargetContext<'_, '_>,
+        ctx: &mut IdleOrderTargetContext<'_, '_, '_>,
     ) -> Option<(Unit, Unit, u32)> {
         ctx.find_unit_target_pair_targeting_each_other(decl, ongoing)
     }
@@ -996,7 +991,7 @@ fn find_user_target_pair(
     fn target_targeting_user(
         decl: &IdleOrder,
         ongoing: &[OngoingOrder],
-        ctx: &mut IdleOrderTargetContext<'_, '_>,
+        ctx: &mut IdleOrderTargetContext<'_, '_, '_>,
     ) -> Option<(Unit, Unit, u32)> {
         ctx.find_unit_target_pair_with_target_targeting(decl, ongoing)
     }
@@ -1004,7 +999,7 @@ fn find_user_target_pair(
     fn user_targeting_target(
         decl: &IdleOrder,
         ongoing: &[OngoingOrder],
-        ctx: &mut IdleOrderTargetContext<'_, '_>,
+        ctx: &mut IdleOrderTargetContext<'_, '_, '_>,
     ) -> Option<(Unit, Unit, u32)> {
         ctx.find_unit_target_pair_with_user_targeting(decl, ongoing)
     }
@@ -1031,8 +1026,7 @@ fn find_user_target_pair(
         .contains(TargetingFlags::CURRENT_UNIT);
     let target_normal = decl.target_flags.targeting_filter != TargetingFlags::CURRENT_UNIT;
 
-    let mut ctx =
-        decl.target_validation_context(game, units, step_state, None, pathing, tile_flags);
+    let mut ctx = decl.target_validation_context(game, step_state, None, pathing, tile_flags);
 
     if ctx.has_no_users_or_targets(decl) {
         return None;
@@ -1064,7 +1058,7 @@ impl IdleOrderFlags {
         check_targeting: CheckTargetingFlags,
         current_unit: Option<Unit>,
         game: Game,
-        units: &UnitSearch,
+        units: &LazyUnitSearch,
         tile_flags: *mut u32,
     ) -> bool {
         unsafe {
@@ -1191,7 +1185,7 @@ impl IdleOrderFlags {
             if let Some(ref s) = self.count {
                 let mut position = Position::from_point(unit.position().x, unit.position().y);
                 position.extend_area(s.range as i16);
-                let unit_count = units
+                let unit_count = units.get()
                     .search_iter(&position.area)
                     .filter(|u| s.players.matches(u.player()))
                     .count();
@@ -1206,111 +1200,16 @@ impl IdleOrderFlags {
     }
 }
 
-/// Since in_combat checks "is this unit being targeted by anyone", it requires going through
-/// all units in game, so cache and sort the targeting information to make multiple checks
-/// in a frame faster.
-struct InCombatCache {
-    inner: Option<InCombatCacheInited>,
-}
-
-struct InCombatCacheInited {
-    // target, targeter, sorted by target, filtered to only have targeting in_combat cares
-    // about.
-    targeting_units: Vec<(Unit, Unit)>,
-    results: FxHashMap<HashableUnit, bool>,
-}
-
-impl InCombatCache {
-    pub fn new() -> InCombatCache {
-        InCombatCache {
-            inner: None,
-        }
-    }
-
-    fn get_inner(&mut self, game: Game) -> &mut InCombatCacheInited {
-        self.inner.get_or_insert_with(|| {
-            // Also include hidden_units for bunkers
-            let mut targeting_units = unit::active_units()
-                .chain(unit::hidden_units())
-                .filter_map(|targeter| {
-                    targeter
-                        .target()
-                        .filter(|x| x.player() < 8 && targeter.player() < 8)
-                        .filter(|x| !game.allied(targeter.player(), x.player()))
-                        .map(|target| (target, targeter))
-                })
-                .collect::<Vec<_>>();
-            targeting_units.sort_unstable_by_key(|x| *(x.0) as usize);
-            InCombatCacheInited {
-                targeting_units,
-                results: FxHashMap::with_capacity_and_hasher(32, Default::default()),
-            }
-        })
-    }
-
-    pub fn is_in_combat(&mut self, unit: Unit, game: Game) -> bool {
-        // Check that either the unit has recently attacked, or an enemy is within attack
-        // range, targeting the unit.
-        fn weapon_to_target(attacker: Unit, target: Unit) -> Option<WeaponId> {
-            if target.is_air() {
-                attacker.id().air_weapon()
-            } else {
-                attacker.id().ground_weapon()
-            }
-        }
-
-        fn has_cooldown_active(unit: Unit) -> bool {
-            unsafe { (**unit).ground_cooldown > 0 || (**unit).air_cooldown > 0 }
-        }
-
-        fn is_unit_in_combat(unit: Unit, target: Unit) -> bool {
-            if !has_cooldown_active(unit) {
-                return false;
-            }
-            if let Some(weapon) = weapon_to_target(unit, target) {
-                let range = weapon.max_range();
-                let own_area = unit.collision_rect();
-                bw::rect_distance(&own_area, &target.collision_rect()) <= range
-            } else {
-                false
-            }
-        }
-
-        let target = unit
-            .target()
-            .filter(|x| !game.allied(unit.player(), x.player()));
-        if let Some(target) = target {
-            if is_unit_in_combat(unit, target) {
-                return true;
-            }
-        }
-        let inner = self.get_inner(game);
-        let entry = inner.results.entry(HashableUnit(unit));
-        let targeting_units = &inner.targeting_units;
-        *entry.or_insert_with(|| {
-            let first = crate::lower_bound_by_key(targeting_units, *unit, |x| *(x.0));
-            if let Some(units) = targeting_units.get(first..) {
-                let in_range = units
-                    .iter()
-                    .take_while(|x| x.0 == unit)
-                    .any(|&(_, enemy)| is_unit_in_combat(enemy, unit));
-                in_range
-            } else {
-                false
-            }
-        })
-    }
-}
-
-impl<'b> StepFrameState<'b> {
-    fn new(bump: &'b Bump) -> StepFrameState<'b> {
+impl<'b, 'f> StepFrameState<'b, 'f> {
+    fn new(bump: &'b Bump, ctx: &'f mut StepUnitsCtx<'_>) -> StepFrameState<'b, 'f> {
         let unit_id_to_buf_idx = bump.alloc_slice_fill_copy(UnitId::entry_amount() as usize, 0);
         StepFrameState {
             bump,
             unit_id_to_buf_idx,
             unit_buffers_reserved: 0,
             unit_buffers: BumpVec::new_in(bump),
-            in_combat_cache: InCombatCache::new(),
+            in_combat_cache: &mut ctx.in_combat_cache,
+            unit_search: &ctx.unit_search,
         }
     }
 
@@ -1399,7 +1298,7 @@ impl<'b> StepFrameState<'b> {
     }
 }
 
-impl<'a, 'b> IdleOrderTargetContext<'a, 'b> {
+impl<'a, 'b, 'f> IdleOrderTargetContext<'a, 'b, 'f> {
     fn find_unit_for_decl_normal(
         &mut self,
         decl: &IdleOrder,
@@ -1516,7 +1415,7 @@ impl<'a, 'b> IdleOrderTargetContext<'a, 'b> {
         if unit_match_has_groups(&decl.target_unit_id) {
             // Maybe could always just search area? not just when there are groups
             let area = bw::Rect::from_point_radius(user.position(), decl.radius as i16);
-            for target in self.units.search_iter(&area) {
+            for target in self.step_state.unit_search.get().search_iter(&area) {
                 let distance = bw::distance(user.position(), target.position());
                 if distance >= best_distance {
                     continue;
@@ -1585,7 +1484,7 @@ impl<'a, 'b> IdleOrderTargetContext<'a, 'b> {
         decl: &IdleOrder,
         mut filter: F,
     ) -> Option<Unit>
-    where F: FnMut(&mut IdleOrderTargetContext<'_, '_>, Unit) -> bool,
+    where F: FnMut(&mut IdleOrderTargetContext<'_, '_, '_>, Unit) -> bool,
     {
         let mut result = None;
         self.iter_units_in_match(search_pos, &decl.unit_id, |ctx, unit| {
@@ -1609,7 +1508,7 @@ impl<'a, 'b> IdleOrderTargetContext<'a, 'b> {
         decl: &IdleOrder,
         mut callback: F,
     )
-    where F: FnMut(&mut IdleOrderTargetContext<'_, '_>, Unit)
+    where F: FnMut(&mut IdleOrderTargetContext<'_, '_, '_>, Unit)
     {
         self.iter_units_in_match(search_pos, &decl.unit_id, |ctx, user| {
             callback(ctx, user);
@@ -1622,7 +1521,7 @@ impl<'a, 'b> IdleOrderTargetContext<'a, 'b> {
     /// for `decl` at all; a valid implementation can just pass all active units
     /// to callback.
     fn iter_targets_for<F>(&mut self, decl: &IdleOrder, mut callback: F)
-    where F: FnMut(&mut IdleOrderTargetContext<'_, '_>, Unit)
+    where F: FnMut(&mut IdleOrderTargetContext<'_, '_, '_>, Unit)
     {
         let search_pos = &mut SearchPos(0, 0);
         self.iter_units_in_match(search_pos, &decl.target_unit_id, |ctx, target| {
@@ -1637,7 +1536,7 @@ impl<'a, 'b> IdleOrderTargetContext<'a, 'b> {
         units: &UnitMatch,
         mut callback: F,
     )
-    where F: FnMut(&mut IdleOrderTargetContext<'_, '_>, Unit) -> Iter,
+    where F: FnMut(&mut IdleOrderTargetContext<'_, '_, '_>, Unit) -> Iter,
     {
         if unit_match_has_groups(&units) {
             // Just walk through all units.

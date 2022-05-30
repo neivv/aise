@@ -167,7 +167,7 @@ pub unsafe extern fn attack_timeout(script: *mut bw::AiScript) {
     globals.attack_timeouts[(*script).player as usize].value = Some(timeout);
 }
 
-pub unsafe fn attack_timeouts_frame_hook(globals: &mut Globals, game: Game) {
+pub(crate) unsafe fn attack_timeouts_frame_hook(globals: &mut Globals, game: Game) {
     let seconds = (**game).elapsed_seconds;
     for i in 0..8 {
         let player_ai = bw::player_ai(i as u32);
@@ -196,7 +196,7 @@ pub unsafe fn attack_timeouts_frame_hook(globals: &mut Globals, game: Game) {
     }
 }
 
-pub unsafe fn attack_timeouts_frame_hook_after(globals: &mut Globals) {
+pub(crate) unsafe fn attack_timeouts_frame_hook_after(globals: &mut Globals) {
     // Revert old value for teippi debug, only if it wasn't changed during frame step
     for i in 0..8 {
         if let Some((previous, new)) = globals.attack_timeouts[i].original_start_second.take() {
@@ -376,7 +376,7 @@ fn towns() -> Vec<Town> {
     result
 }
 
-pub fn update_towns(globals: &mut Globals) {
+pub(crate) fn update_towns(globals: &mut Globals) {
     let old = mem::replace(&mut globals.towns, towns());
     for old in old {
         if !globals.towns.iter().any(|&x| x == old) {
@@ -569,7 +569,7 @@ pub unsafe extern fn max_workers(script: *mut bw::AiScript) {
     }
 }
 
-pub fn max_workers_for(globals: &mut Globals, town: *mut bw::AiTown) -> Option<u8> {
+pub(crate) fn max_workers_for(globals: &mut Globals, town: *mut bw::AiTown) -> Option<u8> {
     globals
         .max_workers
         .iter()
@@ -818,7 +818,7 @@ pub unsafe fn bunker_fill_hook(
     }
 }
 
-pub unsafe fn under_attack_frame_hook(globals: &mut Globals) {
+pub(crate) unsafe fn under_attack_frame_hook(globals: &mut Globals) {
     for (player, mode) in globals.under_attack_mode.iter().cloned().enumerate() {
         match mode {
             Some(true) => {
@@ -1230,7 +1230,7 @@ pub unsafe extern fn resources_command(script: *mut bw::AiScript) {
     }
 }
 
-pub unsafe fn reveal_vision_hook(globals: &mut Globals, game: Game, tile_flags: *mut u32) {
+pub(crate) unsafe fn reveal_vision_hook(globals: &mut Globals, game: Game, tile_flags: *mut u32) {
     for rev in &mut globals.reveal_states {
         if rev.time != !0 {
             rev.time -= 1;
@@ -2710,7 +2710,7 @@ impl Script {
 
 const AISCRIPT_LIMIT: usize = 8192;
 
-pub fn claim_bw_allocated_scripts(globals: &mut Globals) {
+pub(crate) fn claim_bw_allocated_scripts(globals: &mut Globals) {
     unsafe {
         let first = bw::first_ai_script();
         let first_free = bw::first_free_ai_script();

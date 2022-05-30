@@ -8,15 +8,15 @@ use crate::bw;
 use crate::datreq::{check_dat_requirements, DatReq, ReadDatReqs};
 use crate::list::ListIter;
 use crate::unit::{self, UnitExt};
-use crate::unit_search::UnitSearch;
+use crate::StepUnitsCtx;
 
-pub unsafe fn frame_hook(
-    game: Game,
+pub(crate) unsafe fn frame_hook(
     player_ai: PlayerAiArray,
     players: *mut bw::Player,
-    unit_search: &UnitSearch,
+    ctx: &mut StepUnitsCtx<'_>,
     ai_mode: &[AiMode; 8],
 ) {
+    let game = ctx.game;
     for player in 0..8 {
         let ai_mode = &ai_mode[player as usize];
         let ai = player_ai.player(player);
@@ -31,14 +31,14 @@ pub unsafe fn frame_hook(
             let cost = ai::request_cost(&request, level);
             if !remaining_money.has_enough_for_cost(&cost) {
                 if ai_mode.wait_for_resources {
-                    try_handle_single_resource_request(game, players, &ai, unit_search, ai_mode);
+                    try_handle_single_resource_request(players, &ai, ctx, ai_mode);
                     break;
                 }
             }
             let can = can_satisfy_request(game, players, &ai, player, &request, ai_mode).is_ok();
             let mut handled = false;
             if can {
-                handled = try_handle_request(game, players, &ai, unit_search, &request);
+                handled = try_handle_request(players, &ai, ctx, &request);
                 if !handled {
                     break;
                 } else {
@@ -52,32 +52,30 @@ pub unsafe fn frame_hook(
 }
 
 fn try_handle_request(
-    game: Game,
     players: *mut bw::Player,
     ai: &PlayerAi,
-    unit_search: &UnitSearch,
+    ctx: &mut StepUnitsCtx<'_>,
     request: &bw::AiSpendingRequest,
 ) -> bool {
     let player = ai.1;
     // Handle building morphs since preplaced colonies don't check for requests
     // (Since their order switches to idle because they don't have a town on frame 0)
     // Could handle other requests as well, but no need at the moment.
-    if handle_building_morph(game, players, &ai, &request, player) == Ok(()) {
+    if handle_building_morph(ctx.game, players, &ai, &request, player) == Ok(()) {
         return true;
     }
     // Handle military/guard training as well since train opcode is otherwise
     // bad at spreading work across buildings
-    if handle_training(game, players, &ai, unit_search, &request, player) == Ok(()) {
+    if handle_training(players, &ai, ctx, &request, player) == Ok(()) {
         return true;
     }
     false
 }
 
 unsafe fn try_handle_single_resource_request(
-    game: Game,
     players: *mut bw::Player,
     ai: &PlayerAi,
-    unit_search: &UnitSearch,
+    ctx: &mut StepUnitsCtx<'_>,
     ai_mode: &AiMode,
 ) {
     // If the first request cannot be satisfied, but there would be enough
@@ -93,6 +91,7 @@ unsafe fn try_handle_single_resource_request(
     let mut request_copy = ai.copy_requests();
     let mut any_handled = false;
     let player = ai.1;
+    let game = ctx.game;
     while let Some(request) = request_copy.first_request() {
         if remaining_money.minerals == 0 && remaining_money.gas == 0 {
             break;
@@ -107,7 +106,7 @@ unsafe fn try_handle_single_resource_request(
         if remaining_money.has_enough_for_cost(&cost) {
             let can = can_satisfy_request(game, players, &ai, player, &request, ai_mode).is_ok();
             if can {
-                let handled = try_handle_request(game, players, ai, unit_search, &request);
+                let handled = try_handle_request(players, ai, ctx, &request);
                 if handled {
                     any_handled = true;
                     ai.remove_resource_need(&cost, true);
@@ -168,16 +167,16 @@ fn handle_building_morph(
 }
 
 fn handle_training(
-    game: Game,
     players: *mut bw::Player,
     ai: &PlayerAi,
-    unit_search: &UnitSearch,
+    ctx: &mut StepUnitsCtx<'_>,
     request: &bw::AiSpendingRequest,
     player: u8,
 ) -> Result<(), ()> {
     if request.ty == 1 || request.ty == 2 {
         let unit_id = UnitId(request.id);
         let cost = ai::unit_cost(unit_id);
+        let game = ctx.game;
         if ai.has_resources(game, players, &cost) && game.unit_available(player, unit_id) {
             let reqs = match bw::unit_dat_requirements(unit_id) {
                 Some(s) => s,
@@ -188,9 +187,28 @@ fn handle_training(
             let unit = unit::active_units()
                 .filter(|&x| x.player() == player && x.first_queued_unit().is_none())
                 .filter(|&x| unsafe { !(**x).ai.is_null() })
+                .filter(|&unit| valid_unit_ids.iter().any(|&y| unit.matches_id(y)))
+                .filter(|&unit| {
+                    // Don't pick military that are busy for morphs
+                    if unit.is_landed_building() {
+                        return true;
+                    }
+                    // 0x3000 is uninterruptable order / nobrkcodestart flags
+                    // Reduces chances of money being spent without the unit
+                    // morph actually occuring
+                    // Unit morph order should probably be unconditionally marked
+                    // as not interruptable; it is more of an bw bug.
+                    if unit.flags() & 0x3000 != 0 {
+                        return false;
+                    }
+                    // Also units that are in combat probably should not be made morph.
+                    if ctx.in_combat_cache.is_in_combat(unit, game) {
+                        return false;
+                    }
+                    true
+                })
                 .find(|&unit| {
-                    valid_unit_ids.iter().any(|&y| unit.matches_id(y)) &&
-                        unsafe { check_dat_requirements(game, reqs, unit, 0) }
+                    unsafe { check_dat_requirements(game, reqs, unit, 0) }
                 });
             if let Some(unit) = unit {
                 if unit.id() == bw_dat::unit::HIGH_TEMPLAR ||
@@ -213,7 +231,7 @@ fn handle_training(
                 match unit.id() {
                     bw_dat::unit::MUTALISK | bw_dat::unit::HYDRALISK => {
                         unsafe {
-                            ai::remove_unit_ai(game, unit_search, unit, false);
+                            ai::remove_unit_ai(game, ctx.unit_search.get(), unit, false);
                             if request.ty == 2 {
                                 let ai = request.val as *mut bw::GuardAi;
                                 assert!(!ai.is_null());

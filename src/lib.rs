@@ -25,6 +25,7 @@ mod bw;
 mod datreq;
 mod globals;
 mod idle_orders;
+mod in_combat;
 mod list;
 mod order;
 mod recurse_checked_mutex;
@@ -220,19 +221,22 @@ pub extern fn Initialize() {
     }
 }
 
+/// For code hooking at the point ~first step_order or step_units
+struct StepUnitsCtx<'a> {
+    pub game: bw_dat::Game,
+    pub in_combat_cache: &'a mut in_combat::InCombatCache,
+    pub unit_search: &'a unit_search::LazyUnitSearch,
+}
+
 unsafe extern fn frame_hook() {
     let search = unit_search::UnitSearch::from_bw();
+    let game = bw::game();
     let mut globals = Globals::get("frame hook");
     let globals = &mut *globals;
-    let game = bw::game();
-    let tile_flags = bw::tile_flags();
     let player_ai = ai::PlayerAiArray::get();
     aiscript::claim_bw_allocated_scripts(globals);
     ai::update_region_safety(&mut globals.region_safety_pos, game, &search);
     aiscript::attack_timeouts_frame_hook(globals, game);
-    globals
-        .idle_orders
-        .step_frame(&mut globals.rng, &search, tile_flags, game);
     aiscript::under_attack_frame_hook(globals);
     ai::update_guard_needs(game, player_ai, &mut globals.guards);
     ai::continue_incomplete_buildings();
@@ -312,13 +316,26 @@ static FIRST_STEP_ORDER_OF_FRAME: AtomicBool = AtomicBool::new(false);
 unsafe extern fn step_order_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_void)) {
     if FIRST_STEP_ORDER_OF_FRAME.load(Ordering::Relaxed) {
         FIRST_STEP_ORDER_OF_FRAME.store(false, Ordering::Relaxed);
-        let globals = Globals::get("step order hook (start)");
+        let mut globals = Globals::get("step order hook (start)");
+        let globals = &mut *globals;
         let game = bw::game();
         let players = bw::players();
-        // TODO Init lazily
-        let unit_search = unit_search::UnitSearch::from_bw();
+        let mut unit_search = unit_search::LazyUnitSearch::new();
+        let mut in_combat_cache = in_combat::InCombatCache::new();
         let player_ai = ai::PlayerAiArray::get();
-        ai_spending::frame_hook(game, player_ai, players, &unit_search, &globals.ai_mode);
+        let tile_flags = bw::tile_flags();
+
+        // ai_spending must be here so that it gets between bw adding requests and
+        // units executing them; idle_orders is here to share the InCombatCache.
+        let ctx = &mut StepUnitsCtx {
+            game,
+            in_combat_cache: &mut in_combat_cache,
+            unit_search: &mut unit_search,
+        };
+        globals
+            .idle_orders
+            .step_frame(&mut globals.rng, ctx, tile_flags);
+        ai_spending::frame_hook(player_ai, players, ctx, &globals.ai_mode);
     }
 
     let unit = Unit::from_ptr(u as *mut bw::Unit).unwrap();
