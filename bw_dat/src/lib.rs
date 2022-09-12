@@ -775,9 +775,30 @@ impl UnitId {
         }
     }
 
-    pub fn icon(&self) -> u32 {
+    pub fn icon(self) -> u32 {
         self.get_opt(0x43)
             .unwrap_or_else(|| self.0 as u32)
+    }
+
+    pub fn death_timer(self) -> u32 {
+        self.get_opt(0x4a)
+            .unwrap_or_else(|| {
+                match self {
+                    unit::BROODLING => 1800,
+                    _ => 0,
+                }
+            })
+    }
+
+    pub fn alternate_rank_string(self) -> u32 {
+        self.get_opt(0x4b)
+            .unwrap_or_else(|| {
+                match self {
+                    unit::GANTRITHOR => 0x23c,
+                    unit::NORAD_II | unit::HYPERION => 0x23b,
+                    _ => 0,
+                }
+            })
     }
 }
 
