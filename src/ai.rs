@@ -676,7 +676,7 @@ impl GuardState {
 
     fn priority(&mut self, array: *mut bw::GuardAi, ai: *mut bw::GuardAi) -> u8 {
         let guard = self.guard(array, ai);
-        if guard.deaths == 0 || guard.priority == 0 {
+        if guard.priority == 0 {
             60
         } else {
             guard.priority
