@@ -234,6 +234,7 @@ unsafe extern fn frame_hook() {
     let mut globals = Globals::get("frame hook");
     let globals = &mut *globals;
     let player_ai = ai::PlayerAiArray::get();
+    let players = bw::players();
     aiscript::claim_bw_allocated_scripts(globals);
     ai::update_region_safety(&mut globals.region_safety_pos, game, &search);
     aiscript::attack_timeouts_frame_hook(globals, game);
@@ -242,7 +243,7 @@ unsafe extern fn frame_hook() {
     ai::continue_incomplete_buildings();
     #[cfg(target_pointer_width = "32")]
     aiscript::lift_land_hook(&mut globals.lift_lands, &search, game);
-    aiscript::queues_frame_hook(&mut globals.queues, &search, game);
+    aiscript::queues_frame_hook(&mut globals.queues, &search, game, players);
 
     for unit in unit::active_units() {
         aiscript::bunker_fill_hook(&mut globals.bunker_states, unit, &search);

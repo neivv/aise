@@ -15,7 +15,7 @@ use serde::{self, Deserialize, Deserializer, Serialize, Serializer};
 
 use bw_dat::{Game, TechId, Unit, UnitId, UpgradeId};
 
-use crate::ai::{self, has_resources};
+use crate::ai::{self};
 use crate::block_alloc::BlockAllocSet;
 use crate::bw;
 use crate::feature_disabled;
@@ -603,7 +603,12 @@ unsafe fn subtract_cost(game: Game, id: UnitId, player: u8) {
     game.reduce_gas(player, cost.gas);
 }
 
-pub unsafe fn queues_frame_hook(queues: &mut Queues, unit_search: &UnitSearch, game: Game) {
+pub unsafe fn queues_frame_hook(
+    queues: &mut Queues,
+    unit_search: &UnitSearch,
+    game: Game,
+    players: *mut bw::Player,
+) {
     use bw_dat::order::{ARCHON_WARP, DARK_ARCHON_MELD, TRAIN, UNIT_MORPH};
     use bw_dat::unit::{ARCHON, DARK_ARCHON};
     queues.queue.swap_retain(|x| x.current_quantity > 0);
@@ -613,7 +618,8 @@ pub unsafe fn queues_frame_hook(queues: &mut Queues, unit_search: &UnitSearch, g
             .filter(|x| queue.can_train(*x))
             .collect::<Vec<_>>();
         for u in units {
-            if has_resources(game, u.player(), &ai::unit_cost(queue.unit_id)) {
+            let ai = ai::PlayerAi::get(u.player());
+            if ai.has_resources(game, players, &ai::unit_cost(queue.unit_id)) {
                 queue.current_quantity = queue.current_quantity.saturating_sub(1);
                 match u.id().is_building() {
                     true => {
