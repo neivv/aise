@@ -514,8 +514,7 @@ unsafe fn unload_target_fix(
             unit.player(), unit.target_pos(), area.center(),
         );
         unit.issue_order_ground(order::id::MOVE_UNLOAD, area.center());
-
-        break;
+        return;
     }
     trace!(
         "Wanted to redirect player {} transport from {:?}, but no regions larger than {}x{} \
