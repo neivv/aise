@@ -117,7 +117,7 @@ static SAMASE_BWSCRIPT_BIN: AtomicPtr<u8> = AtomicPtr::new(null_mut());
 fn init_script(out: &AtomicPtr<u8>, filename: &str) -> *mut u8 {
     let (data, _size) = samase::read_file(filename).unwrap();
     match out.compare_exchange(null_mut(), data, Ordering::Relaxed, Ordering::Relaxed) {
-        Ok(o) => o,
+        Ok(_) => data,
         Err(val) => {
             unsafe {
                 samase::free_memory(data);

@@ -510,15 +510,15 @@ unsafe fn unload_target_fix(
             continue;
         }
         trace!(
-            "Redirecting transport of player {}: {:?} -> {:?}",
-            unit.player(), unit.target_pos(), area.center(),
+            "Redirecting transport {} of player {}, {:?} -> {:?}",
+            unit.player(), unit_arr.to_index(unit), unit.target_pos(), area.center(),
         );
         unit.issue_order_ground(order::id::MOVE_UNLOAD, area.center());
         return;
     }
     trace!(
-        "Wanted to redirect player {} transport from {:?}, but no regions larger than {}x{} \
+        "Wanted to redirect player {} transport {} from {:?}, but no regions larger than {}x{} \
         were found",
-        unit.player(), unit.target_pos(), min_size, min_size,
+        unit.player(), unit_arr.to_index(unit), unit.target_pos(), min_size, min_size,
     );
 }
