@@ -50,9 +50,8 @@ pub fn clear_load_mapping() {}
 // invalidate the cache.
 // Arc for simplicity, but obviously getting the search from thread other than main is
 // pretty much always racy.
-lazy_static::lazy_static! {
-    static ref CACHED_UNIT_SEARCH: Mutex<Option<Arc<UnitSearch>>> = Mutex::new(None);
-}
+
+static CACHED_UNIT_SEARCH: Mutex<Option<Arc<UnitSearch>>> = parking_lot::const_mutex(None);
 static CACHED_UNIT_SEARCH_FRAME: AtomicUsize = AtomicUsize::new(0);
 
 pub fn invalidate_cached_unit_search() {

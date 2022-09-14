@@ -48,9 +48,7 @@ use crate::globals::Globals;
 use crate::unit::UnitExt;
 
 #[cfg(target_pointer_width = "32")]
-lazy_static::lazy_static! {
-    static ref PATCHER: Mutex<whack::Patcher> = Mutex::new(whack::Patcher::new());
-}
+static PATCHER: Mutex<whack::Patcher> = parking_lot::const_mutex(whack::Patcher::new());
 
 fn init() {
     if cfg!(debug_assertions) {
@@ -108,9 +106,8 @@ fn is_scr() -> bool {
 
 #[cfg(debug_assertions)]
 fn feature_disabled(name: &str) -> bool {
-    lazy_static::lazy_static! {
-        static ref DISABLED_FEATURES: Mutex<Option<Vec<String>>> = Mutex::new(None);
-    }
+    static DISABLED_FEATURES: Mutex<Option<Vec<String>>> = parking_lot::const_mutex(None);
+
     let mut disabled_features = DISABLED_FEATURES.lock();
     let disabled_features = disabled_features.get_or_insert_with(|| unsafe {
         let feats = [

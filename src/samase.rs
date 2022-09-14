@@ -199,6 +199,11 @@ pub fn read_file(name: &str) -> Option<(*mut u8, usize)> {
     }
 }
 
+static mut FREE_MEMORY: GlobalFunc<extern fn(*mut u8)> = GlobalFunc(None);
+pub unsafe fn free_memory(ptr: *mut u8) {
+    FREE_MEMORY.get()(ptr)
+}
+
 static mut UNIT_ARRAY_LEN: GlobalFunc<extern fn(*mut *mut bw::Unit, *mut usize)> = GlobalFunc(None);
 pub unsafe fn unit_array() -> (*mut bw::Unit, usize) {
     let mut size = 0usize;
@@ -348,6 +353,7 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
     }
     let read_file = ((*api).read_file)();
     READ_FILE.0 = Some(mem::transmute(read_file));
+    FREE_MEMORY.0 = Some(mem::transmute((*api).free_memory));
     CHANGE_AI_REGION_STATE.init(
         ((*api).change_ai_region_state)().map(|x| mem::transmute(x)),
         "change_ai_region_state",

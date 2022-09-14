@@ -2,6 +2,7 @@
 #![allow(non_camel_case_types)]
 
 use std::ptr::{null, null_mut};
+use std::sync::atomic::{AtomicPtr, Ordering};
 
 use bw_dat::{OrderId, TechId, UnitId, UpgradeId, UnitArray};
 
@@ -110,19 +111,38 @@ pub fn change_ai_region_state(region: *mut AiRegion, state: u32) {
     samase::change_ai_region_state(region, state);
 }
 
-lazy_static::lazy_static! {
-    static ref SAMASE_AISCRIPT_BIN: usize =
-        samase::read_file("scripts\\aiscript.bin").unwrap().0 as usize;
-    static ref SAMASE_BWSCRIPT_BIN: usize =
-        samase::read_file("scripts\\bwscript.bin").unwrap().0 as usize;
+static SAMASE_AISCRIPT_BIN: AtomicPtr<u8> = AtomicPtr::new(null_mut());
+static SAMASE_BWSCRIPT_BIN: AtomicPtr<u8> = AtomicPtr::new(null_mut());
+
+fn init_script(out: &AtomicPtr<u8>, filename: &str) -> *mut u8 {
+    let (data, _size) = samase::read_file(filename).unwrap();
+    match out.compare_exchange(null_mut(), data, Ordering::Relaxed, Ordering::Relaxed) {
+        Ok(o) => o,
+        Err(val) => {
+            unsafe {
+                samase::free_memory(data);
+            }
+            val
+        }
+    }
 }
 
 pub fn aiscript_bin() -> *mut u8 {
-    *SAMASE_AISCRIPT_BIN as *mut u8
+    let bin = SAMASE_AISCRIPT_BIN.load(Ordering::Relaxed);
+    if bin.is_null() {
+        init_script(&SAMASE_AISCRIPT_BIN, "scripts\\aiscript.bin")
+    } else {
+        bin
+    }
 }
 
 pub fn bwscript_bin() -> *mut u8 {
-    *SAMASE_BWSCRIPT_BIN as *mut u8
+    let bin = SAMASE_BWSCRIPT_BIN.load(Ordering::Relaxed);
+    if bin.is_null() {
+        init_script(&SAMASE_BWSCRIPT_BIN, "scripts\\bwscript.bin")
+    } else {
+        bin
+    }
 }
 
 pub fn unit_dat_requirements(unit: UnitId) -> Option<*const u16> {

@@ -28,7 +28,6 @@ chrono = "0.4"
 directories = "2.0"
 fern = "=0.5.8"
 fxhash = "0.2.1"
-lazy_static = "1.0"
 libc = "0.2"
 log = "0.4"
 once_cell = "1.12"
@@ -37,7 +36,6 @@ rand = "0.6"
 scopeguard = "1.0"
 serde = { version = "1.0.104", features = ["rc", "derive"] }
 smallvec = "1.0"
-thread_local = "1.0"
 
 cgmath = { version = "0.17", optional = true }
 euclid = { version = "0.20", optional = true }
@@ -59,7 +57,7 @@ features = ["serde"]
 
 [target.'cfg(target_arch = "x86")'.dependencies.whack]
 git = "https://github.com/neivv/whack/"
-rev = "e8e847864c2938735040ca3c68ef1cf9e03b692f"
+rev = "ccd95f5cfa37622bc3ec3d4b0974ab9b631b59b2"
 
 [target.'cfg(target_arch = "x86")'.dependencies.samase_shim]
 git = "https://github.com/neivv/samase_plugin"

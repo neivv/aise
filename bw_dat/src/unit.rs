@@ -448,7 +448,7 @@ impl Unit {
                                 (**self).unit_specific.carrier.out_hangar_count as u32
                             )
                     }
-                    _ => ((**self).unit_specific.carrier.in_hangar_count as u32)
+                    _ => (**self).unit_specific.carrier.in_hangar_count as u32
                 }
             }
         } else {
@@ -664,8 +664,7 @@ impl UnitArray {
     pub fn to_unique_id(&self, unit: Unit) -> u32 {
         unsafe {
             let long_id = self.length > 1700;
-            let index =
-                ((*unit as usize - self.start as usize) / mem::size_of::<bw::Unit>()) as u32;
+            let index = self.to_index(unit);
             if long_id {
                 assert!(index < (1 << 0xd));
                 (index + 1) | (((**unit).minor_unique_index as u32) << 0xd)
@@ -674,6 +673,10 @@ impl UnitArray {
                 (index + 1) | (((**unit).minor_unique_index as u32) << 0xb)
             }
         }
+    }
+
+    pub fn to_index(&self, unit: Unit) -> u32 {
+        ((*unit as usize - self.start as usize) / mem::size_of::<bw::Unit>()) as u32
     }
 }
 

@@ -19,7 +19,7 @@ use crate::pathing::RegionNeighbourSearch;
 use crate::recurse_checked_mutex::{Mutex, MutexGuard};
 use crate::rng::Rng;
 use crate::swap_retain::SwapRetain;
-use crate::unit::{self, SerializableUnit};
+use crate::unit::{SerializableUnit};
 
 static GLOBALS: Mutex<Globals> = Mutex::new(Globals::new());
 static SAVE_STATE: Mutex<Option<SaveState>> = Mutex::new(None);
@@ -767,10 +767,8 @@ pub unsafe extern fn wrap_save(
 
 pub unsafe extern fn save(set_data: unsafe extern fn(*const u8, usize)) {
     let globals = Globals::get("save");
-    unit::init_save_mapping();
     aiscript::init_save_mapping();
     defer!(aiscript::clear_save_mapping());
-    defer!(unit::clear_save_mapping());
     match bincode::serialize(&*globals) {
         Ok(o) => {
             set_data(o.as_ptr(), o.len());
@@ -784,8 +782,6 @@ pub unsafe extern fn save(set_data: unsafe extern fn(*const u8, usize)) {
 
 pub unsafe extern fn load(ptr: *const u8, len: usize) -> u32 {
     aiscript::invalidate_cached_unit_search();
-    unit::init_load_mapping();
-    defer!(unit::clear_load_mapping());
     aiscript::init_load_mapping();
     defer!(aiscript::clear_load_mapping());
 

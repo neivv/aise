@@ -1,8 +1,6 @@
-use std::cell::RefCell;
 use std::hash::{Hash, Hasher};
 use std::ptr::null_mut;
 
-use fxhash::FxHashMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use bw_dat::Unit;
@@ -28,12 +26,14 @@ impl Hash for HashableUnit {
 impl Serialize for SerializableUnit {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::Error;
-        match save_mapping().borrow().get(&HashableUnit(self.0)) {
-            Some(id) => id.serialize(serializer),
-            None => Err(S::Error::custom(format!(
-                "Couldn't get id for unit {:?}",
-                self
-            ))),
+        let unit_array = bw::unit_array();
+        let index = unit_array.to_index(self.0);
+        if index as usize >= unit_array.len() {
+            Err(S::Error::custom(format!("Couldn't get id for unit {:?}", self)))
+        } else {
+            // Not doing index + 1 since these are not-Option units
+            // Would have to specialize Option<Unit> ?? idk
+            index.serialize(serializer)
         }
     }
 }
@@ -41,13 +41,16 @@ impl Serialize for SerializableUnit {
 impl<'de> Deserialize<'de> for SerializableUnit {
     fn deserialize<S: Deserializer<'de>>(deserializer: S) -> Result<Self, S::Error> {
         use serde::de::Error;
-        let id = u32::deserialize(deserializer)?;
-        match load_mapping().borrow().get(&id) {
-            Some(&unit) => Ok(SerializableUnit(unit)),
-            None => Err(S::Error::custom(format!(
-                "Couldn't get unit for id {:?}",
-                id
-            ))),
+        let index = u32::deserialize(deserializer)?;
+        let unit_array = bw::unit_array();
+        if index as usize >= unit_array.len() {
+            Err(S::Error::custom(format!("Couldn't get unit for id {:?}", index)))
+        } else {
+            unsafe {
+                let unit = unit_array.ptr().add(index as usize);
+                let unit = Unit::from_ptr(unit).unwrap();
+                Ok(SerializableUnit(unit))
+            }
         }
     }
 }
@@ -57,85 +60,6 @@ impl std::ops::Deref for SerializableUnit {
     fn deref(&self) -> &Self::Target {
         &self.0
     }
-}
-
-pub struct SaveIdMapping {
-    next: Option<Unit>,
-    list: SaveIdState,
-    id: u32,
-    in_subunit: bool,
-}
-
-enum SaveIdState {
-    ActiveUnits,
-    HiddenUnits,
-}
-
-fn save_id_mapping() -> SaveIdMapping {
-    SaveIdMapping {
-        next: unsafe { Unit::from_ptr(bw::first_active_unit()) },
-        list: SaveIdState::ActiveUnits,
-        id: 0,
-        in_subunit: false,
-    }
-}
-
-impl Iterator for SaveIdMapping {
-    type Item = (Unit, u32);
-    fn next(&mut self) -> Option<Self::Item> {
-        unsafe {
-            while self.next.is_none() {
-                match self.list {
-                    SaveIdState::ActiveUnits => {
-                        self.next = Unit::from_ptr(bw::first_hidden_unit());
-                        self.list = SaveIdState::HiddenUnits;
-                    }
-                    SaveIdState::HiddenUnits => return None,
-                }
-            }
-            self.id += 1;
-            let result = (self.next.unwrap(), self.id);
-            let unit = *self.next.unwrap();
-            if (*unit).subunit != null_mut() && !self.in_subunit {
-                self.next = Unit::from_ptr((*unit).subunit);
-                self.in_subunit = true;
-            } else {
-                if self.in_subunit {
-                    self.in_subunit = false;
-                    let parent = (*unit).subunit;
-                    self.next = Unit::from_ptr((*parent).flingy.next as *mut bw::Unit);
-                } else {
-                    self.next = Unit::from_ptr((*unit).flingy.next as *mut bw::Unit);
-                }
-            }
-            Some(result)
-        }
-    }
-}
-
-ome2_thread_local! {
-    SAVE_ID_MAP: RefCell<FxHashMap<HashableUnit, u32>> =
-        save_mapping(RefCell::new(FxHashMap::default()));
-    LOAD_ID_MAP: RefCell<FxHashMap<u32, Unit>> =
-        load_mapping(RefCell::new(FxHashMap::default()));
-}
-
-pub fn init_save_mapping() {
-    *save_mapping().borrow_mut() = save_id_mapping()
-        .map(|(x, y)| (HashableUnit(x), y))
-        .collect();
-}
-
-pub fn clear_save_mapping() {
-    save_mapping().borrow_mut().clear();
-}
-
-pub fn init_load_mapping() {
-    *load_mapping().borrow_mut() = save_id_mapping().map(|(x, y)| (y, x)).collect();
-}
-
-pub fn clear_load_mapping() {
-    load_mapping().borrow_mut().clear();
 }
 
 pub trait UnitExt {
