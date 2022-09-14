@@ -15,6 +15,7 @@ use crate::aiscript::{
 use crate::block_alloc::BlockAllocSet;
 use crate::bw;
 use crate::idle_orders::IdleOrders;
+use crate::pathing::RegionNeighbourSearch;
 use crate::recurse_checked_mutex::{Mutex, MutexGuard};
 use crate::rng::Rng;
 use crate::swap_retain::SwapRetain;
@@ -681,6 +682,8 @@ pub(crate) struct Globals {
     #[serde(serialize_with = "aiscript::serialize_scripts")]
     #[serde(deserialize_with = "aiscript::deserialize_scripts")]
     pub ai_scripts: BlockAllocSet<aiscript::Script>,
+    #[serde(skip)]
+    pub region_search: RegionNeighbourSearch,
 }
 
 impl Globals {
@@ -708,6 +711,7 @@ impl Globals {
             towns: Vec::new(),
             rng: Rng::new(),
             ai_scripts: BlockAllocSet::new(),
+            region_search: RegionNeighbourSearch::new(),
         }
     }
 

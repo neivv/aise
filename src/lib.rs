@@ -28,6 +28,7 @@ mod idle_orders;
 mod in_combat;
 mod list;
 mod order;
+mod pathing;
 mod recurse_checked_mutex;
 mod rng;
 mod swap_retain;
@@ -41,7 +42,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use libc::c_void;
 use parking_lot::Mutex;
 
-use bw_dat::Unit;
+use bw_dat::{Unit, UnitArray, Pathing};
 
 use crate::globals::Globals;
 use crate::unit::UnitExt;
@@ -367,6 +368,14 @@ unsafe extern fn step_order_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_v
                 (**unit).ai = null_mut();
             }
         }
+        order::id::UNLOAD | order::id::MOVE_UNLOAD => {
+            if unit.has_ai() {
+                let mut globals = Globals::get("step order hook (unload)");
+                let pathing = Pathing::from_ptr(bw::pathing());
+                let unit_arr = bw::unit_array();
+                unload_target_fix(unit, &mut globals.region_search, pathing, &unit_arr);
+            }
+        }
         _ => (),
     }
     orig(u);
@@ -464,4 +473,56 @@ fn lower_bound_by_key<T, C: Ord, F: Fn(&T) -> C>(slice: &[T], val: C, key: F) ->
             false => Ordering::Greater,
         })
         .unwrap_err()
+}
+
+/// If the ai wants to unload at a really small region, search nearby regions
+/// for a larger one
+unsafe fn unload_target_fix(
+    unit: Unit,
+    regions: &mut pathing::RegionNeighbourSearch,
+    pathing: Pathing,
+    unit_arr: &UnitArray,
+) {
+    let region_id = match bw::get_region(unit.target_pos()) {
+        Some(s) => s,
+        None => return,
+    };
+    let region = match pathing.region(region_id) {
+        Some(s) => s,
+        None => return,
+    };
+    // Minimum size is going to be twice the size of largest unit in transport
+    let min_size = unit.loaded_units(unit_arr)
+        .map(|x| {
+            let rect = x.id().dimensions();
+            rect.width().max(rect.height()).saturating_mul(2)
+        })
+        .max()
+        .unwrap_or(0);
+    let area = region.area();
+    if area.width() >= min_size && area.height() >= min_size {
+        // No need to change target
+        return;
+    }
+    for (_id, region) in regions.neighbours(pathing, region_id, 4) {
+        if (**region).walkability == 0x1ffd {
+            continue;
+        }
+        let area = region.area();
+        if area.width() < min_size || area.height() < min_size {
+            continue;
+        }
+        trace!(
+            "Redirecting transport of player {}: {:?} -> {:?}",
+            unit.player(), unit.target_pos(), area.center(),
+        );
+        unit.issue_order_ground(order::id::MOVE_UNLOAD, area.center());
+
+        break;
+    }
+    trace!(
+        "Wanted to redirect player {} transport from {:?}, but no regions larger than {}x{} \
+        were found",
+        unit.player(), unit.target_pos(), min_size, min_size,
+    );
 }

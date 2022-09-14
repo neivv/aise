@@ -3,7 +3,7 @@
 
 use std::ptr::{null, null_mut};
 
-use bw_dat::{OrderId, TechId, UnitId, UpgradeId};
+use bw_dat::{OrderId, TechId, UnitId, UpgradeId, UnitArray};
 
 use crate::samase;
 
@@ -209,6 +209,13 @@ pub fn first_active_ai_town(player: u8) -> *mut AiTown {
 
 pub fn tile_flags() -> *mut u32 {
     samase::map_tile_flags()
+}
+
+pub fn unit_array() -> UnitArray {
+    unsafe {
+        let (ptr, len) = samase::unit_array();
+        UnitArray::new(ptr, len)
+    }
 }
 
 #[cfg(target_pointer_width = "32")]

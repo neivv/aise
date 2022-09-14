@@ -1,3 +1,5 @@
+use std::fmt;
+
 use libc::c_void;
 
 #[cfg(feature = "serde")]
@@ -212,7 +214,7 @@ pub struct Rect {
 
 #[repr(C)]
 #[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Eq, PartialEq)]
 pub struct Point {
     pub x: i16,
     pub y: i16,
@@ -220,7 +222,7 @@ pub struct Point {
 
 #[repr(C)]
 #[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Eq, PartialEq)]
 pub struct Point32 {
     pub x: i32,
     pub y: i32,
@@ -588,9 +590,11 @@ pub struct SplitRegion {
 
 #[repr(C)]
 pub struct Region {
-    pub unk: u16,
+    pub walkability: u16,
     pub group: u16,
-    pub _dc4: [u8; 0x4],
+    pub tile_count: u16,
+    pub ground_neighbours: u8,
+    pub all_neighbours: u8,
     pub temp_val: *mut c_void,
     pub neighbour_ids: *mut u16,
     pub center: [u32; 2],
@@ -839,6 +843,22 @@ impl Rect {
             y: self.top + (self.bottom - self.top) / 2,
         }
     }
+
+    pub fn width(&self) -> u16 {
+        if self.right < self.left {
+            0
+        } else {
+            (self.right as u16).wrapping_sub(self.left as u16)
+        }
+    }
+
+    pub fn height(&self) -> u16 {
+        if self.bottom < self.top {
+            0
+        } else {
+            (self.bottom as u16).wrapping_sub(self.top as u16)
+        }
+    }
 }
 
 impl Point {
@@ -867,6 +887,18 @@ impl Point {
             x,
             y,
         }
+    }
+}
+
+impl fmt::Debug for Point {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "({},{})", self.x, self.y)
+    }
+}
+
+impl fmt::Debug for Point32 {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "({},{})", self.x, self.y)
     }
 }
 

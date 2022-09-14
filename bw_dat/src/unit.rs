@@ -256,6 +256,10 @@ impl Unit {
         unsafe { (**self).flags & 0x04000000 != 0 }
     }
 
+    pub fn target_pos(self) -> bw::Point {
+        unsafe { (**self).order_target.pos }
+    }
+
     pub fn target(self) -> Option<Unit> {
         unsafe { Unit::from_ptr((**self).order_target.unit) }
     }
@@ -275,10 +279,10 @@ impl Unit {
         let collision_rect = self.id().dimensions();
         let position = self.position();
         bw::Rect {
-            left: (position.x - collision_rect.left).max(0),
-            right: position.x + collision_rect.right + 1,
-            top: (position.y - collision_rect.top).max(0),
-            bottom: position.y + collision_rect.bottom + 1,
+            left: (position.x as u16).saturating_sub(collision_rect.left) as i16,
+            right: position.x.saturating_add(collision_rect.right as i16).saturating_add(1),
+            top: (position.y as u16).saturating_sub(collision_rect.top) as i16,
+            bottom: position.y.saturating_add(collision_rect.bottom as i16).saturating_add(1),
         }
     }
 

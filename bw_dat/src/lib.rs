@@ -2,6 +2,7 @@ pub mod dialog;
 pub mod game;
 pub mod expr;
 pub mod image;
+mod pathing;
 pub mod unit;
 pub mod sprite;
 
@@ -10,6 +11,7 @@ mod parse_expr;
 
 pub use crate::game::Game;
 pub use crate::image::Image;
+pub use crate::pathing::{Pathing, Region};
 pub use crate::unit::{Unit, UnitArray};
 pub use crate::sprite::Sprite;
 
@@ -713,12 +715,12 @@ impl UnitId {
         self.get(48)
     }
 
-    pub fn dimensions(self) -> Rect {
+    pub fn dimensions(self) -> DimensionRect {
         unsafe {
             let dat = UNITS_DAT[0].load(Ordering::Relaxed) as *const DatTable;
             let dat = &*dat.add(38);
             assert!(dat.entries > u32::from(self.0));
-            *(dat.data as *const Rect).offset(self.0 as isize)
+            *(dat.data as *const DimensionRect).offset(self.0 as isize)
         }
     }
 
@@ -856,11 +858,23 @@ impl SpriteId {
 
 #[derive(Eq, PartialEq, Copy, Clone)]
 #[repr(C)]
-pub struct Rect {
-    pub left: i16,
-    pub top: i16,
-    pub right: i16,
-    pub bottom: i16,
+pub struct DimensionRect {
+    pub left: u16,
+    pub top: u16,
+    pub right: u16,
+    pub bottom: u16,
+}
+
+impl DimensionRect {
+    pub fn width(&self) -> u16 {
+        u16::try_from((self.left as u32) + (self.right as u32) + 1)
+            .unwrap_or(u16::MAX)
+    }
+
+    pub fn height(&self) -> u16 {
+        u16::try_from((self.top as u32) + (self.bottom as u32) + 1)
+            .unwrap_or(u16::MAX)
+    }
 }
 
 impl WeaponId {

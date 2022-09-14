@@ -199,6 +199,14 @@ pub fn read_file(name: &str) -> Option<(*mut u8, usize)> {
     }
 }
 
+static mut UNIT_ARRAY_LEN: GlobalFunc<extern fn(*mut *mut bw::Unit, *mut usize)> = GlobalFunc(None);
+pub unsafe fn unit_array() -> (*mut bw::Unit, usize) {
+    let mut size = 0usize;
+    let mut ptr = null_mut();
+    UNIT_ARRAY_LEN.get()(&mut ptr, &mut size);
+    (ptr, size)
+}
+
 unsafe fn aiscript_opcode(
     api: *const PluginApi,
     opcode: u32,
@@ -378,6 +386,7 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
     let orders_dat = ((*api).extended_dat)(7).expect("orders.dat")(&mut dat_len);
     bw_dat::init_orders(orders_dat as *const _, dat_len);
 
+    UNIT_ARRAY_LEN.0 = Some(mem::transmute(((*api).unit_array_len)()));
     PRINT_TEXT.0 = Some(mem::transmute(((*api).print_text)()));
     RNG_SEED.0 = Some(mem::transmute(((*api).rng_seed)()));
     let mut result = ((*api).extend_save)(
