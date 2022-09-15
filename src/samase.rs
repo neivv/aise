@@ -145,6 +145,13 @@ pub fn map_tile_flags() -> *mut u32 {
     unsafe { MAP_TILE_FLAGS.get()() }
 }
 
+static mut UNIT_BASE_STRENGTH: GlobalFunc<extern fn(*mut *mut u32)> = GlobalFunc(None);
+pub fn unit_base_strength() -> (*mut u32, *mut u32) {
+    let mut out = [null_mut(); 2];
+    unsafe { UNIT_BASE_STRENGTH.get()(out.as_mut_ptr()) }
+    (out[0], out[1])
+}
+
 static mut ISSUE_ORDER: GlobalFunc<
     unsafe extern fn(*mut bw::Unit, u32, u32, u32, *mut bw::Unit, u32),
 > = GlobalFunc(None);
@@ -226,7 +233,7 @@ unsafe fn aiscript_opcode(
 #[no_mangle]
 pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
     bw_dat::set_is_scr(crate::is_scr());
-    let required_version = 36;
+    let required_version = 37;
     if (*api).version < required_version {
         fatal(&format!(
             "Newer samase is required. (Plugin API version {}, this plugin requires version {})",
@@ -347,6 +354,7 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
         ((*api).map_tile_flags)().map(|x| mem::transmute(x)),
         "map_tile_flags",
     );
+    UNIT_BASE_STRENGTH.init(((*api).unit_base_strength)().map(|x| mem::transmute(x)), "strength");
     match ((*api).issue_order)() {
         None => ((*api).warn_unsupported_feature)(b"Ai script issue_order\0".as_ptr()),
         Some(s) => ISSUE_ORDER.0 = Some(mem::transmute(s)),

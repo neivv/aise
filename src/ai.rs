@@ -1,17 +1,22 @@
+use std::convert::TryFrom;
 use std::mem;
 use std::ptr::null_mut;
 
 use libc::c_void;
 use serde::{Deserialize, Serialize};
 
-use bw_dat::{Game, order, unit, Race, RaceFlags, TechId, Unit, UnitId, UpgradeId};
+use bw_dat::{
+    Game, order, unit, Pathing, Race, RaceFlags, Region, TechId, Unit, UnitArray, UnitId,
+    UpgradeId,
+};
 
 use crate::aiscript::Town;
 use crate::bw;
 use crate::globals::{Globals, RegionIdCycle};
 use crate::list::{ListEntry, ListIter};
-use crate::unit::{active_units, UnitExt};
-use crate::unit_search::UnitSearch;
+use crate::pathing;
+use crate::unit::{active_units, UnitExt, LazyUnitStrengths, UnitStrengths};
+use crate::unit_search::{LazyUnitSearch, UnitSearch};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct PlayerAi(pub *mut bw::PlayerAiData, pub u8);
@@ -950,6 +955,7 @@ pub unsafe fn update_region_safety(
 unsafe fn remove_from_ai_structs(
     game: Game,
     unit_search: &UnitSearch,
+    strength: &UnitStrengths,
     player_ai: &PlayerAi,
     unit: Unit,
     was_killed: bool,
@@ -957,6 +963,7 @@ unsafe fn remove_from_ai_structs(
     let players = bw::players();
     let pathing = bw::pathing();
     let region_count = (*pathing).region_count;
+    let unit_id = unit.id();
     for i in 0u8..8 {
         if (*players.add(i as usize)).player_type != 1 {
             continue;
@@ -979,12 +986,13 @@ unsafe fn remove_from_ai_structs(
             }
         }
         if !game.allied(i, unit.player()) {
-            if let Some(_region) = unit_ai_region(ai_regions, unit) {
-                // TODO
-                // (*region).needed_ground_strength =
-                //     (*region).needed_ground_strength.saturating_sub(ground_strength(unit.id()));
-                // (*region).needed_air_strength =
-                //     (*region).needed_air_strength.saturating_sub(air_strength(unit.id()));
+            if let Some(region) = unit_ai_region(ai_regions, unit) {
+                let ground = u16::try_from(strength.ground(unit_id)).unwrap_or(u16::MAX);
+                let air = u16::try_from(strength.air(unit_id)).unwrap_or(u16::MAX);
+                (*region).needed_ground_strength =
+                    (*region).needed_ground_strength.saturating_sub(ground);
+                (*region).needed_air_strength =
+                    (*region).needed_air_strength.saturating_sub(air);
             }
         }
     }
@@ -992,7 +1000,7 @@ unsafe fn remove_from_ai_structs(
         let ai_regions = bw::ai_regions(unit.player() as u32);
         let region = (*ai).region;
         if (*region).state == 8 {
-            player_ai.remove_from_attack_force(unit.id());
+            player_ai.remove_from_attack_force(unit_id);
         } else if was_killed {
             let is_attack_region = match (*region).state {
                 1 | 2 | 8 | 9 => true,
@@ -1283,11 +1291,17 @@ unsafe fn add_worker_ai(game: Game, unit: Unit, town: Town) {
     }
 }
 
-// TODO NOT FULLY COMPLETE, NEED STRENGTH AND RESAREAS
-pub fn remove_unit_ai(game: Game, unit_search: &UnitSearch, unit: Unit, was_killed: bool) {
+// TODO NOT FULLY COMPLETE, NEED RESAREAS
+pub fn remove_unit_ai(
+    game: Game,
+    unit_search: &UnitSearch,
+    strength: &UnitStrengths,
+    unit: Unit,
+    was_killed: bool,
+) {
     unsafe {
         let player_ai = PlayerAi::get(unit.player());
-        remove_from_ai_structs(game, unit_search, &player_ai, unit, was_killed);
+        remove_from_ai_structs(game, unit_search, strength, &player_ai, unit, was_killed);
         remove_worker_or_building_ai(game, &player_ai, unit, true);
         if let Some(ai) = unit.guard_ai() {
             (*ai).parent = null_mut();
@@ -1368,6 +1382,129 @@ pub unsafe extern fn focus_air_hook(u: *mut c_void, orig: unsafe extern fn(*mut 
         }
     }
     orig(u);
+}
+
+/// If the ai wants to unload at a really small region, search nearby regions
+/// for a larger one
+pub unsafe fn unload_target_fix(
+    unit: Unit,
+    game: Game,
+    player_ai: &PlayerAi,
+    regions: &mut pathing::RegionNeighbourSearch,
+    unit_search: &LazyUnitSearch,
+    strength: &LazyUnitStrengths,
+    pathing: Pathing,
+    unit_arr: &UnitArray,
+    ai_regions: *mut bw::AiRegion,
+) {
+    if !unit.has_loaded_units() {
+        return;
+    }
+    let region_id = match bw::get_region(unit.target_pos()) {
+        Some(s) => s,
+        None => return,
+    };
+    let region = match pathing.region(region_id) {
+        Some(s) => s,
+        None => return,
+    };
+    // Minimum size is going to be twice the size of largest unit in transport
+    let min_size = unit.loaded_units(unit_arr)
+        .map(|x| {
+            let rect = x.id().dimensions();
+            rect.width().max(rect.height()).saturating_mul(2)
+        })
+        .max()
+        .unwrap_or(0);
+    let area = region.area();
+    if area.width() >= min_size &&
+        area.height() >= min_size &&
+        !is_degenerate_region(pathing, region)
+    {
+        // No need to change target
+        return;
+    }
+    for (other_id, region) in regions.neighbours(pathing, region_id, 4) {
+        if (**region).walkability == 0x1ffd {
+            continue;
+        }
+        let area = region.area();
+        if area.width() < min_size ||
+            area.height() < min_size ||
+            is_degenerate_region(pathing, region)
+        {
+            continue;
+        }
+        trace!(
+            "Redirecting transport {} of player {}, {:?} -> {:?}",
+            unit_arr.to_index(unit), unit.player(), unit.target_pos(), area.center(),
+        );
+        unit.issue_order_ground(order::MOVE_UNLOAD, area.center());
+        // Move all ground units to this new region too
+        let ai_region = ai_regions.add(region_id as usize);
+        let new_region = ai_regions.add(other_id as usize);
+        (*ai_region).needed_ground_strength = 0;
+        // If this is attack region, move all units to a better one.
+        // And switch new region to be attack grouping region
+        let mut move_all = false;
+        let is_attack_region = matches!((*ai_region).state, 1 | 2 | 8 | 9);
+        if is_attack_region {
+            let mut unit_ai = (*ai_region).military.first;
+            while !unit_ai.is_null() {
+                let next = (*unit_ai).next;
+                if let Some(unit) = Unit::from_ptr((*unit_ai).parent) {
+                    if !unit.is_air() {
+                        move_all = true;
+                        break;
+                    }
+                }
+                unit_ai = next;
+            }
+        }
+
+        let mut unit_ai = (*ai_region).military.first;
+        while !unit_ai.is_null() {
+            let next = (*unit_ai).next;
+            if let Some(unit) = Unit::from_ptr((*unit_ai).parent) {
+                if move_all || !unit.is_air() {
+                    trace!(
+                        "Moving military {} (unit id {}) to new region too",
+                        unit_arr.to_index(unit), unit.id().0,
+                    );
+                    remove_unit_ai(game, unit_search.get(), strength.get(), unit, false);
+                    add_military_ai(unit, new_region, true);
+                    // TODO military ai step? since add_military_ai doesn't do that
+                }
+            }
+            unit_ai = next;
+        }
+        if is_attack_region {
+            bw::change_ai_region_state(new_region, (*ai_region).state as u32);
+            (*new_region).target_region_id = (*ai_region).target_region_id;
+            bw::change_ai_region_state(ai_region, 0);
+            if (*player_ai.0).attack_grouping_region == region_id.wrapping_add(1) {
+                (*player_ai.0).attack_grouping_region = other_id.wrapping_add(1);
+                trace!(
+                    "Changed attack grouping region {} -> {}",
+                    region_id, other_id,
+                );
+            }
+        }
+        return;
+    }
+    trace!(
+        "Wanted to redirect player {} transport {} from {:?}, but no regions larger than {}x{} \
+        were found",
+        unit.player(), unit_arr.to_index(unit), unit.target_pos(), min_size, min_size,
+    );
+}
+
+/// Returns true for regions that have their area center (Not the actual center) in other region
+/// So it is C or L shaped most likely.
+fn is_degenerate_region(pathing: Pathing, region: Region) -> bool {
+    let area = region.area();
+    let center = area.center();
+    pathing.region_for_point(&center) != Some(region)
 }
 
 #[test]

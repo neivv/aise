@@ -29,9 +29,36 @@ impl Pathing {
             }
         }
     }
+
+    pub fn region_id_for_point(self, point: &bw::Point) -> Option<u16> {
+        let x_tile = (point.x as usize) / 32;
+        let y_tile = (point.y as usize) / 32;
+        let index = y_tile.checked_mul(0x100)?.checked_add(x_tile)?;
+        unsafe {
+            let &value = (**self).map_tile_regions.get(index)?;
+            if value < 0x2000 {
+                Some(value)
+            } else {
+                let split_index = value as usize - 0x2000;
+                let minitile_x = (point.x & 31) as u32 / 8;
+                let minitile_y = (point.y & 31) as u32 / 8;
+                let index = minitile_x + minitile_y * 4;
+                let value = (**self).split_regions.get(split_index)?;
+                if value.minitile_flags & (1u16 << index) == 0 {
+                    Some(value.region_false)
+                } else {
+                    Some(value.region_true)
+                }
+            }
+        }
+    }
+
+    pub fn region_for_point(self, point: &bw::Point) -> Option<Region> {
+        self.region(self.region_id_for_point(point)?)
+    }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Eq, PartialEq)]
 pub struct Region(NonNull<bw::Region>);
 
 impl std::ops::Deref for Region {

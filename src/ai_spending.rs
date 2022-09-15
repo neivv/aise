@@ -231,7 +231,13 @@ fn handle_training(
                 match unit.id() {
                     bw_dat::unit::MUTALISK | bw_dat::unit::HYDRALISK => {
                         unsafe {
-                            ai::remove_unit_ai(game, ctx.unit_search.get(), unit, false);
+                            ai::remove_unit_ai(
+                                game,
+                                ctx.unit_search.get(),
+                                ctx.unit_strength.get(),
+                                unit,
+                                false,
+                            );
                             if request.ty == 2 {
                                 let ai = request.val as *mut bw::GuardAi;
                                 assert!(!ai.is_null());

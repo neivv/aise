@@ -34,6 +34,20 @@ macro_rules! ome2_thread_local {
 }
 
 #[macro_export]
+#[cfg(debug_assertions)]
+macro_rules! bw_print {
+    ($lit:expr $(,)*) => {{
+        crate::samase::print_text(concat!($lit, "\0").as_ptr());
+        trace!("Print '{}'", $lit);
+    }};
+
+    ($lit:expr, $($toks:tt)*) => {{
+        crate::macros::print_and_drop(format_args!($lit, $($toks)*));
+    }};
+}
+
+#[macro_export]
+#[cfg(not(debug_assertions))]
 macro_rules! bw_print {
     ($lit:expr $(,)*) => {{
         crate::samase::print_text(concat!($lit, "\0").as_ptr());
@@ -49,6 +63,8 @@ macro_rules! bw_print {
 pub fn print_and_drop(args: std::fmt::Arguments) {
     let mut text = String::new();
     let _ = std::fmt::write(&mut text, args);
+    #[cfg(debug_assertions)]
+    trace!("Print '{}'", text);
     text.push('\0');
     crate::samase::print_text(text.as_ptr());
 }

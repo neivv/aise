@@ -149,6 +149,15 @@ impl Unit {
         })
     }
 
+    pub fn has_loaded_units(self) -> bool {
+        unsafe {
+            // Technically loaded_units() could still return nothing
+            // if the unique ids stored here are invalid, but assuming
+            // that this won't be the case. It would be bug somewhere else too then.
+            (**self).loaded_units != [0; 8]
+        }
+    }
+
     pub fn fighter_parent(self) -> Option<Unit> {
         unsafe {
             if self.id() == SCARAB || self.id() == INTERCEPTOR {

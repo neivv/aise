@@ -1,6 +1,7 @@
 use std::hash::{Hash, Hasher};
 use std::ptr::null_mut;
 
+use once_cell::unsync::OnceCell;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use bw_dat::Unit;
@@ -230,5 +231,48 @@ impl Iterator for UnitListIter {
                 result
             }
         }
+    }
+}
+
+pub struct UnitStrengths {
+    air: *mut u32,
+    ground: *mut u32,
+    limit: u32,
+}
+
+impl UnitStrengths {
+    pub fn ground(&self, id: UnitId) -> u32 {
+        if id.0 as u32 >= self.limit {
+            0
+        } else {
+            unsafe { *self.ground.add(id.0 as usize) }
+        }
+    }
+
+    pub fn air(&self, id: UnitId) -> u32 {
+        if id.0 as u32 >= self.limit {
+            0
+        } else {
+            unsafe { *self.air.add(id.0 as usize) }
+        }
+    }
+}
+
+pub struct LazyUnitStrengths(OnceCell<UnitStrengths>);
+
+impl LazyUnitStrengths {
+    pub fn new() -> LazyUnitStrengths {
+        LazyUnitStrengths(OnceCell::new())
+    }
+
+    pub fn get(&self) -> &UnitStrengths {
+        self.0.get_or_init(|| {
+            let (air, ground) = crate::samase::unit_base_strength();
+            UnitStrengths {
+                air,
+                ground,
+                limit: bw_dat::UnitId::entry_amount(),
+            }
+        })
     }
 }
