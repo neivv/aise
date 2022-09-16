@@ -1400,7 +1400,16 @@ pub unsafe fn unload_target_fix(
     if !unit.has_loaded_units() {
         return;
     }
-    let region_id = match bw::get_region(unit.target_pos()) {
+    let target_pos = if unit.order() == order::UNLOAD {
+        unit.position()
+    } else {
+        if unit.order_state() == 0 {
+            unit.target().map(|x| x.position()).unwrap_or_else(|| unit.target_pos())
+        } else {
+            unit.target_pos()
+        }
+    };
+    let region_id = match bw::get_region(target_pos) {
         Some(s) => s,
         None => return,
     };
@@ -1437,7 +1446,7 @@ pub unsafe fn unload_target_fix(
         }
         trace!(
             "Redirecting transport {} of player {}, {:?} -> {:?}",
-            unit_arr.to_index(unit), unit.player(), unit.target_pos(), area.center(),
+            unit_arr.to_index(unit), unit.player(), target_pos, area.center(),
         );
         unit.issue_order_ground(order::MOVE_UNLOAD, area.center());
         // Move all ground units to this new region too
@@ -1495,7 +1504,7 @@ pub unsafe fn unload_target_fix(
     trace!(
         "Wanted to redirect player {} transport {} from {:?}, but no regions larger than {}x{} \
         were found",
-        unit.player(), unit_arr.to_index(unit), unit.target_pos(), min_size, min_size,
+        unit.player(), unit_arr.to_index(unit), target_pos, min_size, min_size,
     );
 }
 
