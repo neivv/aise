@@ -19,7 +19,7 @@ checksum = "f26201604c87b1e01bd3d98f8d5d9a8fcbb815e8cedb41ffccbeb4bf593a35fe"
 
 [[package]]
 name = "aise"
-version = "2.37.0"
+version = "2.37.1"
 dependencies = [
  "bincode",
  "bitflags",
