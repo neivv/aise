@@ -1258,15 +1258,17 @@ unsafe fn reveal(
     reveal: bool,
 ) {
     fn clamp_x(x: i16, game: Game) -> i16 {
-        x.clamp(0i16, game.map_width_tiles() as i16)
+        x.clamp(0i16, game.map_width_tiles() as i16 - 1)
     }
 
     fn clamp_y(y: i16, game: Game) -> i16 {
-        y.clamp(0i16, game.map_height_tiles() as i16)
+        y.clamp(0i16, game.map_height_tiles() as i16 - 1)
     }
 
     let tile_x = clamp_x(area.left / 32, game);
     let tile_y = clamp_y(area.top / 32, game);
+    // This maybe should be (area.right + 31) / 32 with exclusive range?
+    // Currently passing in 1x1 tile location reveals 2x2 area which is somewhat weird.
     let limit_x = clamp_x(area.right / 32, game);
     let limit_y = clamp_y(area.bottom / 32, game);
     let map_width = game.map_width_tiles();
