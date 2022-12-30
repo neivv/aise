@@ -418,6 +418,14 @@ impl Town {
         unsafe { ListIter((*self.0).workers) }
     }
 
+    pub fn has_workers(self) -> bool {
+        self.workers().next().is_some()
+    }
+
+    pub fn main_building(self) -> Option<Unit> {
+        unsafe { Unit::from_ptr((*self.0).main_building) }
+    }
+
     pub fn requests(self) -> impl Iterator<Item = bw::TownReq> {
         unsafe {
             (*self.0)

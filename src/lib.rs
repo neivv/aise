@@ -240,6 +240,7 @@ unsafe extern fn frame_hook() {
     aiscript::under_attack_frame_hook(globals);
     ai::update_guard_needs(game, player_ai, &mut globals.guards);
     ai::continue_incomplete_buildings();
+    ai::update_town_main_buildings();
     #[cfg(target_pointer_width = "32")]
     aiscript::lift_land_hook(&mut globals.lift_lands, &search, game);
     aiscript::queues_frame_hook(&mut globals.queues, &search, game, players);

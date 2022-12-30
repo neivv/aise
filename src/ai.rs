@@ -770,6 +770,38 @@ pub unsafe fn continue_incomplete_buildings() {
     }
 }
 
+/// Fixes towns that don't have a valid main building but do have
+/// a town hall in their building list.
+pub unsafe fn update_town_main_buildings() {
+    for i in 0..8 {
+        for town in ListIter(bw::first_active_ai_town(i)) {
+            let town = match Town::from_ptr(town) {
+                Some(s) => s,
+                None => continue,
+            };
+            let ok = match town.main_building() {
+                // Could be false in an edge case where ai infests a cc it owns
+                // that was the main building.
+                Some(s) => s.id().is_town_hall(),
+                None => false,
+            };
+            if ok {
+                continue;
+            }
+            if !town.has_workers() {
+                // Shouldn't be point in trying to pick new town halls if there are no workers
+                continue;
+            }
+            if let Some(unit) = town.buildings()
+                .filter_map(|x| Unit::from_ptr((*x).parent))
+                .find(|x| x.id().is_town_hall())
+            {
+                (*town.0).main_building = *unit;
+            }
+        }
+    }
+}
+
 unsafe fn is_building_safe(building: Unit, regions: *mut bw::AiRegion) -> bool {
     let region = match bw::get_region(building.position()) {
         Some(s) => regions.offset(s as isize),
