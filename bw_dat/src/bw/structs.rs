@@ -10,8 +10,6 @@ pub use self::scr::Dialog;
 #[cfg(any(feature = "scr-only", target_pointer_width = "64"))]
 pub use self::scr::Control;
 #[cfg(any(feature = "scr-only", target_pointer_width = "64"))]
-pub use self::scr::Sprite;
-#[cfg(any(feature = "scr-only", target_pointer_width = "64"))]
 pub use self::scr::ControlEvent;
 
 #[repr(C)]
@@ -160,25 +158,64 @@ pub struct Iscript {
     pub wait: u8,
 }
 
-#[cfg(all(not(feature = "scr-only"), target_pointer_width = "32"))]
 #[repr(C)]
 pub struct Sprite {
     pub prev: *mut Sprite,
     pub next: *mut Sprite,
-    pub(crate) sprite_id: u16,
-    pub(crate) player: u8,
-    pub(crate) selection_index: u8,
-    pub(crate) visibility_mask: u8,
-    pub(crate) elevation_level: u8,
-    pub(crate) flags: u8,
-    pub(crate) selection_flash_timer: u8,
-    pub(crate) index: u16,
-    pub(crate) width: u8,
-    pub(crate) height: u8,
-    pub(crate) position: Point,
-    pub(crate) main_image: *mut Image,
-    pub(crate) first_image: *mut Image,
-    pub(crate) last_image: *mut Image,
+    pub sprite_id: u16,
+    pub player: u8,
+    pub selection_index: u8,
+    pub visibility_mask: u8,
+    pub elevation_level: u8,
+    pub flags: u8,
+    pub selection_flash_timer: u8,
+    pub index: u16,
+    pub width: u8,
+    pub height: u8,
+    pub version_specific: SpriteVersions,
+}
+
+/// 1.16.1-only sprite if struct size is needed.
+/// Other than size the layout will match that of Sprite.
+#[repr(C)]
+pub struct OldSprite {
+    pub prev: *mut Sprite,
+    pub next: *mut Sprite,
+    pub sprite_id: u16,
+    pub player: u8,
+    pub selection_index: u8,
+    pub visibility_mask: u8,
+    pub elevation_level: u8,
+    pub flags: u8,
+    pub selection_flash_timer: u8,
+    pub index: u16,
+    pub width: u8,
+    pub height: u8,
+    pub rest: SpriteLegacy,
+}
+
+#[repr(C)]
+pub union SpriteVersions {
+    pub legacy: SpriteLegacy,
+    pub scr: SpriteScr,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct SpriteLegacy {
+    pub position: Point,
+    pub main_image: *mut Image,
+    pub first_image: *mut Image,
+    pub last_image: *mut Image,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct SpriteScr {
+    pub position: [usize; 2],
+    pub main_image: *mut Image,
+    pub first_image: *mut Image,
+    pub last_image: *mut Image,
 }
 
 #[repr(C)]
@@ -660,7 +697,7 @@ pub struct Surface {
 
 pub mod scr {
     use libc::c_void;
-    use super::{Image, Rect, Surface};
+    use super::{Rect, Surface};
 
     #[repr(C)]
     pub struct ListBox {
@@ -752,27 +789,6 @@ pub mod scr {
         pub blend_mode: u16,
         pub _unk40: [u8; 0x10],
         pub uniforms: [f32; 0x14],
-    }
-
-    #[repr(C)]
-    pub struct Sprite {
-        pub prev: *mut Sprite,
-        pub next: *mut Sprite,
-        pub(crate) sprite_id: u16,
-        pub(crate) player: u8,
-        pub(crate) selection_index: u8,
-        pub(crate) visibility_mask: u8,
-        pub(crate) elevation_level: u8,
-        pub(crate) flags: u8,
-        pub(crate) selection_flash_timer: u8,
-        pub(crate) index: u16,
-        pub(crate) width: u8,
-        pub(crate) height: u8,
-        pub(crate) pos_x: usize,
-        pub(crate) pos_y: usize,
-        pub(crate) main_image: *mut Image,
-        pub(crate) first_image: *mut Image,
-        pub(crate) last_image: *mut Image,
     }
 }
 
@@ -923,7 +939,7 @@ mod test {
         assert_eq!(mem::size_of::<Flingy>(), size(0x4c, 0x68));
         assert_eq!(mem::size_of::<Unit>(), size(0x150, 0x1e8));
         assert_eq!(mem::size_of::<Bullet>(), size(0x70, 0xa8));
-        assert_eq!(mem::size_of::<Sprite>(), size(0x24, 0x48));
+        assert_eq!(mem::size_of::<OldSprite>(), size(0x24, 0x48));
         assert_eq!(mem::size_of::<Image>(), size(0x40, 0x58));
         assert_eq!(mem::size_of::<Pathing>(), size(0x97a20, 0xa1670));
         assert_eq!(mem::size_of::<Region>(), size(0x40, 0x48));
@@ -933,12 +949,12 @@ mod test {
         assert_eq!(mem::size_of::<Control>(), size(0x36, 0x78));
         assert_eq!(mem::size_of::<Dialog>(), size(0x4a, 0xa0));
         assert_eq!(mem::size_of::<Path>(), 0x80);
+        assert_eq!(mem::size_of::<Sprite>(), size(0x28, 0x48));
         assert_eq!(mem::size_of::<scr::ControlEvent>(), size(0x1c, 0x28));
         assert_eq!(mem::size_of::<scr::Control>(), size(0x50, 0x78));
         assert_eq!(mem::size_of::<scr::Dialog>(), size(0x64, 0xa0));
         assert_eq!(mem::size_of::<scr::DrawCommand>(), 0xa0);
         assert_eq!(mem::size_of::<scr::DrawCommands>(), 0x160030);
         assert_eq!(mem::size_of::<scr::BwString>(), size(0x1c, 0x28));
-        assert_eq!(mem::size_of::<scr::Sprite>(), size(0x28, 0x48));
     }
 }

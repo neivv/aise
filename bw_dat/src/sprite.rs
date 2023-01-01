@@ -55,8 +55,8 @@ impl Sprite {
     pub fn main_image(self) -> Option<Image> {
         unsafe {
             let image = match crate::is_scr() {
-                true => (*(*self as *mut bw::scr::Sprite)).main_image,
-                false => (**self).main_image,
+                true => (**self).version_specific.scr.main_image,
+                false => (**self).version_specific.legacy.main_image,
             };
             Image::from_ptr(image)
         }
@@ -65,8 +65,8 @@ impl Sprite {
     pub fn images(self) -> impl Iterator<Item = Image> {
         unsafe {
             let image = match crate::is_scr() {
-                true => (*(*self as *mut bw::scr::Sprite)).first_image,
-                false => (**self).first_image,
+                true => (**self).version_specific.scr.first_image,
+                false => (**self).version_specific.legacy.first_image,
             };
             ImageIterator(image)
         }
