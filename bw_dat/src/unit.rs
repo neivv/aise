@@ -640,12 +640,23 @@ impl UnitArray {
         }
     }
 
+    #[inline]
     pub fn ptr(&self) -> *mut bw::Unit {
         self.start
     }
 
+    #[inline]
     pub fn len(&self) -> usize {
         self.length
+    }
+
+    #[inline]
+    pub fn get_by_index(&self, index: u32) -> Option<Unit> {
+        if self.len() < index as usize {
+            None
+        } else {
+            unsafe { Unit::from_ptr(self.ptr().add(index as usize)) }
+        }
     }
 
     pub fn get_by_unique_id(&self, id: u32) -> Option<Unit> {
@@ -684,6 +695,7 @@ impl UnitArray {
         }
     }
 
+    #[inline]
     pub fn to_index(&self, unit: Unit) -> u32 {
         ((*unit as usize - self.start as usize) / mem::size_of::<bw::Unit>()) as u32
     }

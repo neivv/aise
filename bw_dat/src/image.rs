@@ -64,4 +64,10 @@ impl Image {
             Sprite::from_ptr((**self).parent).expect("No image parent")
         }
     }
+
+    pub fn animation(self) -> u8 {
+        unsafe {
+            (**self).iscript.animation
+        }
+    }
 }
