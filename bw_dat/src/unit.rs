@@ -46,7 +46,7 @@ impl Unit {
     /// "is dying" only after the die order has been processed. Though often
     /// just checking for order::DIE can be enough too.
     pub fn is_dying(self) -> bool {
-        self.order() != order::DIE && self.order_state() == 1
+        self.order() == order::DIE && self.order_state() == 1
     }
 
     /// Morphing buildings show the name/graphics of incomplete building
