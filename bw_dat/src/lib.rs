@@ -640,6 +640,14 @@ impl UnitId {
         self.flags() & 0x2000 != 0
     }
 
+    pub fn overlay_size(self) -> u8 {
+        let size = ((self.flags() & 0x0600_0000) >> 0x19) as u8;
+        // Size 3 => size 1
+        // (Flag 0200_0000 takes priority over 0400_0000)
+        // Clears higher bit if lower bit is set, keeps lower bit unconditionally
+        size & ((!(size << 1)) | 1)
+    }
+
     pub fn is_mechanical(self) -> bool {
         self.flags() & 0x4000_0000 != 0
     }
