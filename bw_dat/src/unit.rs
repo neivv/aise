@@ -3,10 +3,8 @@ use std::ptr::{NonNull};
 
 use crate::bw;
 use crate::game::Game;
-use crate::tech;
-use crate::upgrade;
 use crate::sprite::Sprite;
-use crate::{UnitId, TechId, OrderId, UpgradeId, RaceFlags};
+use crate::{UnitId, TechId, OrderId, UpgradeId, RaceFlags, order, tech, upgrade};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct Unit(NonNull<bw::Unit>);
@@ -41,6 +39,14 @@ impl Unit {
 
     pub fn id(self) -> UnitId {
         UnitId(unsafe { (**self).unit_id })
+    }
+
+    /// If the unit is dying, that is, no longer in active units list.
+    /// Unit receives order::DIE as soon as its hp hits 0 ("is killed"), but
+    /// "is dying" only after the die order has been processed. Though often
+    /// just checking for order::DIE can be enough too.
+    pub fn is_dying(self) -> bool {
+        self.order() != order::DIE && self.order_state() == 1
     }
 
     /// Morphing buildings show the name/graphics of incomplete building
@@ -670,7 +676,13 @@ impl UnitArray {
             return None;
         }
         let unit = unsafe { Unit::from_ptr(self.start.add(index - 1))? };
-        if unsafe { (**unit).minor_unique_index == minor } {
+        // Checking for sprite prevents from accessing free units.
+        // A never-initialized free unit will have is_dying() == false
+        // (Order is DIE but order state is 0)
+        if unit.sprite().is_some() &&
+            !unit.is_dying() &&
+            unsafe { (**unit).minor_unique_index == minor }
+        {
             Some(unit)
         } else {
             None
