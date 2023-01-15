@@ -163,9 +163,13 @@ impl<E: CustomEval> EvalCtx<E> {
                         Fighters => unit.fighter_amount() as i32,
                         Mines => unit.mine_amount(game) as i32,
                         Hitpoints => unit.hitpoints(),
-                        HitpointsPercent => unit.hitpoints() * 100 / unit.id().hitpoints(),
+                        HitpointsPercent => unit.hitpoints().checked_mul(100)
+                            .and_then(|x| x.checked_div(unit.id().hitpoints()))
+                            .unwrap_or(100),
                         Shields => unit.shields(),
-                        ShieldsPercent => unit.shields() * 100 / unit.id().shields(),
+                        ShieldsPercent => unit.shields().checked_mul(100)
+                            .and_then(|x| x.checked_div(unit.id().shields()))
+                            .unwrap_or(100),
                         Energy => unit.energy() as i32,
                         Kills => unit.kills() as i32,
                         FrameCount => game.frame_count() as i32,
