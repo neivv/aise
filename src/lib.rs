@@ -54,14 +54,18 @@ fn init() {
     if cfg!(debug_assertions) {
         let _ = fern::Dispatch::new()
             .format(|out, message, record| {
-                out.finish(format_args!(
-                    "{}[{}:{}][{}] {}",
-                    chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
-                    record.file().unwrap_or(""),
+                let time = windows::get_local_time();
+                out.finish(format_args!("[{:04}-{:02}-{:02}:{:02}:{:02}:{:02}][{}:{}][{}] {}",
+                    time.wYear,
+                    time.wMonth,
+                    time.wDay,
+                    time.wHour,
+                    time.wMinute,
+                    time.wSecond,
+                    record.file().unwrap_or("???"),
                     record.line().unwrap_or(0),
                     record.level(),
-                    message
-                ))
+                    message))
             })
             .level(log::LevelFilter::Trace)
             .chain(fern::log_file("aise.log").unwrap())
