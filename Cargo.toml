@@ -1,6 +1,6 @@
 [package]
 name = "aise"
-version = "2.38.0"
+version = "2.38.1"
 authors = ["Markus Heikkinen <ittevien@gmail.com>"]
 edition = "2018"
 
@@ -45,7 +45,7 @@ gl = { version = "0.14", optional = true }
 
 [dependencies.winapi]
 version = "0.3.3"
-features = ["heapapi", "libloaderapi", "processthreadsapi", "winuser", "wingdi"]
+features = ["heapapi", "libloaderapi", "processthreadsapi", "sysinfoapi", "winuser", "wingdi"]
 
 [dependencies.bw_dat]
 path = "bw_dat"

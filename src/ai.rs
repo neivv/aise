@@ -1465,6 +1465,23 @@ pub unsafe fn unload_target_fix(
         // No need to change target
         return;
     }
+    // If all units are guards assigned to the region, don't change target.
+    // Assuming that they're preplaced guards and map creator wants
+    // them to be there.
+    // Think the game won't suddenly assign guards to awkward locations,
+    // or at most very rarely?
+    let all_guards = unit.loaded_units(unit_arr).all(|unit| {
+        if let Some(ai) = unit.guard_ai() {
+            let home = &(*ai).home;
+            area.contains_point(home)
+        } else {
+            false
+        }
+    });
+    if all_guards {
+        return;
+    }
+
     for (other_id, region) in regions.neighbours(pathing, region_id, 4) {
         if (**region).walkability == 0x1ffd {
             continue;
