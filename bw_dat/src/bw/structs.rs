@@ -769,26 +769,36 @@ pub mod scr {
     #[repr(C)]
     pub struct DrawCommands {
         pub commands: [DrawCommand; 0x2000],
-        pub _dc140000: [u8; 0x20028],
+        pub unk_data: [u8; 0x20000],
+        pub unk_data_size: u32,
+        pub unk_draw_vector: [usize; 3],
+        pub unk_pointers: [usize; 6],
         pub draw_command_count: u16,
-        pub _dc16002a: [u8; 0x6],
+        pub unk_u32: u32,
     }
 
     #[repr(C)]
     pub struct DrawCommand {
         pub draw_target_index: u32,
         pub is_hd: u32,
-        pub texture_ids: [u32; 7],
+        pub texture_ids: [usize; 7],
         pub draw_mode: u32,
         pub shader_id: u32,
-        pub vertex_buffer_index: u32,
-        pub _unk30: u32,
+        pub vertex_buffer_offset_bytes: usize,
+        pub index_buffer_offset_bytes: usize,
         pub allocated_vertex_count: u32,
         pub used_vertex_count: u32,
         pub _unk3c: u16,
         pub blend_mode: u16,
-        pub _unk40: [u8; 0x10],
-        pub uniforms: [f32; 0x14],
+        pub subcommands_pre: DrawSubCommands,
+        pub subcommands_post: DrawSubCommands,
+        pub shader_constants: [f32; 0x14],
+    }
+
+    #[repr(C)]
+    pub struct DrawSubCommands {
+        pub unk: usize,
+        pub first: *mut c_void,
     }
 }
 
@@ -939,7 +949,7 @@ mod test {
         assert_eq!(mem::size_of::<Flingy>(), size(0x4c, 0x68));
         assert_eq!(mem::size_of::<Unit>(), size(0x150, 0x1e8));
         assert_eq!(mem::size_of::<Bullet>(), size(0x70, 0xa8));
-        assert_eq!(mem::size_of::<OldSprite>(), size(0x24, 0x48));
+        assert_eq!(mem::size_of::<OldSprite>(), size(0x24, 0x40));
         assert_eq!(mem::size_of::<Image>(), size(0x40, 0x58));
         assert_eq!(mem::size_of::<Pathing>(), size(0x97a20, 0xa1670));
         assert_eq!(mem::size_of::<Region>(), size(0x40, 0x48));
@@ -953,8 +963,8 @@ mod test {
         assert_eq!(mem::size_of::<scr::ControlEvent>(), size(0x1c, 0x28));
         assert_eq!(mem::size_of::<scr::Control>(), size(0x50, 0x78));
         assert_eq!(mem::size_of::<scr::Dialog>(), size(0x64, 0xa0));
-        assert_eq!(mem::size_of::<scr::DrawCommand>(), 0xa0);
-        assert_eq!(mem::size_of::<scr::DrawCommands>(), 0x160030);
+        assert_eq!(mem::size_of::<scr::DrawCommand>(), size(0xa0, 0xd8));
+        assert_eq!(mem::size_of::<scr::DrawCommands>(), size(0x160030, 0x1d0058));
         assert_eq!(mem::size_of::<scr::BwString>(), size(0x1c, 0x28));
     }
 }
