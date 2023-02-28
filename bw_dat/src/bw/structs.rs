@@ -771,7 +771,7 @@ pub mod scr {
         pub commands: [DrawCommand; 0x2000],
         pub unk_data: [u8; 0x20000],
         pub unk_data_size: u32,
-        pub unk_draw_vector: [usize; 3],
+        pub draw_sort_vector: [usize; 3],
         pub unk_pointers: [usize; 6],
         pub draw_command_count: u16,
         pub unk_u32: u32,
@@ -779,7 +779,7 @@ pub mod scr {
 
     #[repr(C)]
     pub struct DrawCommand {
-        pub draw_target_index: u32,
+        pub render_target_id: u32,
         pub is_hd: u32,
         pub texture_ids: [usize; 7],
         pub draw_mode: u32,
