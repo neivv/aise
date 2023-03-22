@@ -769,8 +769,8 @@ pub mod scr {
     #[repr(C)]
     pub struct DrawCommands {
         pub commands: [DrawCommand; 0x2000],
-        pub unk_data: [u8; 0x20000],
-        pub unk_data_size: u32,
+        pub subcommand_buffer: [u8; 0x20000],
+        pub subcommand_buffer_bytes_used: u32,
         pub draw_sort_vector: [usize; 3],
         pub unk_pointers: [usize; 6],
         pub draw_command_count: u16,
