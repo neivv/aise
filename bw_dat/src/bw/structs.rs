@@ -798,7 +798,34 @@ pub mod scr {
     #[repr(C)]
     pub struct DrawSubCommands {
         pub unk: usize,
-        pub first: *mut c_void,
+        pub first: *mut DrawSubCommand,
+    }
+
+    #[repr(C)]
+    pub struct DrawSubCommand {
+        /// Variable-length data follows this struct depending on id:
+        /// 1 = Set scissor, { rect: [f32; 4] }
+        ///      x/y/w/h with 0.0 to 1.0 range
+        /// 2 = Clear scissor, no data
+        /// 3 = Clear render target attachment? {
+        ///     render_target_index: u32,
+        ///     attachment_index: u32,
+        ///     is_hd_render_target: u32,
+        ///     More?
+        /// }
+        /// 4 = Render to texture? {
+        ///     render_target: *mut RenderTarget,
+        ///     unk: [usize?; 2],
+        ///     mask: *mut DrawCommand,
+        ///     unk: usize?
+        ///     width?: u32,
+        ///     height?: u32, (y offset?)
+        /// }
+        /// 5 = Skip main DrawCommand
+        ///     When just needing to modify state with other subcommands?
+        /// 6 = Unk texture? { ??? }
+        pub id: u32,
+        pub next: *mut DrawSubCommand,
     }
 }
 
@@ -965,6 +992,7 @@ mod test {
         assert_eq!(mem::size_of::<scr::Dialog>(), size(0x64, 0xa0));
         assert_eq!(mem::size_of::<scr::DrawCommand>(), size(0xa0, 0xd8));
         assert_eq!(mem::size_of::<scr::DrawCommands>(), size(0x160030, 0x1d0058));
+        assert_eq!(mem::size_of::<scr::DrawSubCommand>(), size(0x8, 0x10));
         assert_eq!(mem::size_of::<scr::BwString>(), size(0x1c, 0x28));
     }
 }
