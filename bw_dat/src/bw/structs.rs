@@ -805,7 +805,7 @@ pub mod scr {
     pub struct DrawSubCommand {
         /// Variable-length data follows this struct depending on id:
         /// 1 = Set scissor, { rect: [f32; 4] }
-        ///      x/y/w/h with 0.0 to 1.0 range
+        ///      x/y/w/h with 0.0 to 1.0 range, origin in *bottom left*
         /// 2 = Clear scissor, no data
         /// 3 = Clear render target attachment? {
         ///     render_target_index: u32,
