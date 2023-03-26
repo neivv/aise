@@ -18,6 +18,7 @@ use bw_dat::{Game, TechId, Unit, UnitId, UpgradeId};
 use crate::ai::{self};
 use crate::block_alloc::BlockAllocSet;
 use crate::bw;
+use crate::datreq::{check_dat_requirements};
 use crate::feature_disabled;
 use crate::globals::{
     self, BankKey, BaseLayout, BuildMax, BunkerCondition, BunkerDecl, Globals,
@@ -215,7 +216,8 @@ pub unsafe extern fn issue_order(script: *mut bw::AiScript) {
     //      0x4 = Target allies,
     //      0x8 = Target single unit
     //      0x10 = Target each unit once
-    //		0x20 = Do not issue if unit is busy
+    //      0x20 = Do not issue if unit is busy (unimplemented?? Going to leave unused)
+    //      0x40 = Ignore datreqs
     let mut read = ScriptData::new(script);
     let order = OrderId(read.read_u8());
     let limit = read.read_u16();
@@ -231,10 +233,11 @@ pub unsafe extern fn issue_order(script: *mut bw::AiScript) {
     if feature_disabled("issue_order") {
         return;
     }
-    if flags & 0xffe0 != 0 {
+    if flags & 0xff80 != 0 {
         bw_print!("Aiscript issue_order: Unknown flags 0x{:x}", flags);
         return;
     }
+    let check_datreqs = flags & 0x40 == 0;
     let game = bw::game();
     let search = aiscript_unit_search(game);
     let units = search
@@ -296,6 +299,15 @@ pub unsafe extern fn issue_order(script: *mut bw::AiScript) {
         match order {
             order::id::PLACE_ADDON | order::id::BUILD_ADDON => {
                 let unit_id = target_misc.get_one();
+                if check_datreqs {
+                    let reqs = match bw::unit_dat_requirements(unit_id) {
+                        Some(s) => s,
+                        None => return,
+                    };
+                    if !check_dat_requirements(game, reqs, unit, 0) {
+                        return;
+                    }
+                }
                 (**unit).unit_specific.building.build_addon_unit_id = unit_id.0;
             }
             order::id::DRONE_BUILD |
@@ -307,6 +319,15 @@ pub unsafe extern fn issue_order(script: *mut bw::AiScript) {
             order::id::TRAIN_FIGHTER |
             order::id::BUILD_NYDUS_EXIT => {
                 let unit_id = target_misc.get_one();
+                if check_datreqs {
+                    let reqs = match bw::unit_dat_requirements(unit_id) {
+                        Some(s) => s,
+                        None => return,
+                    };
+                    if !check_dat_requirements(game, reqs, unit, 0) {
+                        return;
+                    }
+                }
                 (**unit).build_queue[(**unit).current_build_slot as usize] = unit_id.0;
             }
             _ => (),
