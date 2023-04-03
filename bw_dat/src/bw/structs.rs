@@ -742,7 +742,7 @@ pub mod scr {
         pub misc_u16: u16,
         pub user_ptr: *mut c_void,
         pub event_handler: Option<unsafe extern "C" fn(*mut Control, *mut ControlEvent) -> u32>,
-        pub draw: Option<unsafe extern "C" fn(*mut Control, i32, i32, *const Rect)>,
+        pub draw: Option<unsafe extern "C" fn(*mut Control, i32, i32, *const Rect, *const Rect)>,
         pub parent: *mut Dialog,
     }
 
