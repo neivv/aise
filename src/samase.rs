@@ -411,6 +411,14 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
     );
     if result != 0 {
         result = ((*api).hook_ingame_command)(6, crate::globals::wrap_save, None);
+        if !crate::is_scr() {
+            // Hackfix for mtl
+            let _ = ((*api).hook_ingame_command)(
+                0xcc,
+                nop_command_hook,
+                Some(mtl_rally_command_length),
+            );
+        }
     }
     if result != 0 {
         let ptr = ((*api).player_ai_towns)();
@@ -424,4 +432,27 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
         ((*api).warn_unsupported_feature)(b"Saving\0".as_ptr());
     }
     crate::init();
+}
+
+pub unsafe extern fn nop_command_hook(
+    data: *const u8,
+    len: u32,
+    _player: u32,
+    _unique_player: u32,
+    orig: unsafe extern fn(*const u8, u32),
+) {
+    orig(data, len)
+}
+
+pub unsafe extern fn mtl_rally_command_length(
+    data: *const u8,
+    max_len: u32,
+) -> u32 {
+    if max_len < 2 {
+        return !0;
+    }
+    match *data.add(1) {
+        0 => 0xa,
+        _ => !0,
+    }
 }
