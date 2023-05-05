@@ -616,7 +616,7 @@ impl UnitId {
     pub fn shields(self) -> i32 {
         if self.has_shields() {
             // Yeah, it is stored as displayed
-            self.get(7) as i32 * 256
+            (self.get(7) as i32).saturating_mul(256)
         } else {
             0
         }

@@ -1560,37 +1560,37 @@ impl<'a, 'b, 'f> IdleOrderTargetContext<'a, 'b, 'f> {
             'outer: for unit_ids in [first_units, second_units] {
                 for &id in unit_ids {
                     let units = self.step_state.unit_buffer(self.game, id);
-                    if first {
+                    let (first, second) = if first {
                         first = false;
-                        let (first, second) = if start_unit >= units.len() {
-                            (&[][..], units)
+                        if start_unit >= units.len() {
+                            (&units[..0], units)
                         } else {
                             (&units[start_unit..], &units[..start_unit])
-                        };
-                        for &unit in first {
-                            if callback(self, unit) == Iter::Stop {
-                                break 'outer;
-                            }
-                            new_start_unit = new_start_unit.wrapping_add(1);
-                        }
-                        new_start_id = new_start_id.wrapping_add(1);
-                        new_start_unit = 0;
-                        // Ends up checking the units with start_id but earlier pos
-                        // before other ids, shouldn't matter that much.
-                        for &unit in second {
-                            if callback(self, unit) == Iter::Stop {
-                                break 'outer;
-                            }
                         }
                     } else {
-                        new_start_unit = 0;
-                        for &unit in units {
-                            if callback(self, unit) == Iter::Stop {
-                                break 'outer;
+                        (&units[..], &units[..0])
+                    };
+
+                    for &unit in first {
+                        new_start_unit = new_start_unit.wrapping_add(1);
+                        if callback(self, unit) == Iter::Stop {
+                            if new_start_unit >= units.len() {
+                                // Matched on last unit, make next check's
+                                // id be from next id.
+                                new_start_id = new_start_id.wrapping_add(1);
+                                new_start_unit = 0;
                             }
-                            new_start_unit = new_start_unit.wrapping_add(1);
+                            break 'outer;
                         }
-                        new_start_id = new_start_id.wrapping_add(1);
+                    }
+                    new_start_id = new_start_id.wrapping_add(1);
+                    new_start_unit = 0;
+                    // Ends up checking the units with start_id but earlier pos
+                    // before other ids, shouldn't matter that much.
+                    for &unit in second {
+                        if callback(self, unit) == Iter::Stop {
+                            break 'outer;
+                        }
                     }
                 }
             }
