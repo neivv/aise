@@ -1214,12 +1214,12 @@ impl<'b, 'f> StepFrameState<'b, 'f> {
     }
 
     fn prepare_order_check(&mut self, decl: &IdleOrder) {
-        if !unit_match_has_groups(&decl.unit_id) {
+        if !decl.unit_id.has_groups() {
             for &id in decl.unit_id.as_slice() {
                 self.prepare_unit_buffer(id);
             }
         }
-        if !unit_match_has_groups(&decl.target_unit_id) {
+        if !decl.target_unit_id.has_groups() {
             for &id in decl.target_unit_id.as_slice() {
                 self.prepare_unit_buffer(id);
             }
@@ -1412,7 +1412,7 @@ impl<'a, 'b, 'f> IdleOrderTargetContext<'a, 'b, 'f> {
     ) -> Option<(Unit, u32)> {
         let mut best = None;
         let mut best_distance = u32::MAX;
-        if unit_match_has_groups(&decl.target_unit_id) {
+        if decl.target_unit_id.has_groups() {
             // Maybe could always just search area? not just when there are groups
             let area = bw::Rect::from_point_radius(user.position(), decl.radius as i16);
             for target in self.step_state.unit_search.get().search_iter(&area) {
@@ -1538,7 +1538,7 @@ impl<'a, 'b, 'f> IdleOrderTargetContext<'a, 'b, 'f> {
     )
     where F: FnMut(&mut IdleOrderTargetContext<'_, '_, '_>, Unit) -> Iter,
     {
-        if unit_match_has_groups(&units) {
+        if units.has_groups() {
             // Just walk through all units.
             // Ineffective so callers should try to handle groups in more effective way
             // instead (As of writing this they don't)
@@ -1609,7 +1609,7 @@ impl<'a, 'b, 'f> IdleOrderTargetContext<'a, 'b, 'f> {
         decl: &IdleOrder,
     ) -> bool {
         let game = self.game;
-        if !unit_match_has_groups(&decl.unit_id) {
+        if decl.unit_id.has_groups() {
             let none = decl.unit_id.as_slice()
                 .iter()
                 .all(|&id| game.completed_count(decl.player, id) == 0);
@@ -1617,7 +1617,7 @@ impl<'a, 'b, 'f> IdleOrderTargetContext<'a, 'b, 'f> {
                 return true;
             }
         }
-        if !unit_match_has_groups(&decl.target_unit_id) {
+        if decl.target_unit_id.has_groups() {
             let none = decl.target_unit_id.as_slice()
                 .iter()
                 .all(|&id| {
@@ -1632,12 +1632,6 @@ impl<'a, 'b, 'f> IdleOrderTargetContext<'a, 'b, 'f> {
         }
         false
     }
-}
-
-fn unit_match_has_groups(units: &UnitMatch) -> bool {
-    units.as_slice()
-        .iter()
-        .any(|x| x.0 >= unit::id::ANY_UNIT.0 && x.0 <= unit::id::GROUP_FACTORIES.0)
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]

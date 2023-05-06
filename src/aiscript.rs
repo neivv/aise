@@ -998,16 +998,26 @@ pub unsafe extern fn train(script: *mut bw::AiScript) {
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct UnitMatch {
     units: Vec<UnitId>,
+    has_groups: bool,
 }
 
 impl UnitMatch {
+    pub fn single(unit_id: UnitId) -> UnitMatch {
+        let has_groups = unit_id.0 >= unit::id::ANY_UNIT.0 &&
+            unit_id.0 <= unit::id::GROUP_FACTORIES.0;
+        UnitMatch {
+            units: vec![unit_id],
+            has_groups,
+        }
+    }
+
     pub fn iter_flatten_groups<'a>(&'a mut self) -> impl Iterator<Item = UnitId> + 'a {
         // Ineffective but w/e, simpler than ignoring duplicates
-        if self.units.iter().any(|&x| x == unit::id::ANY_UNIT) {
+        if self.has_groups && self.units.iter().any(|&x| x == unit::id::ANY_UNIT) {
             self.units = (0..UnitId::entry_amount())
                 .flat_map(|x| UnitId::optional(x))
                 .collect();
-        } else {
+        } else if self.has_groups {
             let mut group_flags = 0;
             for &id in &self.units {
                 group_flags |= match id {
@@ -1022,6 +1032,7 @@ impl UnitMatch {
                     x if UnitId::optional(x.0 as u32).is_none() => false,
                     x => x.group_flags() & group_flags == 0,
                 });
+                self.has_groups = false;
                 let new_units = (0..UnitId::entry_amount())
                     .flat_map(|x| UnitId::optional(x))
                     .filter(|x| x.group_flags() & group_flags != 0);
@@ -1029,6 +1040,10 @@ impl UnitMatch {
             }
         }
         self.units.iter().cloned()
+    }
+
+    pub fn has_groups(&self) -> bool {
+        self.has_groups
     }
 
     pub fn as_slice(&self) -> &[UnitId] {
@@ -2537,18 +2552,21 @@ impl ScriptData {
         let val = self.read_u16();
         if val > 0xff00 {
             let repeat = val & 0xff;
-            let units = (0..repeat).map(|_| UnitId(self.read_u16())).collect();
+            let units = (0..repeat).map(|_| UnitId(self.read_u16())).collect::<Vec<_>>();
+            let has_groups = units.iter().any(|x| {
+                x.0 >= unit::id::ANY_UNIT.0 && x.0 <= unit::id::GROUP_FACTORIES.0
+            });
             UnitMatch {
                 units,
+                has_groups,
             }
         } else if val < 0x1000 {
-            UnitMatch {
-                units: vec![UnitId(val)],
-            }
+            UnitMatch::single(UnitId(val))
         } else {
             bw_print!("Invalid script encoding: unit match {:x}", val);
             UnitMatch {
                 units: vec![],
+                has_groups: false,
             }
         }
     }
@@ -3724,9 +3742,7 @@ mod test {
     fn town_buildreq_removal() {
         // Always removes unit id 8
         unsafe fn check(mut town: bw::AiTown, remove_count: u8, remaining: &[bw::TownReq]) {
-            let mut units = UnitMatch {
-                units: vec![UnitId(8)],
-            };
+            let mut units = UnitMatch::single(UnitId(8));
             println!("Remove count is: {:#?}", remove_count);
 
             remove_build_from_town(Town(&mut town), &mut units, remove_count);
