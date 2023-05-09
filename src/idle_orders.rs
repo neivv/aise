@@ -1609,7 +1609,7 @@ impl<'a, 'b, 'f> IdleOrderTargetContext<'a, 'b, 'f> {
         decl: &IdleOrder,
     ) -> bool {
         let game = self.game;
-        if decl.unit_id.has_groups() {
+        if !decl.unit_id.has_groups() {
             let none = decl.unit_id.as_slice()
                 .iter()
                 .all(|&id| game.completed_count(decl.player, id) == 0);
@@ -1617,7 +1617,7 @@ impl<'a, 'b, 'f> IdleOrderTargetContext<'a, 'b, 'f> {
                 return true;
             }
         }
-        if decl.target_unit_id.has_groups() {
+        if !decl.target_unit_id.has_groups() {
             let none = decl.target_unit_id.as_slice()
                 .iter()
                 .all(|&id| {
