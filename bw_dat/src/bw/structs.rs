@@ -226,8 +226,7 @@ pub struct Order {
     pub order_id: u8,
     pub padding: u8,
     pub unit_id: u16,
-    pub position: Point,
-    pub target: *mut Unit,
+    pub target: PointAndUnit,
 }
 
 #[repr(C)]
@@ -988,6 +987,7 @@ mod test {
         assert_eq!(mem::size_of::<Dialog>(), size(0x4a, 0xa0));
         assert_eq!(mem::size_of::<Path>(), 0x80);
         assert_eq!(mem::size_of::<Sprite>(), size(0x28, 0x48));
+        assert_eq!(mem::size_of::<Order>(), size(0x14, 0x28));
         assert_eq!(mem::size_of::<scr::ControlEvent>(), size(0x1c, 0x28));
         assert_eq!(mem::size_of::<scr::Control>(), size(0x50, 0x78));
         assert_eq!(mem::size_of::<scr::Dialog>(), size(0x64, 0xa0));

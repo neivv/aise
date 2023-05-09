@@ -211,8 +211,8 @@ impl<'a> Iterator for Orders<'a> {
                 self.next = (*order).next;
                 Some(Order {
                     id: OrderId((*order).order_id),
-                    position: (*order).position,
-                    target: Unit::from_ptr((*order).target),
+                    position: (*order).target.pos,
+                    target: Unit::from_ptr((*order).target.unit),
                 })
             } else {
                 None
