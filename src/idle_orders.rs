@@ -16,7 +16,7 @@ use crate::unit::{self, SerializableUnit, UnitExt};
 use crate::unit_search::LazyUnitSearch;
 use crate::StepUnitsCtx;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub(crate) struct IdleOrders {
     orders: Vec<(Arc<IdleOrder>, IdleOrderState)>,
     deathrattles: Vec<Arc<IdleOrder>>,
@@ -316,13 +316,13 @@ unsafe fn step_cloak(order: &mut OngoingOrder, game: Game) {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 struct ReturningCloaked {
     unit: SerializableUnit,
     start_point: bw::Point,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 struct OngoingOrder {
     user: SerializableUnit,
     target: Option<SerializableUnit>,
@@ -342,7 +342,7 @@ struct Rate {
     upper: u16,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 struct IdleOrderCount {
     modifier: ReadModifierType,
     value: u16,
@@ -350,7 +350,7 @@ struct IdleOrderCount {
     players: PlayerMatch,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 struct IdleOrder {
     priority: u8,
     order: OrderId,
@@ -364,7 +364,7 @@ struct IdleOrder {
     player: u8,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 struct IdleOrderFlags {
     simple: u8,
     status_required: u16,
@@ -375,12 +375,12 @@ struct IdleOrderFlags {
     tiles_not: u32,
     targeting_filter: TargetingFlags,
     order: Option<OrderId>,
-    numeric: Vec<(IdleOrderNumeric, Comparision, i32)>,
+    numeric: Vec<(IdleOrderNumeric, Comparison, i32)>,
     count: Option<IdleOrderCount>,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
-enum Comparision {
+enum Comparison {
     LessThanPercentage,
     GreaterThanPercentage,
     LessThan,
@@ -489,10 +489,10 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
                     3 => {
                         let amount = read.read::<i32>();
                         let comparision = match val & 0xf {
-                            0 => Comparision::LessThan,
-                            1 => Comparision::GreaterThan,
-                            2 => Comparision::LessThanPercentage,
-                            3 => Comparision::GreaterThanPercentage,
+                            0 => Comparison::LessThan,
+                            1 => Comparison::GreaterThan,
+                            2 => Comparison::LessThanPercentage,
+                            3 => Comparison::GreaterThanPercentage,
                             x => {
                                 bw_print!(
                                     "idle_orders: invalid encoding, invalid comparison: {}",
@@ -692,8 +692,8 @@ pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
             None => {
                 if !silent_fail {
                     bw_print!(
-                        "idle_orders: Unable to find match to remove for {:#?}",
-                        matchee
+                        "idle_orders: Unable to find match to remove for {}",
+                        format_idle_order_for_print(&matchee),
                     );
                 }
             }
@@ -858,6 +858,22 @@ impl IdleOrder {
             .count();
         already_targeted_count < self.limit as usize
     }
+}
+
+fn format_idle_order_for_print(order: &IdleOrder) -> String {
+    fn format_rate(rate: &Rate) -> String {
+        if rate.lower == rate.upper {
+            format!("{}", rate.lower)
+        } else {
+            format!("{}-{}", rate.lower, rate.upper)
+        }
+    }
+    // Could also format flags, but it's more work to implement..
+    format!(
+        "Player {}, order {}, limit {}, radius {}, rate {}\nuser {}, target {}",
+        order.player, order.order.0, order.limit, order.radius, format_rate(&order.rate),
+        order.unit_id, order.target_unit_id,
+    )
 }
 
 unsafe fn can_attack_unit(pathing: *mut bw::Pathing, attacker: Unit, target: Unit) -> bool {
@@ -1168,12 +1184,12 @@ impl IdleOrderFlags {
                     IdleOrderNumeric::Energy => (unit.energy() as i32, 250 * 256),
                 };
                 match compare {
-                    Comparision::LessThan => val < amount,
-                    Comparision::GreaterThan => val > amount,
-                    Comparision::LessThanPercentage => {
+                    Comparison::LessThan => val < amount,
+                    Comparison::GreaterThan => val > amount,
+                    Comparison::LessThanPercentage => {
                         val.saturating_mul(100).checked_div(max).unwrap_or(0) < amount
                     }
-                    Comparision::GreaterThanPercentage => {
+                    Comparison::GreaterThanPercentage => {
                         val.saturating_mul(100).checked_div(max).unwrap_or(0) > amount
                     }
                 }

@@ -1074,6 +1074,24 @@ impl UnitMatch {
     }
 }
 
+impl fmt::Display for UnitMatch {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let limit = 10;
+        write!(f, "[")?;
+        for (i, &id) in self.units.iter().take(limit).enumerate() {
+            if i != 0 {
+                write!(f, ", {}", id.0)?;
+            } else {
+                write!(f, "{}", id.0)?;
+            }
+        }
+        if self.units.len() > limit {
+            write!(f, ", ...")?;
+        }
+        write!(f, "]")
+    }
+}
+
 #[derive(Debug, Clone, Eq, PartialEq, Copy, Serialize, Deserialize)]
 pub struct PlayerMatch {
     players: [bool; 12],
