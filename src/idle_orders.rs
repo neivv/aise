@@ -838,6 +838,19 @@ impl IdleOrder {
         if !flags_ok {
             return false;
         }
+
+        // For repair, the player must have resources needed for repairing target
+        // (At least 1 mine/gas depending on unit costs)
+        if self.order == order::REPAIR {
+            let target_id = unit.id();
+            if ctx.game.minerals(self.player) == 0 && target_id.mineral_cost() != 0 {
+                return false;
+            }
+            if ctx.game.gas(self.player) == 0 && target_id.gas_cost() != 0 {
+                return false;
+            }
+        }
+
         if in_combat {
             if !ctx.step_state.in_combat_cache.is_in_combat(unit, ctx.game) {
                 return false;
