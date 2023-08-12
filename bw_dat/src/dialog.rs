@@ -10,6 +10,11 @@ use crate::bw;
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct Control(NonNull<bw::Control>);
 
+unsafe impl Send for Control {}
+unsafe impl Sync for Control {}
+unsafe impl Send for Dialog {}
+unsafe impl Sync for Dialog {}
+
 impl std::ops::Deref for Control {
     type Target = *mut bw::Control;
     fn deref(&self) -> &Self::Target {

@@ -6,6 +6,9 @@ use crate::{Image, SpriteId};
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct Sprite(NonNull<bw::Sprite>);
 
+unsafe impl Send for Sprite {}
+unsafe impl Sync for Sprite {}
+
 impl std::ops::Deref for Sprite {
     type Target = *mut bw::Sprite;
     fn deref(&self) -> &Self::Target {
