@@ -18,7 +18,7 @@ use bw_dat::{Game, TechId, Unit, UnitId, UpgradeId};
 use crate::ai::{self};
 use crate::block_alloc::BlockAllocSet;
 use crate::bw;
-use crate::datreq::{check_dat_requirements};
+use crate::datreq::check_dat_requirements;
 use crate::feature_disabled;
 use crate::globals::{
     self, BankKey, BaseLayout, BuildMax, BunkerCondition, BunkerDecl, Globals,
@@ -107,7 +107,7 @@ pub unsafe extern fn attack_to(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let grouping = read.read_position();
     let target = read.read_position();
-    if feature_disabled("attack_to") {
+    if feature_disabled("attack_to") || read.is_invalid() {
         return;
     }
     attack_to_pos((*script).player as u8, grouping.center, target.center);
@@ -123,7 +123,7 @@ pub unsafe extern fn attack_to_deaths(script: *mut bw::AiScript) {
     let target_x_player = read.read_u16() as u8;
     let target_y_unit = read.read_u16();
     let target_y_player = read.read_u16() as u8;
-    if feature_disabled("attack_to") {
+    if feature_disabled("attack_to") || read.is_invalid() {
         return;
     }
     let game = bw::game();
@@ -160,7 +160,7 @@ impl AttackTimeoutState {
 pub unsafe extern fn attack_timeout(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let timeout = read.read_u32();
-    if feature_disabled("attack_timeout") {
+    if feature_disabled("attack_timeout") || read.is_invalid() {
         return;
     }
     let mut globals = Globals::get("ais attack_timeout");
@@ -230,7 +230,7 @@ pub unsafe extern fn issue_order(script: *mut bw::AiScript) {
     target.extend_area(tgt_radius as i16);
     let target_misc = read.read_unit_match();
     let flags = read.read_u16();
-    if feature_disabled("issue_order") {
+    if feature_disabled("issue_order") || read.is_invalid() {
         return;
     }
     if flags & 0xff80 != 0 {
@@ -338,7 +338,7 @@ pub unsafe extern fn issue_order(script: *mut bw::AiScript) {
 pub unsafe extern fn if_attacking(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let dest = read.read_jump_pos();
-    if feature_disabled("if_attacking") {
+    if feature_disabled("if_attacking") || read.is_invalid() {
         return;
     }
     let ai = bw::player_ai((*script).player);
@@ -491,7 +491,7 @@ impl<'de> Deserialize<'de> for Town {
 pub unsafe extern fn set_town_id(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let id = read.read_u8();
-    if feature_disabled("set_town_id") {
+    if feature_disabled("set_town_id") || read.is_invalid() {
         return;
     }
     if id == 255 {
@@ -518,7 +518,7 @@ pub unsafe extern fn remove_build(script: *mut bw::AiScript) {
     let amount = read.read_u8();
     let mut unit_id = read.read_unit_match();
     let id = read.read_u8();
-    if feature_disabled("remove_build") {
+    if feature_disabled("remove_build") || read.is_invalid() {
         return;
     }
     let mut globals = Globals::get("ais remove_build");
@@ -577,7 +577,7 @@ unsafe fn remove_build_from_town(town: Town, unit_id: &mut UnitMatch, amount: u8
 pub unsafe extern fn max_workers(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let count = read.read_u8();
-    if feature_disabled("max_workers") {
+    if feature_disabled("max_workers") || read.is_invalid() {
         return;
     }
     let town = match Town::from_ptr((*script).town) {
@@ -609,7 +609,7 @@ pub unsafe extern fn under_attack(script: *mut bw::AiScript) {
     // 0 = Never, 1 = Default, 2 = Always
     let mut read = ScriptData::new(script);
     let mode = read.read_u8();
-    if feature_disabled("under_attack") {
+    if feature_disabled("under_attack") || read.is_invalid() {
         return;
     }
     let player = (*script).player as usize;
@@ -906,7 +906,7 @@ impl GlobalAiMode {
 pub unsafe extern fn aicontrol(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let mode = read.read_u8();
-    if feature_disabled("aicontrol") {
+    if feature_disabled("aicontrol") || read.is_invalid() {
         return;
     }
     let player = (*script).player as usize;
@@ -936,13 +936,17 @@ pub unsafe extern fn aicontrol(script: *mut bw::AiScript) {
 
 pub unsafe extern fn goto(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
-    (*script).pos = read.read_jump_pos();
+    let new_pos = read.read_jump_pos();
+    if read.is_invalid() {
+        return;
+    }
+    (*script).pos = new_pos;
 }
 
 pub unsafe extern fn call(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let dest = read.read_u16() as u32;
-    if feature_disabled("everything_else") {
+    if feature_disabled("everything_else") || read.is_invalid() {
         return;
     }
     let ret = (*script).pos;
@@ -971,6 +975,9 @@ pub unsafe extern fn do_morph(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let amount = read.read_u8();
     let unit_id = UnitId(read.read_u16());
+    if read.is_invalid() {
+        return;
+    }
     let globals = Globals::get("ais do_morph");
     let unit_id = globals.unit_replace.replace_check(unit_id); // replace_requests
     let player = (*script).player as u8;
@@ -984,6 +991,9 @@ pub unsafe extern fn train(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let amount = read.read_u8();
     let unit_id = UnitId(read.read_u16());
+    if read.is_invalid() {
+        return;
+    }
     let globals = Globals::get("ais train");
     let unit_id = globals.unit_replace.replace_check(unit_id); // replace_requests
     let player = (*script).player as u8;
@@ -1144,7 +1154,7 @@ pub unsafe extern fn supply(script: *mut bw::AiScript) {
     let units = read.read_unit_match();
     let race = read.read_u8();
     let dest = read.read_jump_pos();
-    if feature_disabled("supply") {
+    if feature_disabled("supply") || read.is_invalid() {
         return;
     }
     let supply_type = match supply_type {
@@ -1250,7 +1260,7 @@ pub unsafe extern fn resources_command(script: *mut bw::AiScript) {
     let res = read.read_u8();
     let amount = read.read_u32();
     let dest = read.read_jump_pos();
-    if feature_disabled("resources") {
+    if feature_disabled("resources") || read.is_invalid() {
         return;
     }
     let resources_to_check: &[_] = match res {
@@ -1365,7 +1375,7 @@ pub unsafe extern fn reveal_area(script: *mut bw::AiScript) {
     src.extend_area(radius as i16);
     let time = read.read_u16();
     let flag = read.read_u8();
-    if feature_disabled("reveal_area") {
+    if feature_disabled("reveal_area") || read.is_invalid() {
         return;
     }
     let reveal_type = match flag {
@@ -1412,10 +1422,25 @@ fn get_bank_path(name: &str) -> Option<PathBuf> {
 }
 
 pub unsafe extern fn save_bank(script: *mut bw::AiScript) {
+    let orig_pos = (*script).pos;
     let mut read = ScriptData::new(script);
     let name = read.read_string();
+    if read.is_invalid() {
+        return;
+    }
     let globals = Globals::get("ais save_bank");
-    let name = String::from_utf8_lossy(name).to_string();
+    let name = match std::str::from_utf8(name) {
+        Ok(o) if !o.is_empty() => o,
+        _ => {
+            bw_print!(
+                "Invalid bank path at offset {:x} / {}",
+                orig_pos, (*Script::ptr_from_bw(script)).debug_string(),
+            );
+            (*script).wait = !1;
+            (*script).pos = orig_pos;
+            return;
+        }
+    };
     let path = match get_bank_path(&name) {
         Some(s) => s,
         None => return,
@@ -1437,14 +1462,26 @@ pub unsafe extern fn save_bank(script: *mut bw::AiScript) {
 }
 
 pub unsafe extern fn load_bank(script: *mut bw::AiScript) {
+    let orig_pos = (*script).pos;
     let mut read = ScriptData::new(script);
     let name = read.read_string();
-    if feature_disabled("load_bank") {
+    if feature_disabled("load_bank") || read.is_invalid() {
         return;
     }
     let mut globals = Globals::get("ais load_bank");
     globals.bank.reset();
-    let name = String::from_utf8_lossy(name);
+    let name = match std::str::from_utf8(name) {
+        Ok(o) if !o.is_empty() => o,
+        _ => {
+            bw_print!(
+                "Invalid bank path at offset {:x} / {}",
+                orig_pos, (*Script::ptr_from_bw(script)).debug_string(),
+            );
+            (*script).wait = !1;
+            (*script).pos = orig_pos;
+            return;
+        }
+    };
     let path = match get_bank_path(&name) {
         Some(s) => s,
         None => return,
@@ -1499,6 +1536,9 @@ pub unsafe extern fn bank_data_old(script: *mut bw::AiScript) {
     let label = read.read_string();
     let amount = read.read_u32();
     let dest = read.read_jump_pos();
+    if read.is_invalid() {
+        return;
+    }
     let key = BankKey {
         label: String::from_utf8_lossy(label).to_string(),
         category: String::from_utf8_lossy(category).to_string(),
@@ -1514,6 +1554,9 @@ pub unsafe extern fn bank_data(script: *mut bw::AiScript) {
     let category = read.read_string();
     let label = read.read_string();
     let dest = read.read_jump_pos();
+    if read.is_invalid() {
+        return;
+    }
     let key = BankKey {
         label: String::from_utf8_lossy(label).to_string(),
         category: String::from_utf8_lossy(category).to_string(),
@@ -1530,7 +1573,7 @@ pub unsafe extern fn remove_creep(script: *mut bw::AiScript) {
         bw_print!("remove_creep is not supported in SCR");
         return;
     }
-    if feature_disabled("remove_creep") {
+    if feature_disabled("remove_creep") || read.is_invalid() {
         return;
     }
     #[cfg(target_pointer_width = "32")]
@@ -1570,7 +1613,7 @@ pub unsafe extern fn time_command(script: *mut bw::AiScript) {
     let amount = read.read_u32();
     let time_mod = read.read_u8();
     let dest = read.read_jump_pos();
-    if feature_disabled("time") {
+    if feature_disabled("time") || read.is_invalid() {
         return;
     }
     let time_mod = match time_mod {
@@ -1602,7 +1645,7 @@ pub unsafe extern fn attacking(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let modifier = read.read_bool_modifier();
     let dest = read.read_jump_pos();
-    if feature_disabled("attacking") {
+    if feature_disabled("attacking") || read.is_invalid() {
         return;
     }
     let ai = bw::player_ai((*script).player);
@@ -1698,7 +1741,7 @@ pub unsafe extern fn unit_name(script: *mut bw::AiScript) {
     src.extend_area(radius as i16);
     let replacement_string = read.read_string();
     let flag = read.read_u8();
-    if feature_disabled("unit_name") {
+    if feature_disabled("unit_name") || read.is_invalid() {
         return;
     }
     let flag = match flag {
@@ -1731,6 +1774,9 @@ pub unsafe extern fn wait_build(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let amount = read.read_u8();
     let mut unit_id = UnitId(read.read_u16());
+    if read.is_invalid() {
+        return;
+    }
     let town = Town::from_ptr((*script).town);
     let globals = Globals::get("ais wait_build");
     unit_id = globals.unit_replace.replace_check(unit_id);
@@ -1751,6 +1797,9 @@ pub unsafe extern fn wait_buildstart(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let amount = read.read_u8();
     let mut unit_id = UnitId(read.read_u16());
+    if read.is_invalid() {
+        return;
+    }
     let town = Town::from_ptr((*script).town);
     let globals = Globals::get("ais wait_buildstart");
     unit_id = globals.unit_replace.replace_check(unit_id);
@@ -1790,7 +1839,7 @@ pub unsafe extern fn deaths(script: *mut bw::AiScript) {
     let amount = read.read_u32();
     let mut units = read.read_unit_match();
     let dest = read.read_jump_pos();
-    if feature_disabled("deaths") {
+    if feature_disabled("deaths") || read.is_invalid() {
         return;
     }
 
@@ -1832,7 +1881,7 @@ pub unsafe extern fn bw_kills(script: *mut bw::AiScript) {
     let amount = read.read_u32();
     let mut units = read.read_unit_match();
     let dest = read.read_jump_pos();
-    if feature_disabled("bw_kills") {
+    if feature_disabled("bw_kills") || read.is_invalid() {
         return;
     }
 
@@ -1868,6 +1917,9 @@ pub unsafe extern fn wait_rand(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let mut r1 = read.read_u32();
     let mut r2 = read.read_u32();
+    if read.is_invalid() {
+        return;
+    }
     let mut globals = Globals::get("ais wait_rand");
     if r1 > r2 {
         mem::swap(&mut r1, &mut r2);
@@ -1886,7 +1938,7 @@ pub unsafe extern fn kills_command(script: *mut bw::AiScript) {
     let amount = read.read_u32();
     let mut units = read.read_unit_match();
     let dest = read.read_jump_pos();
-    if feature_disabled("kills_command") {
+    if feature_disabled("kills_command") || read.is_invalid() {
         return;
     }
     let mut globals = Globals::get("ais kills");
@@ -1952,6 +2004,9 @@ pub unsafe fn increment_deaths(
 pub unsafe extern fn print_command(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let msg = read.read_string();
+    if read.is_invalid() {
+        return;
+    }
     // The null isn't included in returned slice, but it still is always there for ptr.
     samase::print_text(msg.as_ptr());
 }
@@ -1959,6 +2014,9 @@ pub unsafe extern fn print_command(script: *mut bw::AiScript) {
 pub unsafe extern fn aise_debug(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let msg = read.read_string();
+    if read.is_invalid() {
+        return;
+    }
     debug!("{}", String::from_utf8_lossy(msg));
 }
 
@@ -1968,7 +2026,7 @@ pub unsafe extern fn ping(script: *mut bw::AiScript) {
     let x = read.read_u16();
     let y = read.read_u16();
     let color = read.read_u8();
-    if crate::is_scr() {
+    if crate::is_scr() || read.is_invalid() {
         bw_print!("ping is not supported in SCR");
         return;
     }
@@ -1981,7 +2039,7 @@ pub unsafe extern fn player_jump(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let player = read.read_string();
     let dest = read.read_jump_pos();
-    if feature_disabled("player_jump") {
+    if feature_disabled("player_jump") || read.is_invalid() {
         return;
     }
     if crate::is_scr() {
@@ -2016,7 +2074,7 @@ pub unsafe extern fn upgrade_jump(script: *mut bw::AiScript) {
     let upgrade = UpgradeId(read.read_u16());
     let level = read.read_u8();
     let dest = read.read_jump_pos();
-    if feature_disabled("upgrade_jump") {
+    if feature_disabled("upgrade_jump") || read.is_invalid() {
         return;
     }
     match modifier.ty {
@@ -2058,7 +2116,7 @@ pub unsafe extern fn load_bunkers(script: *mut bw::AiScript) {
     unit_id.replace_ids(&mut globals.unit_replace);
     bunker_id.replace_ids(&mut globals.unit_replace);
 
-    if feature_disabled("load_bunkers") {
+    if feature_disabled("load_bunkers") || read.is_invalid() {
         return;
     }
     let decl = BunkerDecl {
@@ -2084,7 +2142,7 @@ pub unsafe extern fn unit_avail(script: *mut bw::AiScript) {
     let avail_modifier = read.read_u8();
     let unit = UnitId(read.read_u16());
     let dest = read.read_jump_pos();
-    if feature_disabled("unit_avail") {
+    if feature_disabled("unit_avail") || read.is_invalid() {
         return;
     }
     if avail_modifier >= 2 {
@@ -2127,7 +2185,7 @@ pub unsafe extern fn tech_jump(script: *mut bw::AiScript) {
     let tech = TechId(read.read_u16());
     let level = read.read_u8();
     let dest = read.read_jump_pos();
-    if feature_disabled("tech_jump") {
+    if feature_disabled("tech_jump") || read.is_invalid() {
         return;
     }
     match modifier.ty {
@@ -2161,7 +2219,7 @@ pub unsafe extern fn tech_avail(script: *mut bw::AiScript) {
     let tech = TechId(read.read_u16());
     let level = read.read_u8();
     let dest = read.read_jump_pos();
-    if feature_disabled("tech_avail") {
+    if feature_disabled("tech_avail") || read.is_invalid() {
         return;
     }
     match modifier.ty {
@@ -2190,7 +2248,7 @@ pub unsafe extern fn random_call(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let chance = read.read_u8();
     let dest = read.read_jump_pos();
-    if feature_disabled("random_call") {
+    if feature_disabled("random_call") || read.is_invalid() {
         return;
     }
 
@@ -2208,7 +2266,7 @@ pub unsafe extern fn attack_rand(script: *mut bw::AiScript) {
     let mut r1 = read.read_u8() as u32;
     let mut r2 = read.read_u8() as u32;
     let unit = read.read_u16();
-    if feature_disabled("attack_rand") {
+    if feature_disabled("attack_rand") || read.is_invalid() {
         return;
     }
     if r1 > r2 {
@@ -2223,6 +2281,9 @@ pub unsafe extern fn attack_add(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let amount = read.read_u8() as u32;
     let unit = read.read_u16();
+    if read.is_invalid() {
+        return;
+    }
     let globals = Globals::get("ais attack_rand");
     add_to_attack_force(&globals, (*script).player as u8, UnitId(unit), amount);
 }
@@ -2253,7 +2314,7 @@ pub unsafe extern fn bring_jump(script: *mut bw::AiScript) {
     let radius = read.read_u16();
     src.extend_area(radius as i16);
     let dest = read.read_jump_pos();
-    if feature_disabled("bring_jump") {
+    if feature_disabled("bring_jump") || read.is_invalid() {
         return;
     }
 
@@ -2458,20 +2519,38 @@ struct BoolModifier {
 pub struct ScriptData {
     start: *const u8,
     pos: *const u8,
+    orig_pos: u32,
+    length: u32,
     script: *mut bw::AiScript,
+    invalid: bool,
 }
 
 impl ScriptData {
     pub unsafe fn new(script: *mut bw::AiScript) -> ScriptData {
-        let script_bytes = match (*script).flags & 0x1 != 0 {
+        let (script_bytes, script_len) = match (*script).flags & 0x1 != 0 {
             false => bw::aiscript_bin(),
             true => bw::bwscript_bin(),
         };
+        let invalid = (*script).pos < 4 || (*script).pos >= script_len;
+        if invalid {
+            bw_print!(
+                "Invalid script pos {:x} / {}",
+                (*script).pos, (*Script::ptr_from_bw(script)).debug_string(),
+            );
+            (*script).wait = !1;
+        }
         ScriptData {
             start: script_bytes,
+            orig_pos: (*script).pos,
             pos: script_bytes.offset((*script).pos as isize) as *const u8,
+            length: script_len,
             script,
+            invalid,
         }
+    }
+
+    fn is_invalid(&self) -> bool {
+        self.invalid
     }
 
     pub unsafe fn read_player_match(&mut self, game: Game) -> PlayerMatch {
@@ -2609,10 +2688,24 @@ impl ScriptData {
 
     pub fn read_jump_pos(&mut self) -> u32 {
         let long_jumps = unsafe { (self.start as *const u32).read_unaligned() >= 0x10000 };
-        if long_jumps {
+        let pos = if long_jumps {
             self.read_u32()
         } else {
             self.read_u16().into()
+        };
+
+        if pos >= self.length && !self.invalid {
+            unsafe {
+                bw_print!(
+                    "Invalid jump dest at offset {:x} / {}",
+                    self.orig_pos, (*Script::ptr_from_bw(self.script)).debug_string(),
+                );
+                (*self.script).wait = !1;
+            }
+            self.invalid = true;
+            0x8000_0000
+        } else {
+            pos
         }
     }
 
@@ -3228,7 +3321,7 @@ pub unsafe extern fn max_build(script: *mut bw::AiScript) {
     let town_id = read.read_u8();
     let unit_id = UnitId(read.read_u16());
     let quantity = read.read_u16();
-    if feature_disabled("max_build") {
+    if feature_disabled("max_build") || read.is_invalid() {
         return;
     }
     let id = town_from_id(script, &mut globals, town_id);
@@ -3265,7 +3358,7 @@ pub unsafe extern fn queue(script: *mut bw::AiScript) {
     let radius = read.read_u16();
     src.extend_area(radius as i16);
     let priority = read.read_u8();
-    if feature_disabled("queue") {
+    if feature_disabled("queue") || read.is_invalid() {
         return;
     }
     let modifier = match modifier {
@@ -3318,6 +3411,9 @@ pub unsafe extern fn defense_command(script: *mut bw::AiScript) {
     let defense_type = read.read_u8();
     let first = read.read_u8();
     let second = read.read_u8();
+    if read.is_invalid() {
+        return;
+    }
     let ai_data = bw::player_ai((*script).player);
     let globals = Globals::get("ais defense");
     let unit = globals.unit_replace.replace_check(unit); // replace_requests
@@ -3383,6 +3479,9 @@ pub unsafe extern fn replace_requests(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let id_first = UnitId(read.read_u16());
     let id_second = UnitId(read.read_u16());
+    if read.is_invalid() {
+        return;
+    }
     debug!("Replace unit {:x} with {:x}", id_first.0, id_second.0);
     let ai_data = bw::player_ai((*script).player);
     //replace build requests
@@ -3428,7 +3527,7 @@ pub unsafe extern fn lift_land(script: *mut bw::AiScript) {
     let id_source = read.read_u8();
     let id_target = read.read_u8();
     let return_hp_percent = read.read_u8();
-    if feature_disabled("lift_land") {
+    if feature_disabled("lift_land") || read.is_invalid() {
         return;
     }
     let mut globals = Globals::get("ais lift_land");
@@ -3466,6 +3565,9 @@ pub unsafe extern fn base_layout(script: *mut bw::AiScript) {
     let amount = read.read_u8();
     let town_id = read.read_u8();
     let priority = read.read_u8();
+    if read.is_invalid() {
+        return;
+    }
     add_layout(
         script,
         unit,
@@ -3486,6 +3588,9 @@ pub unsafe extern fn base_layout_old(script: *mut bw::AiScript) {
     src.extend_area(radius as i16);
     let amount = read.read_u8();
     let town_id = read.read_u8();
+    if read.is_invalid() {
+        return;
+    }
     add_layout(script, unit, layout_modifier, src, amount, town_id, 50);
 }
 
@@ -3496,7 +3601,7 @@ pub unsafe extern fn guard_command(script: *mut bw::AiScript) {
     let quantity = read.read_u8();
     let death_limit = read.read_u8();
     let priority = read.read_u8();
-    if feature_disabled("guard") {
+    if feature_disabled("guard") || read.is_invalid() {
         return;
     }
     let mut globals = Globals::get("ais guard");
@@ -3558,7 +3663,7 @@ pub unsafe extern fn create_script(script: *mut bw::AiScript) {
         255 => (((*script).flags >> 3) & 0xff) as u8,
         x => x,
     };
-    if feature_disabled("create_script") {
+    if feature_disabled("create_script") || read.is_invalid() {
         return;
     }
     let town = match town {
@@ -3850,6 +3955,9 @@ mod test {
                 start: buf.as_ptr(),
                 pos: buf.as_ptr().add(4),
                 script: &mut script,
+                orig_pos: 4,
+                length: buf.len() as u32,
+                invalid: false,
             };
             assert_eq!(read.read_u32(), 43242);
             assert_eq!(read.read_u16(), 12345);
@@ -3878,6 +3986,9 @@ mod test {
                 start: buf.as_ptr(),
                 pos: buf.as_ptr().add(4),
                 script: &mut script,
+                orig_pos: 4,
+                length: buf.len() as u32,
+                invalid: false,
             };
             assert_eq!(read.read_unit_match().units, vec![UnitId(0x33)]);
             let eq = vec![UnitId(0x123), UnitId(0x110), UnitId(0x30), UnitId(0x70)];
@@ -3892,8 +4003,9 @@ mod test {
 
         let mut buf = vec![];
         buf.write_u32::<LE>(0x123456).unwrap();
-        buf.write_u32::<LE>(0x12345678).unwrap();
-        buf.write_u32::<LE>(0x33113322).unwrap();
+        buf.write_u32::<LE>(0x0000_0005).unwrap();
+        buf.write_u32::<LE>(0x0000_0009).unwrap();
+        buf.write_u32::<LE>(0x3311_3322).unwrap();
         unsafe {
             let mut script: bw::AiScript = mem::zeroed();
             script.pos = 4;
@@ -3901,9 +4013,13 @@ mod test {
                 start: buf.as_ptr(),
                 pos: buf.as_ptr().add(4),
                 script: &mut script,
+                orig_pos: 4,
+                length: buf.len() as u32,
+                invalid: false,
             };
-            assert_eq!(read.read_jump_pos(), 0x12345678);
-            assert_eq!(read.read_jump_pos(), 0x33113322);
+            assert_eq!(read.read_jump_pos(), 0x0000_0005);
+            assert_eq!(read.read_jump_pos(), 0x0000_0009);
+            assert_eq!(read.read_jump_pos(), 0x8000_0000);
             assert_eq!(script.pos, buf.len() as u32);
         }
     }
@@ -3914,8 +4030,9 @@ mod test {
 
         let mut buf = vec![];
         buf.write_u32::<LE>(0x1234).unwrap();
-        buf.write_u32::<LE>(0x12345678).unwrap();
-        buf.write_u32::<LE>(0x33113322).unwrap();
+        buf.write_u32::<LE>(0x0000_0005).unwrap();
+        buf.write_u32::<LE>(0x0000_0009).unwrap();
+        buf.write_u32::<LE>(0x3311_3322).unwrap();
         unsafe {
             let mut script: bw::AiScript = mem::zeroed();
             script.pos = 4;
@@ -3923,11 +4040,16 @@ mod test {
                 start: buf.as_ptr(),
                 pos: buf.as_ptr().add(4),
                 script: &mut script,
+                orig_pos: 4,
+                length: buf.len() as u32,
+                invalid: false,
             };
-            assert_eq!(read.read_jump_pos(), 0x5678);
-            assert_eq!(read.read_jump_pos(), 0x1234);
-            assert_eq!(read.read_jump_pos(), 0x3322);
-            assert_eq!(read.read_jump_pos(), 0x3311);
+            assert_eq!(read.read_jump_pos(), 0x0005);
+            assert_eq!(read.read_jump_pos(), 0x0000);
+            assert_eq!(read.read_jump_pos(), 0x0009);
+            assert_eq!(read.read_jump_pos(), 0x0000);
+            assert_eq!(read.read_jump_pos(), 0x8000_0000);
+            let _ = read.read_jump_pos(); // Currently only returns error once, idk if makes sense
             assert_eq!(script.pos, buf.len() as u32);
         }
     }
@@ -3936,6 +4058,9 @@ mod test {
 pub unsafe extern fn panic_opcode(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let offset = read.read_u16();
+    if read.is_invalid() {
+        return;
+    }
     if (*script).flags & 0x1 != 0 {
         let script = Script::ptr_from_bw(script);
         bw_print!(

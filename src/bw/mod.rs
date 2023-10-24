@@ -1,8 +1,9 @@
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
 
+use std::convert::TryFrom;
 use std::ptr::{null, null_mut};
-use std::sync::atomic::{AtomicPtr, Ordering};
+use std::sync::atomic::{AtomicPtr, AtomicU32, Ordering};
 
 use bw_dat::{OrderId, TechId, UnitId, UpgradeId, UnitArray};
 
@@ -111,38 +112,47 @@ pub fn change_ai_region_state(region: *mut AiRegion, state: u32) {
     samase::change_ai_region_state(region, state);
 }
 
-static SAMASE_AISCRIPT_BIN: AtomicPtr<u8> = AtomicPtr::new(null_mut());
-static SAMASE_BWSCRIPT_BIN: AtomicPtr<u8> = AtomicPtr::new(null_mut());
+static SAMASE_AISCRIPT_BIN: (AtomicPtr<u8>, AtomicU32) =
+    (AtomicPtr::new(null_mut()), AtomicU32::new(0));
+static SAMASE_BWSCRIPT_BIN: (AtomicPtr<u8>, AtomicU32) =
+    (AtomicPtr::new(null_mut()), AtomicU32::new(0));
 
-fn init_script(out: &AtomicPtr<u8>, filename: &str) -> *mut u8 {
-    let (data, _size) = samase::read_file(filename).unwrap();
-    match out.compare_exchange(null_mut(), data, Ordering::Relaxed, Ordering::Relaxed) {
-        Ok(_) => data,
+fn init_file(
+    global: &(AtomicPtr<u8>, AtomicU32),
+    filename: &str,
+) -> (*mut u8, u32) {
+    let (data, size) = samase::read_file(filename).unwrap();
+    let size = u32::try_from(size).expect("File too big");
+    global.1.store(size, Ordering::Relaxed);
+    match global.0.compare_exchange(null_mut(), data, Ordering::Release, Ordering::Relaxed) {
+        Ok(_) => (data, size),
         Err(val) => {
             unsafe {
                 samase::free_memory(data);
             }
-            val
+            (val, size)
         }
     }
 }
 
-pub fn aiscript_bin() -> *mut u8 {
-    let bin = SAMASE_AISCRIPT_BIN.load(Ordering::Relaxed);
+fn load_file(
+    global: &(AtomicPtr<u8>, AtomicU32),
+    filename: &str,
+) -> (*mut u8, u32) {
+    let bin = global.0.load(Ordering::Acquire);
     if bin.is_null() {
-        init_script(&SAMASE_AISCRIPT_BIN, "scripts\\aiscript.bin")
+        init_file(global, filename)
     } else {
-        bin
+        (bin, global.1.load(Ordering::Relaxed))
     }
 }
 
-pub fn bwscript_bin() -> *mut u8 {
-    let bin = SAMASE_BWSCRIPT_BIN.load(Ordering::Relaxed);
-    if bin.is_null() {
-        init_script(&SAMASE_BWSCRIPT_BIN, "scripts\\bwscript.bin")
-    } else {
-        bin
-    }
+pub fn aiscript_bin() -> (*mut u8, u32) {
+    load_file(&SAMASE_AISCRIPT_BIN, "scripts\\aiscript.bin")
+}
+
+pub fn bwscript_bin() -> (*mut u8, u32) {
+    load_file(&SAMASE_BWSCRIPT_BIN, "scripts\\bwscript.bin")
 }
 
 pub fn unit_dat_requirements(unit: UnitId) -> Option<*const u16> {
