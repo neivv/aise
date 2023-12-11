@@ -404,7 +404,9 @@ pub struct UnitPath {
     pub path_frame: u8,
     pub pathing_flags: u8,
     pub _unk106: u8,
-    pub _unk107: u8,
+    /// This was probably a padding byte originally that BW used, so it is inside pathing data
+    /// struct.
+    pub is_being_healed: u8,
     pub collision_points: [u16; 0x4],
 }
 
