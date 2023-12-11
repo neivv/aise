@@ -394,10 +394,44 @@ unsafe extern fn step_order_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_v
                 );
             }
         }
+        order::id::AI_RETURN => {
+            // Part 2 of guard carrier fix below; train more while moving to home
+            if unit.guard_ai().is_some() {
+                if let Some(fighter) = unit.id().fighter_id() {
+                    let game = bw::game();
+                    let reqs_ok = match bw::unit_dat_requirements(fighter) {
+                        Some(reqs) => datreq::check_dat_requirements(game, reqs, unit, 0),
+                        None => false,
+                    };
+                    if reqs_ok {
+                        let cost = ai::unit_cost(fighter);
+                        if ai_spending::start_unit_building(game, unit, fighter, &cost).is_ok() {
+                            unit.issue_secondary_order(order::id::TRAIN_FIGHTER);
+                        }
+                    }
+                }
+            }
+        }
         _ => (),
     }
     orig(u);
     match prev_order {
+        order::id::COMPUTER_AI => {
+            // Normally bw loops CARRIER_IDLE -> COMPUTER_AI -> CARRIER_IDLE
+            // but this doesn't handle guard carriers.
+            // Once order switches from COMPUTER_AI, and the unit has GuardAi,
+            // switch to AI_GUARD instead (Which will go back to COMPUTER_AI afterwards)
+            //
+            // (By letting COMPUTER_AI run first it makes sure that it builds fighters
+            // if there is money for that)
+            if matches!(unit.order(), order::id::CARRIER_IDLE | order::id::REAVER_IDLE) {
+                if let Some(guard_ai) = unit.guard_ai() {
+                    if unit.position() != (*guard_ai).home {
+                        unit.issue_order_ground(order::id::AI_GUARD, unit.position());
+                    }
+                }
+            }
+        }
         order::id::UNIT_MORPH => {
             // Fix a bw bug where an unit will keep the egg's building ai for a few frames
             // after being born. If it dies during those frames, bw doesn't remove its ai

@@ -629,7 +629,7 @@ unsafe fn can_satisfy_dat_request(
 /// construction.
 ///
 /// Does not do anything ai-specific either.
-fn start_unit_building(game: Game, unit: Unit, unit_id: UnitId, cost: &Cost) -> Result<(), ()> {
+pub fn start_unit_building(game: Game, unit: Unit, unit_id: UnitId, cost: &Cost) -> Result<(), ()> {
     let slot = match unit.empty_build_slot() {
         Some(s) => s as usize,
         None => return Err(()),
