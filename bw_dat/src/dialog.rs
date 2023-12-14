@@ -223,14 +223,12 @@ impl Control {
             if crate::is_scr() {
                 let this = (*self) as *mut bw::scr::Control;
                 let mut event = bw::scr::ControlEvent {
-                    ext_type: id,
-                    ext_ptr: null_mut(),
+                    ext_type: id as usize,
                     ext_param: 0,
                     param: 0,
                     ty: 0xe,
                     x,
                     y,
-                    padding: 0,
                     time: GetTickCount(),
                 };
                 if let Some(e) = (*this).event_handler {

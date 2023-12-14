@@ -757,14 +757,12 @@ pub mod scr {
 
     #[repr(C)]
     pub struct ControlEvent {
-        pub ext_type: u32,
-        pub ext_ptr: *mut c_void,
-        pub ext_param: u32,
-        pub param: u32,
+        pub ext_type: usize,
+        pub ext_param: usize,
+        pub param: u64,
         pub ty: u16,
         pub x: i16,
         pub y: i16,
-        pub padding: u16,
         pub time: u32,
     }
 
@@ -990,7 +988,7 @@ mod test {
         assert_eq!(mem::size_of::<Path>(), 0x80);
         assert_eq!(mem::size_of::<Sprite>(), size(0x28, 0x48));
         assert_eq!(mem::size_of::<Order>(), size(0x14, 0x28));
-        assert_eq!(mem::size_of::<scr::ControlEvent>(), size(0x1c, 0x28));
+        assert_eq!(mem::size_of::<scr::ControlEvent>(), size(0x20, 0x28));
         assert_eq!(mem::size_of::<scr::Control>(), size(0x50, 0x78));
         assert_eq!(mem::size_of::<scr::Dialog>(), size(0x64, 0xa0));
         assert_eq!(mem::size_of::<scr::DrawCommand>(), size(0xa0, 0xd8));
