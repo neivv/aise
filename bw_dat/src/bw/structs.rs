@@ -363,10 +363,19 @@ pub struct Unit {
     pub move_target_update_timer: u8,
     pub detection_status: u32,
     pub secondary_order_target: PointAndUnit,
-    pub next_invisible: *mut Unit,
     pub prev_invisible: *mut Unit,
+    pub next_invisible: *mut Unit,
     pub rally_pylon: RallyPylon,
-    pub path: UnitPath,
+    #[cfg(target_pointer_width = "64")]
+    pub unk_64bit_value: usize, // ??? This is not needed for alignment or anything
+    pub path: *mut Path,
+    pub path_frame: u8,
+    pub pathing_flags: u8,
+    pub _unk106: u8,
+    /// This was probably a padding byte originally that BW used, so it is inside pathing data
+    /// struct.
+    pub is_being_healed: u8,
+    pub collision_points: [u16; 0x4],
     pub death_timer: u16,
     pub defensive_matrix_dmg: u16,
     pub matrix_timer: u8,
@@ -396,18 +405,6 @@ pub struct Unit {
     pub repulse_direction: u8,
     pub repulse_chunk_x: u8,
     pub repulse_chunk_y: u8,
-}
-
-#[repr(C)]
-pub struct UnitPath {
-    pub path: *mut Path,
-    pub path_frame: u8,
-    pub pathing_flags: u8,
-    pub _unk106: u8,
-    /// This was probably a padding byte originally that BW used, so it is inside pathing data
-    /// struct.
-    pub is_being_healed: u8,
-    pub collision_points: [u16; 0x4],
 }
 
 #[repr(C)]
@@ -995,5 +992,20 @@ mod test {
         assert_eq!(mem::size_of::<scr::DrawCommands>(), size(0x160030, 0x1d0058));
         assert_eq!(mem::size_of::<scr::DrawSubCommand>(), size(0x8, 0x10));
         assert_eq!(mem::size_of::<scr::BwString>(), size(0x1c, 0x28));
+    }
+
+    #[test]
+    fn test_offsets() {
+        use std::ptr::addr_of_mut;
+        unsafe {
+            let mut unit = std::mem::MaybeUninit::uninit();
+            let unit: *mut Unit = unit.as_mut_ptr();
+            let base = unit as usize;
+            assert_eq!(addr_of_mut!((*unit).unit_specific) as usize - base, size(0xc0, 0x108));
+            assert_eq!(addr_of_mut!((*unit).unit_specific2) as usize - base, size(0xd0, 0x128));
+            assert_eq!(addr_of_mut!((*unit).path) as usize - base, size(0x100, 0x188));
+            assert_eq!(addr_of_mut!((*unit).death_timer) as usize - base, size(0x110, 0x19c));
+            assert_eq!(addr_of_mut!((*unit).ai) as usize - base, size(0x134, 0x1c8));
+        }
     }
 }
