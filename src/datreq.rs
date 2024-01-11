@@ -289,7 +289,13 @@ pub unsafe fn check_dat_requirements(
                     true
                 }
                 DatReq::CurrentUnitIs(unit_id) => unit.matches_id(unit_id),
-                DatReq::HasHangarSpace => unit.fighter_amount() < unit.hangar_cap(game),
+                DatReq::HasHangarSpace => {
+                    let amount = unit.fighter_amount()
+                        .saturating_add(
+                            (0..5).filter(|&i| unit.nth_queued_unit(i).is_some()).count() as u32
+                        );
+                    amount < unit.hangar_cap(game)
+                }
                 DatReq::HasNotNukeOnly => !unit.has_nuke(),
                 DatReq::HasNoAddon => unit.addon().is_none(),
                 DatReq::HasAddonAttached(id) => {
