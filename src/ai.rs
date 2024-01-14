@@ -896,8 +896,8 @@ unsafe fn update_slowest_unit_in_region(region: *mut bw::AiRegion) {
     }
     let mut slowest_ground = None;
     let mut slowest_air = None;
-    let mut ground_speed = u32::max_value();
-    let mut air_speed = u32::max_value();
+    let mut ground_speed = u32::MAX;
+    let mut air_speed = u32::MAX;
 
     if let Some(unit) = Unit::from_ptr((*region).slowest_military) {
         if unit.is_air() {

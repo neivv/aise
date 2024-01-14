@@ -123,12 +123,12 @@ impl<E: CustomEval> EvalCtx<E> {
             Mul(x) => self.eval_int_r(&x.0).saturating_mul(self.eval_int_r(&x.1)),
             Div(x) => {
                 self.eval_int_r(&x.0).checked_div(self.eval_int_r(&x.1))
-                    .unwrap_or(i32::max_value())
+                    .unwrap_or(i32::MAX)
             }
             Modulo(x) => {
                 let div = self.eval_int_r(&x.1);
                 if div == 0 {
-                    i32::max_value()
+                    i32::MAX
                 } else {
                     self.eval_int_r(&x.0) % div
                 }

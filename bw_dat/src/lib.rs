@@ -581,7 +581,7 @@ pub struct PlacementBox {
 impl UnitId {
     pub fn optional(id: u32) -> Option<UnitId> {
         let limit = UnitId::entry_amount();
-        if id > u16::max_value() as u32 || id >= limit ||
+        if id > u16::MAX as u32 || id >= limit ||
             (id >= unit::NONE.0 as u32 && id <= 260)
         {
             None
@@ -594,7 +594,7 @@ impl UnitId {
         unsafe {
             let dat = UNITS_DAT[0].load(Ordering::Relaxed) as *const DatTable;
             if dat.is_null() {
-                u32::max_value()
+                u32::MAX
             } else {
                 (*dat).entries as u32
             }
@@ -964,7 +964,7 @@ impl DimensionRect {
 
 impl WeaponId {
     pub fn optional(id: u32) -> Option<WeaponId> {
-        if id > u16::max_value() as u32 || id == weapon::NONE.0 as u32 {
+        if id > u16::MAX as u32 || id == weapon::NONE.0 as u32 {
             None
         } else {
             Some(WeaponId(id as u16))
@@ -1070,7 +1070,7 @@ impl WeaponId {
 
 impl UpgradeId {
     pub fn optional(id: u32) -> Option<UpgradeId> {
-        if id > u16::max_value() as u32 || id == upgrade::NONE.0 as u32 {
+        if id > u16::MAX as u32 || id == upgrade::NONE.0 as u32 {
             None
         } else {
             Some(UpgradeId(id as u16))
@@ -1081,7 +1081,7 @@ impl UpgradeId {
         unsafe {
             let dat = UPGRADES_DAT[0].load(Ordering::Relaxed) as *const DatTable;
             if dat.is_null() {
-                u32::max_value()
+                u32::MAX
             } else {
                 (*dat).entries as u32
             }
@@ -1131,7 +1131,7 @@ impl UpgradeId {
 
 impl TechId {
     pub fn optional(id: u32) -> Option<TechId> {
-        if id > u16::max_value() as u32 || id == tech::NONE.0 as u32 {
+        if id > u16::MAX as u32 || id == tech::NONE.0 as u32 {
             None
         } else {
             Some(TechId(id as u16))
@@ -1142,7 +1142,7 @@ impl TechId {
         unsafe {
             let dat = TECHDATA_DAT[0].load(Ordering::Relaxed) as *const DatTable;
             if dat.is_null() {
-                u32::max_value()
+                u32::MAX
             } else {
                 (*dat).entries as u32
             }
