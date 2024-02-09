@@ -135,7 +135,10 @@ fn handle_building_morph(
     if request.ty == 3 {
         let unit_id = UnitId(request.id);
         let cost = ai::unit_cost(unit_id);
-        if ai.has_resources(game, players, &cost) && game.unit_available(player, unit_id) {
+        if ai.has_resources(game, players, &cost) &&
+            game.unit_available(player, unit_id) &&
+            unit_id.is_building()
+        {
             let town = Town(request.val as *mut bw::AiTown);
             let reqs = match bw::unit_dat_requirements(unit_id) {
                 Some(s) => s,
