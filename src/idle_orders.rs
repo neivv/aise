@@ -743,6 +743,7 @@ impl IdleOrder {
             user.order() != self.order &&
             user.can_issue_order(self.order) &&
             user.energy() as u32 >= energy_cost &&
+            !user.is_hallucination() &&
             self.self_flags.match_status(
                 user,
                 self.player,
