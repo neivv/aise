@@ -1,6 +1,6 @@
 use smallvec::SmallVec;
 
-use bw_dat::{self, order, Game, TechId, Unit, UnitId, UpgradeId};
+use bw_dat::{order, Game, TechId, Unit, UnitId, UpgradeId};
 
 use crate::ai::{self, has_resources, Cost, PlayerAi, PlayerAiArray};
 use crate::aiscript::{AiMode, Town};

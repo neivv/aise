@@ -1,6 +1,6 @@
 use smallvec::SmallVec;
 
-use bw_dat::{self, unit, Game, TechId, Unit, UnitId};
+use bw_dat::{unit, Game, TechId, Unit, UnitId};
 
 impl DatReq {
     unsafe fn read(pos: &mut *const u16) -> DatReq {

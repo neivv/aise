@@ -4,7 +4,7 @@ use bumpalo::Bump;
 use bumpalo::collections::Vec as BumpVec;
 use serde::{Deserialize, Serialize};
 
-use bw_dat::{self, order, Game, OrderId, Unit, UnitId};
+use bw_dat::{order, Game, OrderId, Unit, UnitId};
 
 use crate::aiscript::{PlayerMatch, Position, ReadModifierType, ScriptData, UnitMatch};
 use crate::bw;

@@ -1,5 +1,3 @@
-extern crate bw_dat;
-
 #[macro_use]
 extern crate log;
 

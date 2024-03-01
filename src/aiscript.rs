@@ -8,10 +8,9 @@ use std::slice;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use bincode;
 use directories::UserDirs;
 use parking_lot::Mutex;
-use serde::{self, Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use bw_dat::{Game, TechId, Unit, UnitId, UpgradeId};
 
