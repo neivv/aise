@@ -751,10 +751,10 @@ pub unsafe fn continue_incomplete_buildings() {
     for i in 0..8 {
         for town in ListIter(bw::first_active_ai_town(i)) {
             let regions = bw::ai_regions(u32::from((*town).player));
-            let free_scvs = ListIter((*town).workers)
+            let free_scvs = ListIter((*town).workers.first)
                 .filter_map(|x| Unit::from_ptr((*x).parent))
                 .filter(|x| x.id() == unit::SCV && x.order() == order::COMPUTER_AI);
-            let incomplete_buildings = ListIter((*town).buildings)
+            let incomplete_buildings = ListIter((*town).buildings.first)
                 .filter_map(|x| Unit::from_ptr((*x).parent))
                 .filter(|&x| {
                     !x.is_completed() &&
@@ -870,7 +870,7 @@ pub unsafe fn add_military_ai(unit: Unit, region: *mut bw::AiRegion, always_this
         region
     };
 
-    let array = (*region).military.array;
+    let array = (*region).military.full_array;
     let ai = (*array).first_free;
     if ai.is_null() {
         warn!("Military ai limit");
@@ -1054,7 +1054,7 @@ unsafe fn remove_from_ai_structs(
                 }
             }
         }
-        let array = (*region).military.array;
+        let array = (*region).military.full_array;
         ListEntry::move_to(ai, &mut (*region).military.first, &mut (*array).first_free);
         (**unit).ai = null_mut();
     }
@@ -1102,8 +1102,8 @@ unsafe fn remove_worker_or_building_ai(
         used_town = Some(town);
         ListEntry::move_to(
             ai,
-            &mut (*town).workers,
-            &mut (*(*town).free_workers).first_free,
+            &mut (*town).workers.first,
+            &mut (*(*town).workers.full_array).first_free,
         );
         (*town).worker_count = (*town).worker_count.saturating_sub(1);
         (**unit).ai = null_mut();
@@ -1116,8 +1116,8 @@ unsafe fn remove_worker_or_building_ai(
         used_town = Some(town);
         ListEntry::move_to(
             ai,
-            &mut (*town).buildings,
-            &mut (*(*town).free_buildings).first_free,
+            &mut (*town).buildings.first,
+            &mut (*(*town).buildings.full_array).first_free,
         );
         (**unit).ai = null_mut();
         if (*town).main_building == *unit {
@@ -1147,7 +1147,7 @@ unsafe fn check_town_delete(game: Game, player_ai: &PlayerAi, town: Town) {
         //(*resource_areas).areas[(*town.0).resource_area as usize].flags &= !0x2;
     }
     let towns = crate::samase::active_towns().add(player_ai.1 as usize);
-    let town_array = (*towns).array;
+    let town_array = (*towns).full_array;
     ListEntry::move_to(town.0, &mut (*towns).first, &mut (*town_array).first_free);
 }
 
@@ -1199,14 +1199,14 @@ unsafe fn add_building_ai(
     town: Town,
 ) {
     assert!(!unit.has_ai());
-    let array = (*town.0).free_buildings;
+    let array = (*town.0).buildings.full_array;
     if (*array).first_free.is_null() {
         warn!("Building ai limit");
         return;
     }
 
     let ai = (*array).first_free;
-    ListEntry::move_to(ai, &mut (*array).first_free, &mut (*town.0).buildings);
+    ListEntry::move_to(ai, &mut (*array).first_free, &mut (*town.0).buildings.first);
     (*ai).parent = *unit;
     (*ai).town = town.0;
     (*ai).ai_type = 0x3;
@@ -1305,12 +1305,12 @@ pub fn is_gas_building(unit_id: UnitId) -> bool {
 
 unsafe fn add_worker_ai(game: Game, unit: Unit, town: Town) {
     assert!(!unit.has_ai());
-    let array = (*town.0).free_workers;
+    let array = (*town.0).workers.full_array;
     if (*array).first_free.is_null() {
         warn!("Worker ai limit");
     } else {
         let ai = (*array).first_free;
-        ListEntry::move_to(ai, &mut (*array).first_free, &mut (*town.0).workers);
+        ListEntry::move_to(ai, &mut (*array).first_free, &mut (*town.0).workers.first);
         (*ai).parent = *unit;
         (*ai).town = town.0;
         (*ai).ai_type = 0x2;

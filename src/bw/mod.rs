@@ -9,9 +9,6 @@ use bw_dat::{OrderId, TechId, UnitId, UpgradeId, UnitArray};
 
 use crate::samase;
 
-pub mod structs;
-
-pub use self::structs::*;
 pub use bw_dat::structs::*;
 
 pub fn player_ai(player: u32) -> *mut PlayerAiData {
@@ -100,12 +97,12 @@ pub fn set_first_free_ai_script(script: *mut AiScript) {
 pub fn guard_ais(player: u8) -> *mut GuardAi {
     unsafe {
         assert!(player < 8);
-        (*samase::guard_ais().offset(player as isize)).first
+        (*samase::guard_ais().add(player as usize)).first
     }
 }
 
-pub fn guard_array() -> *mut GuardAiArray {
-    unsafe { (*samase::guard_ais()).array }
+pub fn guard_array() -> *mut AiArray<1000, GuardAi> {
+    unsafe { (*samase::guard_ais()).full_array }
 }
 
 pub fn change_ai_region_state(region: *mut AiRegion, state: u32) {
@@ -224,12 +221,12 @@ pub fn rect_distance(a: &Rect, b: &Rect) -> u32 {
     )
 }
 
-pub fn town_array() -> *mut AiTownArray {
+pub fn town_array() -> *mut AiArray<100, AiTown> {
     let ptr = samase::active_towns();
     if ptr.is_null() {
         null_mut()
     } else {
-        unsafe { (*ptr).array }
+        unsafe { (*ptr).full_array }
     }
 }
 

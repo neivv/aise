@@ -301,7 +301,7 @@ pub unsafe fn can_satisfy_request(
                 let town = request.val as *mut bw::AiTown;
                 if !ai_mode.build_gas {
                     // Ai only builds the gas buildings that script explicitly requested
-                    let existing_gas_buildings = ListIter((*town).buildings)
+                    let existing_gas_buildings = ListIter((*town).buildings.first)
                         .filter_map(|x| Unit::from_ptr((*x).parent))
                         .filter(|x| x.id() == unit_id)
                         .count();
@@ -396,6 +396,7 @@ pub enum RequestSatisfyError {
     BuildLimit,
     /// One set of ors that couldn't be satisfied
     /// (Doesn't show rest if many)
+    #[allow(dead_code)]
     DatReq(Vec<DatReqSatisfyError>),
     /// Dat reqs are required for request type (Units default success on no reqs)
     NeedDatReqs,
@@ -404,6 +405,7 @@ pub enum RequestSatisfyError {
 }
 
 #[derive(Copy, Clone)]
+#[allow(dead_code)]
 pub enum DatReqSatisfyError {
     /// This doesn't differentiate between current unit is/owns unit,
     /// but let's assume that the user can figure things out from the error.

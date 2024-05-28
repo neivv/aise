@@ -260,6 +260,35 @@ impl Game {
         }
     }
 
+    /// Research level is current upgrade level + 1
+    pub fn upgrade_in_progress(self, player: u8, upgrade: UpgradeId) -> bool {
+        unsafe {
+            let id = upgrade.0 as usize;
+            assert!(player < 0xc);
+            let byte_index = id / 8;
+            let bit = 1 << (id & 7);
+            if let Some(arr) = extended_array(4) {
+                arr.read_u8(byte_index * 12 + player as usize) & bit != 0
+            } else {
+                (**self).upgrade_in_progress[player as usize][byte_index] & bit != 0
+            }
+        }
+    }
+
+    pub fn tech_in_progress(self, player: u8, tech: TechId) -> bool {
+        unsafe {
+            let id = tech.0 as usize;
+            assert!(player < 0xc);
+            let byte_index = id / 8;
+            let bit = 1 << (id & 7);
+            if let Some(arr) = extended_array(5) {
+                arr.read_u8(byte_index * 12 + player as usize) & bit != 0
+            } else {
+                (**self).tech_in_progress[player as usize][byte_index] & bit != 0
+            }
+        }
+    }
+
     pub fn unit_count(self, player: u8, unit: UnitId) -> u32 {
         unsafe {
             let unit = unit.0 as usize;

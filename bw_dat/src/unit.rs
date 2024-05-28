@@ -570,16 +570,53 @@ impl Unit {
         unsafe { !(**self).ai.is_null() }
     }
 
+    fn ai_by_type<T>(self, ty: u8) -> Option<*mut T> {
+        unsafe {
+            if (**self).ai.is_null() {
+                None
+            } else {
+                let ai = (**self).ai as *mut bw::GuardAi;
+                if (*ai).ai_type == ty {
+                    Some(ai as *mut T)
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
+    pub fn guard_ai(self) -> Option<*mut bw::GuardAi> {
+        self.ai_by_type(1)
+    }
+
+    pub fn worker_ai(self) -> Option<*mut bw::WorkerAi> {
+        self.ai_by_type(2)
+    }
+
+    pub fn building_ai(self) -> Option<*mut bw::BuildingAi> {
+        self.ai_by_type(3)
+    }
+
+    pub fn military_ai(self) -> Option<*mut bw::MilitaryAi> {
+        self.ai_by_type(4)
+    }
+
+    /// "Is target considered an enemy by this unit"
     pub fn is_enemy(self, game: Game, target: Unit) -> bool {
-        let target_player = if target.player() == 11 {
-            match target.sprite() {
+        target.is_enemy_for_player(game, self.player())
+    }
+
+    /// "Does `player` consider this unit an enemy"
+    pub fn is_enemy_for_player(self, game: Game, player: u8) -> bool {
+        let target_player = if self.player() == 11 {
+            match self.sprite() {
                 Some(s) => s.player(),
                 _ => return false,
             }
         } else {
-            target.player()
+            self.player()
         };
-        !game.allied(self.player(), target_player)
+        !game.allied(player, target_player)
     }
 
     pub fn related(self) -> Option<Unit> {

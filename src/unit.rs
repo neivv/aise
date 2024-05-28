@@ -65,10 +65,6 @@ impl std::ops::Deref for SerializableUnit {
 
 pub trait UnitExt {
     fn orders(&self) -> Orders<'_>;
-    fn worker_ai(self) -> Option<*mut bw::WorkerAi>;
-    fn building_ai(self) -> Option<*mut bw::BuildingAi>;
-    fn guard_ai(self) -> Option<*mut bw::GuardAi>;
-    fn military_ai(self) -> Option<*mut bw::MilitaryAi>;
     fn issue_secondary_order(self, order: OrderId);
     fn issue_order(self, order: OrderId, pos: bw::Point, unit: Option<Unit>);
     fn issue_order_ground(self, order: OrderId, target: bw::Point);
@@ -83,50 +79,6 @@ impl UnitExt for Unit {
                 next: (***self).order_queue_begin,
                 this: self,
                 first: true,
-            }
-        }
-    }
-
-    fn worker_ai(self) -> Option<*mut bw::WorkerAi> {
-        unsafe {
-            let ai = (**self).ai as *mut bw::WorkerAi;
-            if ai != null_mut() && (*ai).ai_type == 2 {
-                Some(ai)
-            } else {
-                None
-            }
-        }
-    }
-
-    fn building_ai(self) -> Option<*mut bw::BuildingAi> {
-        unsafe {
-            let ai = (**self).ai as *mut bw::BuildingAi;
-            if ai != null_mut() && (*ai).ai_type == 3 {
-                Some(ai)
-            } else {
-                None
-            }
-        }
-    }
-
-    fn guard_ai(self) -> Option<*mut bw::GuardAi> {
-        unsafe {
-            let ai = (**self).ai as *mut bw::GuardAi;
-            if ai != null_mut() && (*ai).ai_type == 1 {
-                Some(ai)
-            } else {
-                None
-            }
-        }
-    }
-
-    fn military_ai(self) -> Option<*mut bw::MilitaryAi> {
-        unsafe {
-            let ai = (**self).ai as *mut bw::MilitaryAi;
-            if ai != null_mut() && (*ai).ai_type == 4 {
-                Some(ai)
-            } else {
-                None
             }
         }
     }
@@ -191,7 +143,6 @@ pub struct Orders<'a> {
 
 pub struct Order {
     pub id: OrderId,
-    pub position: bw::Point,
     pub target: Option<Unit>,
 }
 
@@ -203,7 +154,6 @@ impl<'a> Iterator for Orders<'a> {
                 self.first = false;
                 Some(Order {
                     id: self.this.order(),
-                    position: (***self.this).order_target.pos,
                     target: self.this.target(),
                 })
             } else if self.next != null_mut() {
@@ -211,7 +161,6 @@ impl<'a> Iterator for Orders<'a> {
                 self.next = (*order).next;
                 Some(Order {
                     id: OrderId((*order).order_id),
-                    position: (*order).target.pos,
                     target: Unit::from_ptr((*order).target.unit),
                 })
             } else {

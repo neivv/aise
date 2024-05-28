@@ -674,6 +674,10 @@ impl UnitId {
         self.flags() & 0x2 != 0
     }
 
+    pub fn is_air(self) -> bool {
+        self.flags() & 0x4 != 0
+    }
+
     pub fn is_creature(self) -> bool {
         !self.is_building() &&
             !self.is_powerup() &&
@@ -1232,6 +1236,10 @@ impl OrderId {
 
     pub fn weapon(&self) -> Option<WeaponId> {
         WeaponId::optional(self.get(13))
+    }
+
+    pub fn use_weapon_targeting(&self) -> bool {
+        self.get(1) != 0
     }
 
     pub fn subunit_inheritance(&self) -> bool {

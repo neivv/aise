@@ -431,11 +431,11 @@ impl Town {
     }
 
     pub fn buildings(self) -> impl Iterator<Item = *mut bw::BuildingAi> {
-        unsafe { ListIter((*self.0).buildings) }
+        unsafe { ListIter((*self.0).buildings.first) }
     }
 
     pub fn workers(self) -> impl Iterator<Item = *mut bw::WorkerAi> {
-        unsafe { ListIter((*self.0).workers) }
+        unsafe { ListIter((*self.0).workers.first) }
     }
 
     pub fn has_workers(self) -> bool {
@@ -451,7 +451,7 @@ impl Town {
             (*self.0)
                 .town_units
                 .iter()
-                .cloned()
+                .copied()
                 .take_while(|x| x.flags_and_count != 0)
         }
     }
@@ -528,13 +528,8 @@ pub unsafe extern fn remove_build(script: *mut bw::AiScript) {
 }
 
 unsafe fn remove_build_from_town(town: Town, unit_id: &mut UnitMatch, amount: u8) {
+    let builds = town.requests().collect::<Vec<_>>();
     let town = town.0;
-    let builds = (*town)
-        .town_units
-        .iter()
-        .cloned()
-        .take_while(|x| x.flags_and_count != 0)
-        .collect::<Vec<_>>();
 
     let mut write_units = 0;
     for mut elem in builds {
@@ -2276,17 +2271,6 @@ pub unsafe extern fn attack_rand(script: *mut bw::AiScript) {
     add_to_attack_force(&globals, (*script).player as u8, UnitId(unit), random);
 }
 
-pub unsafe extern fn attack_add(script: *mut bw::AiScript) {
-    let mut read = ScriptData::new(script);
-    let amount = read.read_u8() as u32;
-    let unit = read.read_u16();
-    if read.is_invalid() {
-        return;
-    }
-    let globals = Globals::get("ais attack_rand");
-    add_to_attack_force(&globals, (*script).player as u8, UnitId(unit), amount);
-}
-
 unsafe fn add_to_attack_force(globals: &Globals, player: u8, unit: UnitId, amount: u32) {
     let unit = globals.unit_replace.replace_check(unit);
     let ai = ai::PlayerAi::get(player);
@@ -3138,7 +3122,7 @@ pub unsafe fn choose_building_placement(
                 for j in pos_y..rect_y + 1 {
                     let mut ok = check_placement(game, &unit_search, builder, i, j, unit_id);
                     if ok {
-                        let mut workers = (*town).workers;
+                        let mut workers = (*town).workers.first;
                         while workers != null_mut() {
                             let current = (*workers).parent;
                             if current != *builder {
@@ -3444,24 +3428,24 @@ pub unsafe extern fn defense_command(script: *mut bw::AiScript) {
     let defense_list: &mut [u16] = match defense_type {
         DefenseType::Build => {
             if first == DefenseUnit::Ground && second == DefenseUnit::Ground {
-                &mut (*ai_data).ground_vs_ground_build_def
+                &mut (*ai_data).defense_units[0]
             } else if first == DefenseUnit::Ground && second == DefenseUnit::Air {
-                &mut (*ai_data).ground_vs_air_build_def
+                &mut (*ai_data).defense_units[1]
             } else if first == DefenseUnit::Air && second == DefenseUnit::Ground {
-                &mut (*ai_data).air_vs_ground_build_def
+                &mut (*ai_data).defense_units[2]
             } else {
-                &mut (*ai_data).air_vs_air_build_def
+                &mut (*ai_data).defense_units[3]
             }
         }
         DefenseType::Use => {
             if first == DefenseUnit::Ground && second == DefenseUnit::Ground {
-                &mut (*ai_data).ground_vs_ground_use_def
+                &mut (*ai_data).defense_units[4]
             } else if first == DefenseUnit::Ground && second == DefenseUnit::Air {
-                &mut (*ai_data).ground_vs_air_use_def
+                &mut (*ai_data).defense_units[5]
             } else if first == DefenseUnit::Air && second == DefenseUnit::Ground {
-                &mut (*ai_data).air_vs_ground_use_def
+                &mut (*ai_data).defense_units[6]
             } else {
-                &mut (*ai_data).air_vs_air_use_def
+                &mut (*ai_data).defense_units[7]
             }
         }
     };
@@ -3495,14 +3479,9 @@ pub unsafe extern fn replace_requests(script: *mut bw::AiScript) {
             }
         }
     };
-    replace_defense_requests(&mut (*ai_data).ground_vs_ground_build_def);
-    replace_defense_requests(&mut (*ai_data).ground_vs_air_build_def);
-    replace_defense_requests(&mut (*ai_data).air_vs_ground_build_def);
-    replace_defense_requests(&mut (*ai_data).air_vs_air_build_def);
-    replace_defense_requests(&mut (*ai_data).ground_vs_ground_use_def);
-    replace_defense_requests(&mut (*ai_data).ground_vs_air_use_def);
-    replace_defense_requests(&mut (*ai_data).air_vs_ground_use_def);
-    replace_defense_requests(&mut (*ai_data).air_vs_air_use_def);
+    for i in 0..8 {
+        replace_defense_requests(&mut (*ai_data).defense_units[i]);
+    }
     let mut guard = bw::guard_ais((*script).player as u8);
     while guard != null_mut() {
         if (*guard).unit_id == id_first.0 {
@@ -3608,7 +3587,7 @@ pub unsafe extern fn guard_command(script: *mut bw::AiScript) {
     for _n in 0..quantity {
         let guards = samase::guard_ais().add((*script).player as usize);
         let old_first_active = (*guards).first;
-        let new_ai = (*(*guards).array).first_free;
+        let new_ai = (*(*guards).full_array).first_free;
         if new_ai.is_null() {
             // Guard AI limit
             break;
@@ -3625,7 +3604,7 @@ pub unsafe extern fn guard_command(script: *mut bw::AiScript) {
             previous_update: 0,
         };
         let new_first_free = (*new_ai).next;
-        (*(*guards).array).first_free = new_first_free;
+        (*(*guards).full_array).first_free = new_first_free;
         if !new_first_free.is_null() {
             (*new_first_free).prev = null_mut();
         }
@@ -3635,7 +3614,7 @@ pub unsafe extern fn guard_command(script: *mut bw::AiScript) {
         }
         (*guards).first = new_ai;
         globals.guards.add(
-            (*(*guards).array).ais.as_mut_ptr(),
+            (*(*guards).full_array).ais.as_mut_ptr(),
             new_ai,
             death_limit,
             priority,

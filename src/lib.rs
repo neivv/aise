@@ -12,9 +12,6 @@ mod macros;
 pub mod mpqdraft;
 pub mod samase;
 
-#[cfg(feature = "opengl")]
-mod gl;
-
 mod ai;
 mod ai_spending;
 mod aiscript;
@@ -38,7 +35,6 @@ use std::ptr::null_mut;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use libc::c_void;
-use parking_lot::Mutex;
 
 use bw_dat::{Unit, Pathing};
 
@@ -46,7 +42,8 @@ use crate::globals::Globals;
 use crate::unit::UnitExt;
 
 #[cfg(target_pointer_width = "32")]
-static PATCHER: Mutex<whack::Patcher> = parking_lot::const_mutex(whack::Patcher::new());
+static PATCHER: parking_lot::Mutex<whack::Patcher> =
+    parking_lot::const_mutex(whack::Patcher::new());
 
 fn init() {
     if cfg!(debug_assertions) {
@@ -108,7 +105,8 @@ fn is_scr() -> bool {
 
 #[cfg(debug_assertions)]
 fn feature_disabled(name: &str) -> bool {
-    static DISABLED_FEATURES: Mutex<Option<Vec<String>>> = parking_lot::const_mutex(None);
+    static DISABLED_FEATURES: parking_lot::Mutex<Option<Vec<String>>> =
+        parking_lot::const_mutex(None);
 
     let mut disabled_features = DISABLED_FEATURES.lock();
     let disabled_features = disabled_features.get_or_insert_with(|| unsafe {
@@ -191,9 +189,6 @@ pub extern fn Initialize() {
             samase::samase_plugin_init(ctx.api());
 
             let mut active_patcher = crate::PATCHER.lock();
-
-            #[cfg(feature = "opengl")]
-            gl::init_hooks(&mut active_patcher);
 
             let mut exe = active_patcher.patch_exe(0x00400000);
             bw::init_funcs(&mut exe);
@@ -295,9 +290,6 @@ unsafe extern fn frame_hook() {
             }
         }
     }
-
-    #[cfg(feature = "opengl")]
-    gl::new_frame(&globals);
 
     FIRST_STEP_ORDER_OF_FRAME.store(true, Ordering::Relaxed);
 }
@@ -450,8 +442,8 @@ unsafe extern fn step_order_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_v
                     let ty = (*building_ai).train_queue_types[pos];
 
                     let town = (*building_ai).town;
-                    let first_free = &mut (*(*town).free_buildings).first_free;
-                    list::ListEntry::move_to(building_ai, &mut (*town).buildings, first_free);
+                    let first_free = &mut (*(*town).buildings.full_array).first_free;
+                    list::ListEntry::move_to(building_ai, &mut (*town).buildings.first, first_free);
                     (**unit).ai = null_mut();
 
                     match ty {

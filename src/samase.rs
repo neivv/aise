@@ -105,8 +105,9 @@ pub fn set_first_free_ai_script(value: *mut bw::AiScript) {
     }
 }
 
-static mut GUARD_AIS: GlobalFunc<extern fn() -> *mut bw::GuardAiList> = GlobalFunc(None);
-pub fn guard_ais() -> *mut bw::GuardAiList {
+static mut GUARD_AIS: GlobalFunc<extern fn() -> *mut bw::AiListHead<1000, bw::GuardAi>> =
+    GlobalFunc(None);
+pub fn guard_ais() -> *mut bw::AiListHead<1000, bw::GuardAi> {
     unsafe { GUARD_AIS.0.map(|x| x()).unwrap_or(null_mut()) }
 }
 
@@ -115,8 +116,9 @@ pub fn pathing() -> *mut bw::Pathing {
     unsafe { PATHING.0.map(|x| x()).unwrap_or(null_mut()) }
 }
 
-static mut PLAYER_AI_TOWNS: GlobalFunc<extern fn() -> *mut bw::AiTownList> = GlobalFunc(None);
-pub fn active_towns() -> *mut bw::AiTownList {
+static mut PLAYER_AI_TOWNS: GlobalFunc<extern fn() -> *mut bw::AiListHead<100, bw::AiTown>> =
+    GlobalFunc(None);
+pub fn active_towns() -> *mut bw::AiListHead<100, bw::AiTown> {
     unsafe { PLAYER_AI_TOWNS.0.map(|x| x()).unwrap_or(null_mut()) }
 }
 
@@ -251,7 +253,6 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
     aiscript_opcode(api, 0x00, crate::aiscript::goto);
     aiscript_opcode(api, 0x09, crate::aiscript::wait_build);
     aiscript_opcode(api, 0x0a, crate::aiscript::wait_buildstart);
-    aiscript_opcode(api, 0x0c, crate::aiscript::attack_add);
     aiscript_opcode(api, 0x40, crate::aiscript::call);
     aiscript_opcode(api, 0x41, crate::aiscript::ret);
     aiscript_opcode(api, 0x44, crate::aiscript::panic_opcode);
