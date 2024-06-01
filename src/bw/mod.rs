@@ -132,6 +132,19 @@ fn init_file(
     }
 }
 
+fn reset_file(
+    global: &(AtomicPtr<u8>, AtomicU32),
+    filename: &str,
+) -> (*mut u8, u32) {
+    let bin = global.0.swap(null_mut(), Ordering::Acquire);
+    if !bin.is_null() {
+        unsafe {
+            samase::free_memory(bin);
+        }
+    }
+    init_file(global, filename)
+}
+
 fn load_file(
     global: &(AtomicPtr<u8>, AtomicU32),
     filename: &str,
@@ -142,6 +155,11 @@ fn load_file(
     } else {
         (bin, global.1.load(Ordering::Relaxed))
     }
+}
+
+pub fn reset_ai_scripts() {
+    reset_file(&SAMASE_AISCRIPT_BIN, "scripts\\aiscript.bin");
+    reset_file(&SAMASE_BWSCRIPT_BIN, "scripts\\bwscript.bin");
 }
 
 pub fn aiscript_bin() -> (*mut u8, u32) {

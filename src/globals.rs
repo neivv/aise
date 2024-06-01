@@ -735,6 +735,7 @@ pub fn save_state(caller: &'static str) -> MutexGuard<'static, Option<SaveState>
 
 pub unsafe extern fn init_game() {
     aiscript::invalidate_cached_unit_search();
+    bw::reset_ai_scripts();
     *Globals::get("init") = Globals::new();
 }
 
