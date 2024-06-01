@@ -21,7 +21,7 @@ pub mod structs {
 
 use std::mem;
 use std::num::NonZeroU32;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, AtomicPtr, Ordering};
 #[cfg(all(not(feature = "scr-only"), target_pointer_width = "32"))]
 use std::sync::atomic::AtomicBool;
 
@@ -37,8 +37,38 @@ static IS_SCR: AtomicBool = AtomicBool::new(false);
 static BW_MALLOC: AtomicUsize = AtomicUsize::new(0);
 static BW_FREE: AtomicUsize = AtomicUsize::new(0);
 static BW_MOUSE: AtomicUsize = AtomicUsize::new(0);
-static EXTENDED_ARRAYS: AtomicUsize = AtomicUsize::new(0);
+static EXTENDED_ARRAYS: AtomicPtr<ExtendedArray> = AtomicPtr::new(std::ptr::null_mut());
 static EXTENDED_ARRAYS_LEN: AtomicUsize = AtomicUsize::new(0);
+static DAT_GLOBALS: [DatGlobal; DAT_TYPE_COUNT] = [const { DatGlobal::new() }; DAT_TYPE_COUNT];
+
+const DAT_UNITS: u8 = DatType::Units as u8;
+const DAT_UPGRADES: u8 = DatType::Upgrades as u8;
+static FAST_UNIT_HAS_SHIELDS: FastDatField<DAT_UNITS, 6, 1> = FastDatField::new();
+static FAST_UNIT_SHIELDS: FastDatField<DAT_UNITS, 7, 2> = FastDatField::new();
+static FAST_UNIT_HP: FastDatField<DAT_UNITS, 8, 4> = FastDatField::new();
+static FAST_UNIT_FLAGS: FastDatField<DAT_UNITS, 22, 4> = FastDatField::new();
+static FAST_UNIT_MINERAL_COST: FastDatField<DAT_UNITS, 40, 2> = FastDatField::new();
+static FAST_UNIT_GAS_COST: FastDatField<DAT_UNITS, 41, 2> = FastDatField::new();
+static FAST_UNIT_BUILD_TIME: FastDatField<DAT_UNITS, 42, 2> = FastDatField::new();
+static FAST_UPGRADES_MINERAL_COST: FastDatField<DAT_UPGRADES, 0, 2> = FastDatField::new();
+static FAST_UPGRADES_GAS_COST: FastDatField<DAT_UPGRADES, 2, 2> = FastDatField::new();
+static FAST_UPGRADES_TIME: FastDatField<DAT_UPGRADES, 4, 2> = FastDatField::new();
+
+enum DatType {
+    Units = 0,
+    Weapons,
+    Flingy,
+    Sprites,
+    Images,
+    Orders,
+    Upgrades,
+    TechData,
+    SfxData,
+    PortData,
+    Buttons,
+}
+
+const DAT_TYPE_COUNT: usize = DatType::Buttons as usize + 1;
 
 #[repr(C)]
 pub struct ExtendedArray {
@@ -117,7 +147,7 @@ pub unsafe fn set_bw_mouse_func(
 }
 
 pub unsafe fn set_extended_arrays(arrays: *const ExtendedArray, len: usize) {
-    EXTENDED_ARRAYS.store(arrays as usize, Ordering::Relaxed);
+    EXTENDED_ARRAYS.store(arrays.cast_mut(), Ordering::Relaxed);
     EXTENDED_ARRAYS_LEN.store(len, Ordering::Relaxed);
 }
 
@@ -137,7 +167,7 @@ pub fn extended_array(index: u32) -> Option<&'static ExtendedArray> {
     let index = index as usize;
     if index < EXTENDED_ARRAYS_LEN.load(Ordering::Relaxed) {
         unsafe {
-            Some(&*(EXTENDED_ARRAYS.load(Ordering::Relaxed) as *const ExtendedArray).add(index))
+            Some(&*EXTENDED_ARRAYS.load(Ordering::Relaxed).add(index))
         }
     } else {
         None
@@ -159,32 +189,104 @@ fn bw_mouse() -> (i32, i32) {
     }
 }
 
+struct DatGlobal {
+    arrays: AtomicPtr<DatTable>,
+    length: AtomicUsize,
+}
+
+struct FastDatField<const DAT: u8, const FIELD: u16, const SIZE: u32>(AtomicPtr<DatTable>);
+
+impl<const DAT: u8, const FIELD: u16, const SIZE: u32> FastDatField<DAT, FIELD, SIZE> {
+    const fn new() -> FastDatField<DAT, FIELD, SIZE> {
+        FastDatField(AtomicPtr::new(std::ptr::null_mut()))
+    }
+
+    fn get(&self, id: u32) -> u32 {
+        let ptr = self.0.load(Ordering::Relaxed);
+        if ptr.is_null() == false {
+            fast_dat_field_fast::<SIZE>(ptr, id)
+        } else {
+            fast_dat_field_slow(id, ((DAT as u32) << 16) | (FIELD as u32))
+        }
+    }
+
+    #[cold]
+    unsafe fn init(&self, dat: *const DatTable, fields: usize) {
+        fast_dat_flags_init(&self.0, FIELD, SIZE, dat, fields)
+    }
+}
+
+unsafe fn fast_dat_flags_init(
+    result: &AtomicPtr<DatTable>,
+    field: u16,
+    size: u32,
+    dat: *const DatTable,
+    field_count: usize,
+) {
+    if field_count > field as usize {
+        let ptr = dat.add(field as usize);
+        if (*ptr).entry_size == size {
+            result.store(ptr.cast_mut(), Ordering::Relaxed);
+            return;
+        }
+    }
+    result.store(std::ptr::null_mut(), Ordering::Relaxed);
+}
+
+impl DatGlobal {
+    const fn new() -> DatGlobal {
+        DatGlobal {
+            arrays: AtomicPtr::new(std::ptr::null_mut()),
+            length: AtomicUsize::new(0),
+        }
+    }
+}
+
 macro_rules! init_fns {
-    ($($fn_name:ident, $global:ident,)*) => {
-        $(
-            static $global: [AtomicUsize; 2] = [AtomicUsize::new(0), AtomicUsize::new(0)];
-        )*
+    ($($fn_name:ident, $ty:expr, $post_load:ident,)*) => {
         $(
             pub unsafe fn $fn_name(dat: *const DatTable, fields: usize) {
-                $global[0].store(dat as usize, Ordering::Relaxed);
-                $global[1].store(fields, Ordering::Relaxed);
+                let global = &DAT_GLOBALS[$ty as usize];
+                global.arrays.store(dat.cast_mut(), Ordering::Relaxed);
+                global.length.store(fields, Ordering::Relaxed);
+                $post_load(dat, fields);
             }
         )*
     }
 }
 
+unsafe fn init_units_post(dat: *const DatTable, fields: usize) {
+    FAST_UNIT_HAS_SHIELDS.init(dat, fields);
+    FAST_UNIT_SHIELDS.init(dat, fields);
+    FAST_UNIT_HP.init(dat, fields);
+    FAST_UNIT_FLAGS.init(dat, fields);
+    FAST_UNIT_MINERAL_COST.init(dat, fields);
+    FAST_UNIT_GAS_COST.init(dat, fields);
+    FAST_UNIT_BUILD_TIME.init(dat, fields);
+}
+
+unsafe fn init_upgrades_post(dat: *const DatTable, fields: usize) {
+    FAST_UPGRADES_MINERAL_COST.init(dat, fields);
+    FAST_UPGRADES_GAS_COST.init(dat, fields);
+    FAST_UPGRADES_TIME.init(dat, fields);
+}
+
+#[inline(always)]
+unsafe fn init_post_nop(_: *const DatTable, _: usize) {
+}
+
 init_fns! {
-    init_units, UNITS_DAT,
-    init_weapons, WEAPONS_DAT,
-    init_flingy, FLINGY_DAT,
-    init_sprites, SPRITES_DAT,
-    init_images, IMAGES_DAT,
-    init_orders, ORDERS_DAT,
-    init_upgrades, UPGRADES_DAT,
-    init_techdata, TECHDATA_DAT,
-    init_sfxdata, SFXDATA_DAT,
-    init_portdata, PORTDATA_DAT,
-    init_buttons, BUTTONS_DAT,
+    init_units, DatType::Units, init_units_post,
+    init_weapons, DatType::Weapons, init_post_nop,
+    init_flingy, DatType::Flingy, init_post_nop,
+    init_sprites, DatType::Sprites, init_post_nop,
+    init_images, DatType::Images, init_post_nop,
+    init_orders, DatType::Orders, init_post_nop,
+    init_upgrades, DatType::Upgrades, init_upgrades_post,
+    init_techdata, DatType::TechData, init_post_nop,
+    init_sfxdata, DatType::SfxData, init_post_nop,
+    init_portdata, DatType::PortData, init_post_nop,
+    init_buttons, DatType::Buttons, init_post_nop,
 }
 
 bitflags! {
@@ -250,15 +352,15 @@ pub struct ImageId(pub u16);
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct ButtonSetId(pub u16);
 
-unsafe fn dat_read(dat: &'static [AtomicUsize; 2], id: u32, field: u32) -> u32 {
+unsafe fn dat_read(dat: &DatGlobal, id: u32, field: u32) -> u32 {
     dat_read_opt(dat, id, field).unwrap_or(0)
 }
 
-unsafe fn dat_read_opt(dat: &'static [AtomicUsize; 2], id: u32, field: u32) -> Option<u32> {
-    if dat[1].load(Ordering::Relaxed) as u32 <= field {
+unsafe fn dat_read_opt(dat: &DatGlobal, id: u32, field: u32) -> Option<u32> {
+    if dat.length.load(Ordering::Relaxed) <= field as usize {
         return None;
     }
-    let dat = dat[0].load(Ordering::Relaxed) as *const bw::DatTable;
+    let dat = dat.arrays.load(Ordering::Relaxed);
     let dat = &*dat.add(field as usize);
     if dat.entries <= id {
         return None;
@@ -270,6 +372,30 @@ unsafe fn dat_read_opt(dat: &'static [AtomicUsize; 2], id: u32, field: u32) -> O
         4 => *(data as *const u32).add(id as usize),
         _ => return None,
     })
+}
+
+/// Skips some checks that were verified before in init_dat
+fn fast_dat_field_fast<const SIZE: u32>(dat: *mut DatTable, id: u32) -> u32 {
+    unsafe {
+        if (*dat).entries <= id {
+            return 0;
+        }
+        let data = (*dat).data;
+        match SIZE {
+            1 => *(data as *const u8).add(id as usize) as u32,
+            2 => *(data as *const u16).add(id as usize) as u32,
+            4 => *(data as *const u32).add(id as usize),
+            _ => unreachable!(),
+        }
+    }
+}
+
+#[inline(never)]
+fn fast_dat_field_slow(id: u32, dat_and_field: u32) -> u32 {
+    let dat = dat_and_field >> 16;
+    let field = dat_and_field & 0xffff;
+    let dat = &DAT_GLOBALS[dat as usize];
+    unsafe { crate::dat_read(dat, id, field) }
 }
 
 pub mod weapon {
@@ -590,9 +716,13 @@ impl UnitId {
         }
     }
 
+    fn global() -> &'static DatGlobal {
+        &DAT_GLOBALS[DatType::Units as usize]
+    }
+
     pub fn entry_amount() -> u32 {
         unsafe {
-            let dat = UNITS_DAT[0].load(Ordering::Relaxed) as *const DatTable;
+            let dat = Self::global().arrays.load(Ordering::Relaxed);
             if dat.is_null() {
                 u32::MAX
             } else {
@@ -602,28 +732,28 @@ impl UnitId {
     }
 
     pub fn get(self, id: u32) -> u32 {
-        unsafe { crate::dat_read(&UNITS_DAT, self.0 as u32, id) }
+        unsafe { crate::dat_read(Self::global(), self.0 as u32, id) }
     }
 
     pub fn get_opt(self, id: u32) -> Option<u32> {
-        unsafe { crate::dat_read_opt(&UNITS_DAT, self.0 as u32, id) }
+        unsafe { crate::dat_read_opt(Self::global(), self.0 as u32, id) }
     }
 
     pub fn hitpoints(self) -> i32 {
-        self.get(8) as i32
+        FAST_UNIT_HP.get(self.0 as u32) as i32
     }
 
     pub fn shields(self) -> i32 {
         if self.has_shields() {
-            // Yeah, it is stored as displayed
-            (self.get(7) as i32).saturating_mul(256)
+            let shields = FAST_UNIT_SHIELDS.get(self.0 as u32) as i32;
+            shields.saturating_mul(256)
         } else {
             0
         }
     }
 
     pub fn has_shields(self) -> bool {
-        self.get(6) != 0
+        FAST_UNIT_HAS_SHIELDS.get(self.0 as u32) != 0
     }
 
     pub fn flingy(self) -> FlingyId {
@@ -643,7 +773,7 @@ impl UnitId {
     }
 
     pub fn flags(self) -> u32 {
-        self.get(22)
+        FAST_UNIT_FLAGS.get(self.0 as u32)
     }
 
     pub fn ai_flags(self) -> u8 {
@@ -768,15 +898,15 @@ impl UnitId {
     }
 
     pub fn mineral_cost(self) -> u32 {
-        self.get(40)
+        FAST_UNIT_MINERAL_COST.get(self.0 as u32)
     }
 
     pub fn gas_cost(self) -> u32 {
-        self.get(41)
+        FAST_UNIT_GAS_COST.get(self.0 as u32)
     }
 
     pub fn build_time(self) -> u32 {
-        self.get(42)
+        FAST_UNIT_BUILD_TIME.get(self.0 as u32)
     }
 
     pub fn supply_provided(self) -> u32 {
@@ -789,7 +919,7 @@ impl UnitId {
 
     pub fn placement(self) -> PlacementBox {
         unsafe {
-            let dat = UNITS_DAT[0].load(Ordering::Relaxed) as *const DatTable;
+            let dat = Self::global().arrays.load(Ordering::Relaxed);
             let dat = &*dat.add(36);
             assert!(dat.entries > u32::from(self.0));
             *(dat.data as *const PlacementBox).offset(self.0 as isize)
@@ -806,7 +936,7 @@ impl UnitId {
 
     pub fn dimensions(self) -> DimensionRect {
         unsafe {
-            let dat = UNITS_DAT[0].load(Ordering::Relaxed) as *const DatTable;
+            let dat = Self::global().arrays.load(Ordering::Relaxed);
             let dat = &*dat.add(38);
             assert!(dat.entries > u32::from(self.0));
             *(dat.data as *const DimensionRect).offset(self.0 as isize)
@@ -895,7 +1025,7 @@ impl UnitId {
 
 impl FlingyId {
     pub fn get(&self, id: u32) -> u32 {
-        unsafe { crate::dat_read(&FLINGY_DAT, self.0 as u32, id) }
+        unsafe { crate::dat_read(&DAT_GLOBALS[DatType::Flingy as usize], self.0 as u32, id) }
     }
 
     pub fn sprite(self) -> SpriteId {
@@ -921,7 +1051,7 @@ impl FlingyId {
 
 impl SpriteId {
     pub fn get(&self, id: u32) -> u32 {
-        unsafe { crate::dat_read(&SPRITES_DAT, self.0 as u32, id) }
+        unsafe { crate::dat_read(&DAT_GLOBALS[DatType::Sprites as usize], self.0 as u32, id) }
     }
 
     pub fn image(self) -> ImageId {
@@ -976,7 +1106,7 @@ impl WeaponId {
     }
 
     pub fn get(&self, id: u32) -> u32 {
-        unsafe { crate::dat_read(&WEAPONS_DAT, self.0 as u32, id) }
+        unsafe { crate::dat_read(&DAT_GLOBALS[DatType::Weapons as usize], self.0 as u32, id) }
     }
 
     pub fn damage(&self) -> u32 {
@@ -1081,9 +1211,13 @@ impl UpgradeId {
         }
     }
 
+    fn global() -> &'static DatGlobal {
+        &DAT_GLOBALS[DatType::Upgrades as usize]
+    }
+
     pub fn entry_amount() -> u32 {
         unsafe {
-            let dat = UPGRADES_DAT[0].load(Ordering::Relaxed) as *const DatTable;
+            let dat = Self::global().arrays.load(Ordering::Relaxed);
             if dat.is_null() {
                 u32::MAX
             } else {
@@ -1093,7 +1227,7 @@ impl UpgradeId {
     }
 
     pub fn get(&self, id: u32) -> u32 {
-        unsafe { crate::dat_read(&UPGRADES_DAT, self.0 as u32, id) }
+        unsafe { crate::dat_read(Self::global(), self.0 as u32, id) }
     }
 
     pub fn label(&self) -> u32 {
@@ -1101,15 +1235,15 @@ impl UpgradeId {
     }
 
     pub fn mineral_cost(&self) -> u32 {
-        self.get(0)
+        FAST_UPGRADES_MINERAL_COST.get(self.0 as u32)
     }
 
     pub fn gas_cost(&self) -> u32 {
-        self.get(2)
+        FAST_UPGRADES_GAS_COST.get(self.0 as u32)
     }
 
     pub fn time(&self) -> u32 {
-        self.get(4)
+        FAST_UPGRADES_TIME.get(self.0 as u32)
     }
 
     pub fn mineral_factor(&self) -> u32 {
@@ -1142,9 +1276,13 @@ impl TechId {
         }
     }
 
+    fn global() -> &'static DatGlobal {
+        &DAT_GLOBALS[DatType::TechData as usize]
+    }
+
     pub fn entry_amount() -> u32 {
         unsafe {
-            let dat = TECHDATA_DAT[0].load(Ordering::Relaxed) as *const DatTable;
+            let dat = Self::global().arrays.load(Ordering::Relaxed);
             if dat.is_null() {
                 u32::MAX
             } else {
@@ -1154,7 +1292,7 @@ impl TechId {
     }
 
     fn get(&self, id: u32) -> u32 {
-        unsafe { crate::dat_read(&TECHDATA_DAT, self.0 as u32, id) }
+        unsafe { crate::dat_read(Self::global(), self.0 as u32, id) }
     }
 
     pub fn mineral_cost(&self) -> u32 {
@@ -1226,8 +1364,12 @@ impl OrderId {
         }
     }
 
+    fn global() -> &'static DatGlobal {
+        &DAT_GLOBALS[DatType::Orders as usize]
+    }
+
     fn get(&self, id: u32) -> u32 {
-        unsafe { crate::dat_read(&ORDERS_DAT, self.0 as u32, id) }
+        unsafe { crate::dat_read(Self::global(), self.0 as u32, id) }
     }
 
     pub fn tech(&self) -> Option<TechId> {
@@ -1284,11 +1426,15 @@ impl OrderId {
 }
 
 impl ButtonSetId {
+    fn global() -> &'static DatGlobal {
+        &DAT_GLOBALS[DatType::Buttons as usize]
+    }
+
     pub fn get(self, id: u32) -> u32 {
-        unsafe { crate::dat_read(&BUTTONS_DAT, self.0 as u32, id) }
+        unsafe { crate::dat_read(Self::global(), self.0 as u32, id) }
     }
 
     pub fn get_opt(self, id: u32) -> Option<u32> {
-        unsafe { crate::dat_read_opt(&BUTTONS_DAT, self.0 as u32, id) }
+        unsafe { crate::dat_read_opt(Self::global(), self.0 as u32, id) }
     }
 }

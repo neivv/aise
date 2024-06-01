@@ -283,9 +283,15 @@ impl Unit {
         let id = self.id();
         match other {
             ANY_UNIT => true,
-            GROUP_MEN => id.group_flags() & 0x8 != 0,
-            GROUP_BUILDINGS => id.group_flags() & 0x10 != 0,
-            GROUP_FACTORIES => id.group_flags() & 0x20 != 0,
+            GROUP_MEN | GROUP_BUILDINGS | GROUP_FACTORIES => {
+                let flags = id.group_flags();
+                let mask = match other {
+                    GROUP_MEN => 0x8,
+                    GROUP_BUILDINGS => 0x10,
+                    _ => 0x20,
+                };
+                flags & mask != 0
+            }
             other => id == other,
         }
     }

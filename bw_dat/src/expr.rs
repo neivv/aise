@@ -10,7 +10,7 @@ use bitflags::bitflags;
 use crate::game::Game;
 use crate::parse_expr::{self, DefaultParser};
 use crate::unit::{Unit};
-use crate::{order, UpgradeId, TechId};
+use crate::{DatType, order, UpgradeId, TechId};
 
 #[derive(Debug)]
 pub struct Error {
@@ -101,15 +101,15 @@ static TAN_TABLE: [i32; 91] = [
 impl<E: CustomEval> EvalCtx<E> {
     pub fn eval_int(&mut self, expr: &CustomIntExpr<E::State>) -> i32 {
         if expr.required_context.contains(RequiredContext::UNIT) && self.unit.is_none() {
-            return i32::min_value();
+            return i32::MIN;
         }
         if expr.required_context.contains(RequiredContext::GAME) && self.game.is_none() {
-            return i32::min_value();
+            return i32::MIN;
         }
         if expr.required_context.contains(RequiredContext::MAP_TILE_FLAGS) &&
             self.map_tile_flags.is_none()
         {
-            return i32::min_value();
+            return i32::MIN;
         }
         self.eval_int_r(&expr.ty)
     }
@@ -209,7 +209,7 @@ impl<E: CustomEval> EvalCtx<E> {
                         Deaths | UnitCountCompleted | UnitCountAny => {
                             let player = match self.eval_int_r(&x.args[0]) {
                                 x if x >= 0 && x < 12 => x,
-                                _ => return i32::min_value(),
+                                _ => return i32::MIN,
                             };
                             let unit = self.eval_int_r(&x.args[1]);
                             let player = player as u8;
@@ -223,7 +223,7 @@ impl<E: CustomEval> EvalCtx<E> {
                         Upgrade => {
                             let player = match self.eval_int_r(&x.args[0]) {
                                 x if x >= 0 && x < 12 => x as u8,
-                                _ => return i32::min_value(),
+                                _ => return i32::MIN,
                             };
                             let upgrade = self.eval_int_r(&x.args[1]);
                             game.upgrade_level(player, UpgradeId(upgrade as u16)).into()
@@ -242,19 +242,20 @@ impl<E: CustomEval> EvalCtx<E> {
                         }
                         Dat => {
                             let dat = match self.eval_int_r(&x.args[0]) {
-                                0 => &crate::UNITS_DAT,
-                                1 => &crate::WEAPONS_DAT,
-                                2 => &crate::FLINGY_DAT,
-                                3 => &crate::SPRITES_DAT,
-                                4 => &crate::IMAGES_DAT,
-                                5 => &crate::ORDERS_DAT,
-                                6 => &crate::UPGRADES_DAT,
-                                7 => &crate::TECHDATA_DAT,
-                                8 => &crate::SFXDATA_DAT,
-                                9 => &crate::PORTDATA_DAT,
-                                10 => &crate::BUTTONS_DAT,
+                                0 => DatType::Units,
+                                1 => DatType::Weapons,
+                                2 => DatType::Flingy,
+                                3 => DatType::Sprites,
+                                4 => DatType::Images,
+                                5 => DatType::Orders,
+                                6 => DatType::Upgrades,
+                                7 => DatType::TechData,
+                                8 => DatType::SfxData,
+                                9 => DatType::PortData,
+                                10 => DatType::Buttons,
                                 _ => return 0,
                             };
+                            let dat = &crate::DAT_GLOBALS[dat as usize];
                             let field = self.eval_int_r(&x.args[1]) as u32;
                             // Assuming that anything outside u16 range is wrong
                             let id = match u16::try_from(self.eval_int_r(&x.args[2])) {
