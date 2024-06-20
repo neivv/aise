@@ -217,12 +217,15 @@ impl PlayerAi {
         }
     }
 
-    pub fn available_resources(&self) -> AiResources {
+    pub fn available_resources(&self, players: *mut bw::Player) -> AiResources {
         unsafe {
+            let player = self.1;
+            let race = Race::from_id((*players.add(player as usize)).race);
             AiResources {
                 minerals: (*self.0).minerals_available,
                 gas: (*self.0).gas_available,
                 supply: (*self.0).supply_available,
+                race,
             }
         }
     }
@@ -516,19 +519,28 @@ pub struct AiResources {
     pub minerals: u32,
     pub gas: u32,
     pub supply: u32,
+    pub race: Option<Race>
 }
 
 impl AiResources {
     pub fn has_enough_for_cost(&self, cost: &Cost) -> bool {
+        let race_flags = self.race.map(|x| x.as_flags()).unwrap_or(RaceFlags::empty());
+        let consider_supply = cost.races.intersects(race_flags);
+
         self.minerals >= cost.minerals &&
             self.gas >= cost.gas &&
-            self.supply >= cost.supply
+            (!consider_supply || self.supply >= cost.supply)
     }
 
     pub fn reduce_cost(&mut self, cost: &Cost) {
+        let race_flags = self.race.map(|x| x.as_flags()).unwrap_or(RaceFlags::empty());
+        let consider_supply = cost.races.intersects(race_flags);
+
         self.minerals = self.minerals.saturating_sub(cost.minerals);
         self.gas = self.gas.saturating_sub(cost.gas);
-        self.supply = self.supply.saturating_sub(cost.supply);
+        if consider_supply {
+            self.supply = self.supply.saturating_sub(cost.supply);
+        }
     }
 }
 

@@ -20,7 +20,7 @@ pub(crate) unsafe fn frame_hook(
     for player in 0..8 {
         let ai_mode = &ai_mode[player as usize];
         let ai = player_ai.player(player);
-        let mut remaining_money = ai.available_resources();
+        let mut remaining_money = ai.available_resources(players);
         while let Some(request) = ai.first_request() {
             let level = if request.ty == 5 {
                 game.upgrade_level(player as u8, UpgradeId(request.id))
@@ -28,18 +28,21 @@ pub(crate) unsafe fn frame_hook(
             } else {
                 0
             };
+            // Check can_satisfy_request before request cost so that any unsatisfiable requests
+            // can be removed instead of stalling for resources and removing them afterwards.
             let cost = ai::request_cost(&request, level);
-            if !remaining_money.has_enough_for_cost(&cost) {
-                if ai_mode.wait_for_resources {
-                    try_handle_single_resource_request(players, &ai, ctx, ai_mode);
-                    break;
-                }
-            }
             let can = can_satisfy_request(game, players, &ai, player, &request, ai_mode).is_ok();
             let mut handled = false;
             if can {
+                if !remaining_money.has_enough_for_cost(&cost) {
+                    if ai_mode.wait_for_resources {
+                        try_handle_single_resource_request(players, &ai, ctx, ai_mode);
+                        break;
+                    }
+                }
                 handled = try_handle_request(players, &ai, ctx, &request);
                 if !handled {
+                    // Stop removing requests, let bw handle this one at its frame proceedings
                     break;
                 } else {
                     remaining_money.reduce_cost(&cost);
@@ -87,7 +90,7 @@ unsafe fn try_handle_single_resource_request(
     // Since the request queue is awkwardly a heap, this pops requests from copied heap,
     // and if any requests manage to be handled, re-pushes any popped requests back
     // and writes that to global state.
-    let mut remaining_money = ai.available_resources();
+    let mut remaining_money = ai.available_resources(players);
     let mut request_copy = ai.copy_requests();
     let mut any_handled = false;
     let player = ai.1;
@@ -341,9 +344,9 @@ pub unsafe fn can_satisfy_request(
                     is_usable_unit_id_for_building_request(unit_id, town)
                 });
                 if !ok {
-                    return Err(RequestSatisfyError::DatReq(vec![
-                        DatReqSatisfyError::NeedUnit(*parents.get(0).unwrap_or(&UnitId(0))),
-                    ]));
+                    let mut vec = SmallVec::new();
+                    vec.push(DatReqSatisfyError::NeedUnit(*parents.get(0).unwrap_or(&UnitId(0))));
+                    return Err(RequestSatisfyError::DatReq(vec));
                 }
             }
             Ok(())
@@ -397,7 +400,7 @@ pub enum RequestSatisfyError {
     /// One set of ors that couldn't be satisfied
     /// (Doesn't show rest if many)
     #[allow(dead_code)]
-    DatReq(Vec<DatReqSatisfyError>),
+    DatReq(SmallVec<[DatReqSatisfyError; 4]>),
     /// Dat reqs are required for request type (Units default success on no reqs)
     NeedDatReqs,
     /// No empty vespene geysers in town
@@ -465,7 +468,7 @@ unsafe fn can_satisfy_dat_request(
     reqs: *const u16,
     town: Option<Town>,
     current_upgrade_level: u8,
-) -> Result<(), Vec<DatReqSatisfyError>> {
+) -> Result<(), SmallVec<[DatReqSatisfyError; 4]>> {
     fn match_req(dat_req: &DatReq) -> Option<MatchRequirement> {
         match *dat_req {
             DatReq::HasHangarSpace => Some(MatchRequirement::HasHangarSpace),
@@ -561,7 +564,7 @@ unsafe fn can_satisfy_dat_request(
             match match_req_count {
                 0 => {
                     assert!(!errors.is_empty());
-                    return Err(errors.into_iter().collect());
+                    return Err(errors);
                 }
                 1 => {
                     if let Some(req) = dat_reqs.iter().filter_map(|x| match_req(x)).next() {
@@ -600,7 +603,10 @@ unsafe fn can_satisfy_dat_request(
     } else {
         let errors = match match_requirements.into_iter().next() {
             Some(s) => {
-                fn match_req_to_error(req: &MatchRequirement, out: &mut Vec<DatReqSatisfyError>) {
+                fn match_req_to_error(
+                    req: &MatchRequirement,
+                    out: &mut SmallVec<[DatReqSatisfyError; 4]>,
+                ) {
                     let err = match req {
                         MatchRequirement::Unit(unit) | MatchRequirement::Addon(unit) => {
                             DatReqSatisfyError::NeedUnit(*unit)
@@ -617,14 +623,18 @@ unsafe fn can_satisfy_dat_request(
                     };
                     out.push(err);
                 }
-                let mut errors = Vec::with_capacity(4);
+                let mut errors = SmallVec::new();
                 match_req_to_error(&s.0, &mut errors);
                 errors.extend(s.1);
                 errors
             }
             // No real requirements, so any nonbusy unit would be fine..
             // Yet the player doesn't have any.
-            None => vec![DatReqSatisfyError::NeedUnit(bw_dat::unit::ANY_UNIT)],
+            None => {
+                let mut vec = SmallVec::new();
+                vec.push(DatReqSatisfyError::NeedUnit(bw_dat::unit::ANY_UNIT));
+                vec
+            }
         };
         Err(errors)
     }
