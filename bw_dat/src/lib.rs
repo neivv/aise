@@ -585,8 +585,8 @@ pub mod order {
     pub const UPGRADE: OrderId = OrderId(0x4c);
     pub const LARVA: OrderId = OrderId(0x4d);
     pub const SPAWNING_LARVA: OrderId = OrderId(0x4e);
-    pub const HARVERST: OrderId = OrderId(0x4f);
-    pub const HARVERST_OBSCURED: OrderId = OrderId(0x50);
+    pub const HARVEST: OrderId = OrderId(0x4f);
+    pub const HARVEST_OBSCURED: OrderId = OrderId(0x50);
     pub const HARVEST_GAS_MOVE: OrderId = OrderId(0x51);
     pub const HARVEST_GAS_START: OrderId = OrderId(0x54);
     pub const HARVEST_GAS: OrderId = OrderId(0x53);
@@ -695,6 +695,7 @@ pub mod order {
     pub const MAELSTROM: OrderId = OrderId(0xba);
     pub const JUNK_YARD_DOG: OrderId = OrderId(0xbb);
     pub const FATAL: OrderId = OrderId(0xbc);
+    pub const NONE: OrderId = OrderId(0xbd);
 }
 
 #[derive(Eq, PartialEq, Copy, Clone)]
@@ -922,7 +923,23 @@ impl UnitId {
             let dat = Self::global().arrays.load(Ordering::Relaxed);
             let dat = &*dat.add(36);
             assert!(dat.entries > u32::from(self.0));
-            *(dat.data as *const PlacementBox).offset(self.0 as isize)
+            *(dat.data as *const PlacementBox).add(self.0 as usize)
+        }
+    }
+
+    pub fn addon_position(self) -> PlacementBox {
+        unsafe {
+            let dat = Self::global().arrays.load(Ordering::Relaxed);
+            let dat = &*dat.add(37);
+            let index = if (*dat).entries == 0xc0 {
+                // Default BW
+                self.0 - 106
+            } else {
+                // Extended dat, assume starting from 0
+                self.0
+            };
+            assert!(dat.entries > u32::from(index));
+            *(dat.data as *const PlacementBox).add(index as usize)
         }
     }
 
@@ -988,6 +1005,13 @@ impl UnitId {
         self.get(53)
     }
 
+    pub fn is_fighter(self) -> bool {
+        match self {
+            unit::SCARAB | unit::INTERCEPTOR => true,
+            _ => false,
+        }
+    }
+
     pub fn fighter_id(self) -> Option<UnitId> {
         match self {
             unit::REAVER | unit::WARBRINGER => Some(unit::SCARAB),
@@ -1020,6 +1044,14 @@ impl UnitId {
                     _ => 0,
                 }
             })
+    }
+
+    pub fn is_higher_tier_morphed_building(self) -> bool {
+        use crate::unit::*;
+        match self {
+            LAIR | HIVE | GREATER_SPIRE | SUNKEN_COLONY | SPORE_COLONY => true,
+            _ => false,
+        }
     }
 }
 
@@ -1307,6 +1339,8 @@ impl TechId {
         self.get(2)
     }
 
+    /// Displayed value, not multiplied by 256
+    /// Maybe should change this..
     pub fn energy_cost(&self) -> u32 {
         self.get(3)
     }

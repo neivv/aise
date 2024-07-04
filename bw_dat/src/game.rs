@@ -56,6 +56,10 @@ impl Game {
         unsafe { (**self).frame_count }
     }
 
+    pub fn elapsed_seconds(self) -> u32 {
+        unsafe { (**self).elapsed_seconds }
+    }
+
     pub fn unit_available(self, player: u8, unit: UnitId) -> bool {
         unsafe {
             if let Some(arr) = extended_array(6) {
@@ -128,7 +132,9 @@ impl Game {
         let index = race.id() as usize;
         unsafe {
             let supplies = &(**self).supplies[index];
-            supplies.provided[player as usize].saturating_sub(supplies.used[player as usize])
+            supplies.provided[player as usize]
+                .min(supplies.max[player as usize])
+                .saturating_sub(supplies.used[player as usize])
         }
     }
 
@@ -419,6 +425,14 @@ impl Game {
         } else {
             unsafe { (**self).visions[player as usize] &= !mask; }
         }
+    }
+
+    pub fn map_width_pixels(self) -> u16 {
+        self.map_width_tiles() << 5
+    }
+
+    pub fn map_height_pixels(self) -> u16 {
+        self.map_height_tiles() << 5
     }
 
     pub fn map_width_tiles(self) -> u16 {

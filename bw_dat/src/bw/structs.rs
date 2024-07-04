@@ -636,7 +636,9 @@ pub struct Region {
     pub neighbour_ids: *mut u16,
     pub center: [u32; 2],
     pub area: Rect,
-    pub _dc20: [u8; 0x20],
+    pub priority: u8,
+    pub ignored_neighbours: u8,
+    pub _dc20: [u8; 0x1e],
 }
 
 #[repr(C)]
@@ -790,7 +792,7 @@ pub struct AiRegion {
     pub local_military_air_strength: u16,
     pub all_military_ground_strength: u16,
     pub all_military_air_strength: u16,
-    // Are these ordered correctly?
+    // These are ordered correctly, even if reverse compared to others..
     pub enemy_air_strength: u16,
     pub enemy_ground_strength: u16,
     pub air_target: *mut Unit,
@@ -838,7 +840,7 @@ pub struct PlayerAiData {
     pub supply_available: u32,
     pub requests: [AiSpendingRequest; 0x3f],
     pub request_count: u8,
-    pub currently_building_unk: u8,
+    pub build_cooldown: u8,
     pub nuke_rate_minutes: u8,
     pub unk_attack: u8,
     pub previous_nuke_timer: u32,
@@ -1080,9 +1082,27 @@ impl Rect {
         self.left < o.right && self.right > o.left && self.top < o.bottom && self.bottom > o.top
     }
 
+    pub fn grow(&mut self, size: i16) {
+        self.left = self.left.saturating_sub(size);
+        self.top = self.top.saturating_sub(size);
+        self.right = self.right.saturating_add(size);
+        self.bottom = self.bottom.saturating_add(size);
+    }
+
+    pub fn grown(&self, size: i16) -> Self {
+        let mut c = *self;
+        c.grow(size);
+        c
+    }
+
     pub fn contains_point(&self, point: &Point) -> bool {
         point.x >= self.left && point.x < self.right &&
             point.y >= self.top && point.y < self.bottom
+    }
+
+    pub fn is_fully_contained_in(&self, o: &Rect) -> bool {
+        self.left >= o.left && self.right <= o.right &&
+            self.top >= o.top && self.bottom <= o.bottom
     }
 
     pub fn center(&self) -> Point {
@@ -1134,6 +1154,17 @@ impl Point {
         Point {
             x,
             y,
+        }
+    }
+
+    pub fn pack_u32(&self) -> u32 {
+        (self.x as u32) | ((self.y as u32) << 16)
+    }
+
+    pub fn from_packed_u32(val: u32) -> Self {
+        Self {
+            x: val as u16 as i16,
+            y: (val >> 16) as u16 as i16,
         }
     }
 }

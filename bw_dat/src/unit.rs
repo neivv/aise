@@ -53,10 +53,10 @@ impl Unit {
     pub fn building_morph_displayed_id(self) -> UnitId {
         if !self.is_completed() {
             if let Some(dest_id) = self.first_queued_unit() {
-                return match dest_id {
-                    LAIR | HIVE | GREATER_SPIRE | SUNKEN_COLONY | SPORE_COLONY => dest_id,
-                    _ => self.id(),
-                }
+                return match dest_id.is_higher_tier_morphed_building() {
+                    true => dest_id,
+                    false => self.id(),
+                };
             }
         }
         self.id()
@@ -65,13 +65,25 @@ impl Unit {
     pub fn is_morphing_building(self) -> bool {
         if !self.is_completed() {
             if let Some(dest_id) = self.first_queued_unit() {
-                return match dest_id {
-                    LAIR | HIVE | GREATER_SPIRE | SUNKEN_COLONY | SPORE_COLONY => true,
-                    _ => false,
-                }
+                return match dest_id.is_higher_tier_morphed_building() {
+                    true => true,
+                    false => false,
+                };
             }
         }
         false
+    }
+
+    pub fn is_completed_or_morphing_to_higher_tier(self) -> bool {
+        if !self.is_completed() {
+            if let Some(dest_id) = self.first_queued_unit() {
+                return match dest_id.is_higher_tier_morphed_building() {
+                    true => true,
+                    false => false,
+                };
+            }
+        }
+        true
     }
 
     pub fn position(self) -> bw::Point {
@@ -98,6 +110,24 @@ impl Unit {
         self.hitpoints().saturating_mul(100)
             .checked_div(self.id().hitpoints())
             .unwrap_or(100)
+    }
+
+    pub fn hp_displayed(self) -> i32 {
+        self.hitpoints().wrapping_add(0xff) >> 8
+    }
+
+    pub fn max_hp_displayed(self) -> i32 {
+        let hp = self.id().hitpoints().wrapping_add(0xff) >> 8;
+        if hp != 0 {
+            hp
+        } else {
+            let hp = self.hp_displayed();
+            if hp != 0 {
+                hp
+            } else {
+                1
+            }
+        }
     }
 
     pub fn armor(self, game: Game) -> u32 {
@@ -156,12 +186,11 @@ impl Unit {
     }
 
     pub fn has_loaded_units(self) -> bool {
-        unsafe {
-            // Technically loaded_units() could still return nothing
-            // if the unique ids stored here are invalid, but assuming
-            // that this won't be the case. It would be bug somewhere else too then.
-            (**self).loaded_units != [0; 8]
-        }
+        // (unit gets removed properly from self.loaded_units even on irradiate death
+        // and similar deaths inside transports)
+        // Also don't have to care if high_bits are set for larger unit limit, since
+        // index is fully in low bits, and index 0 means none
+        unsafe { (**self).loaded_units != [0; 8] }
     }
 
     pub fn fighter_parent(self) -> Option<Unit> {
@@ -236,6 +265,10 @@ impl Unit {
         } else {
             0
         }
+    }
+
+    pub fn shields_displayed(self) -> i32 {
+        self.shields() >> 8
     }
 
     pub fn health(self) -> i32 {
@@ -325,6 +358,10 @@ impl Unit {
 
     pub fn has_free_cloak(self) -> bool {
         unsafe { (**self).flags & 0x800 != 0 }
+    }
+
+    pub fn has_smart_flag(self) -> bool {
+        unsafe { (**self).flags & 0x0002_0000 != 0 }
     }
 
     pub fn is_hallucination(self) -> bool {
@@ -452,10 +489,7 @@ impl Unit {
     }
 
     pub fn uses_fighters(self) -> bool {
-        match self.id() {
-            CARRIER | GANTRITHOR | REAVER | WARBRINGER => true,
-            _ => false,
-        }
+        self.id().fighter_id().is_some()
     }
 
     pub fn fighter_amount(self) -> u32 {
