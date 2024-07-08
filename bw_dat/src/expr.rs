@@ -41,6 +41,7 @@ pub struct CustomBoolExpr<C: CustomState> {
 }
 
 bitflags! {
+    #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
     pub struct RequiredContext: u8 {
         const UNIT = 0x1;
         const GAME = 0x2;

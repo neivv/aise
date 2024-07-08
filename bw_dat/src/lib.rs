@@ -290,6 +290,7 @@ init_fns! {
 }
 
 bitflags! {
+    #[derive(PartialEq, Eq, Hash, Debug, Clone, Copy)]
     pub struct RaceFlags: u8 {
         const ZERG = 0x1;
         const TERRAN = 0x2;
@@ -1412,6 +1413,10 @@ impl OrderId {
 
     pub fn weapon(&self) -> Option<WeaponId> {
         WeaponId::optional(self.get(13))
+    }
+
+    pub fn label(&self) -> u32 {
+        self.get(0)
     }
 
     pub fn use_weapon_targeting(&self) -> bool {

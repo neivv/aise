@@ -388,15 +388,15 @@ enum Comparison {
 }
 
 bitflags::bitflags! {
-    #[derive(Deserialize, Serialize)]
+    #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
     struct TargetingFlags: u8 {
         const CURRENT_UNIT = 0x1;
         const ENEMY = 0x2;
         const ALLY = 0x4;
         const OWN = 0x8;
         const NOTHING = 0x10;
-        const NOT_CURRENT_UNIT_FILTER = Self::ENEMY.bits | Self::ALLY.bits | Self::OWN.bits |
-            Self::NOTHING.bits;
+        const NOT_CURRENT_UNIT_FILTER =
+            Self::ENEMY.bits() | Self::ALLY.bits() | Self::OWN.bits() | Self::NOTHING.bits();
     }
 }
 

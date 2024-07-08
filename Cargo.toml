@@ -21,10 +21,10 @@ lto = true
 
 [dependencies]
 bincode = "1.0"
-bitflags = "1.0"
+bitflags = { version = "2.0", features = ["serde"] }
 bumpalo = { version = "3.7", features = ["collections"] }
 byteorder = "1.1"
-directories = "4.0"
+directories = "5.0"
 fern = "0.6"
 fxhash = "0.2.1"
 libc = "0.2"
