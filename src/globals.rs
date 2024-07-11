@@ -2,6 +2,8 @@ use std::ffi::CString;
 use std::ptr::null_mut;
 use std::slice;
 
+use hashbrown::HashMap;
+use rustc_hash::{FxBuildHasher};
 use scopeguard::defer;
 use serde::{Deserialize, Serialize};
 
@@ -673,6 +675,7 @@ pub(crate) struct Globals {
     pub ai_mode: [AiMode; 8],
     pub global_ai_mode: GlobalAiMode,
     pub region_safety_pos: RegionIdCycle,
+    pub build_at: HashMap<Town, Vec<BuildAt>, FxBuildHasher>,
     // For tracking deleted towns.
     // If the tracking is updated after step_objects, it shouldn't be possible for a town
     // to be deleted and recreated in the same frame. (As recreation happens in scripts,
@@ -684,6 +687,13 @@ pub(crate) struct Globals {
     pub ai_scripts: BlockAllocSet<aiscript::Script>,
     #[serde(skip)]
     pub region_search: RegionNeighbourSearch,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct BuildAt {
+    pub unit_match: UnitMatch,
+    pub flags: u32,
+    pub position: bw::Point,
 }
 
 impl Globals {
@@ -708,6 +718,7 @@ impl Globals {
             ai_mode: [AiMode::default(); 8],
             global_ai_mode: GlobalAiMode::default(),
             region_safety_pos: RegionIdCycle::new(),
+            build_at: HashMap::with_hasher(FxBuildHasher),
             towns: Vec::new(),
             rng: Rng::new(),
             ai_scripts: BlockAllocSet::new(),

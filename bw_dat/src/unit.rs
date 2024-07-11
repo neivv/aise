@@ -313,20 +313,7 @@ impl Unit {
     }
 
     pub fn matches_id(self, other: UnitId) -> bool {
-        let id = self.id();
-        match other {
-            ANY_UNIT => true,
-            GROUP_MEN | GROUP_BUILDINGS | GROUP_FACTORIES => {
-                let flags = id.group_flags();
-                let mask = match other {
-                    GROUP_MEN => 0x8,
-                    GROUP_BUILDINGS => 0x10,
-                    _ => 0x20,
-                };
-                flags & mask != 0
-            }
-            other => id == other,
-        }
+        self.id().matches_id(other)
     }
 
     pub fn collision_rect(self) -> bw::Rect {

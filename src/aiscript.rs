@@ -406,11 +406,12 @@ pub(crate) fn update_towns(globals: &mut Globals) {
                 .structures
                 .swap_retain(|x| x.town_src != old && x.town_tgt != old);
             globals.queues.queue.swap_retain(|x| x.town != Some(old));
+            globals.build_at.remove(&old);
         }
     }
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub struct Town(pub *mut bw::AiTown);
 
 impl Town {
@@ -1055,7 +1056,29 @@ impl UnitMatch {
     }
 
     pub fn matches(&self, unit: &Unit) -> bool {
-        self.units.iter().any(|&x| unit.matches_id(x))
+        self.matches_id(unit.id())
+    }
+
+    pub fn matches_id(&self, id: UnitId) -> bool {
+        if !self.has_groups() {
+            self.units.iter().any(|&x| x == id)
+        } else {
+            self.units.iter().any(|&x| id.matches_id(x))
+        }
+    }
+
+    pub fn matches_match(&self, other: &UnitMatch) -> bool {
+        self.units.iter().all(|&x| {
+            match x {
+                unit::id::ANY_UNIT => true,
+                unit::id::GROUP_MEN | unit::id::GROUP_BUILDINGS | unit::id::GROUP_FACTORIES => {
+                    other.units.iter().any(|&y| {
+                        x == y
+                    })
+                }
+                _ => other.matches_id(x),
+            }
+        })
     }
 
     pub fn count(&self) -> usize {
@@ -1904,6 +1927,36 @@ pub unsafe extern fn bw_kills(script: *mut bw::AiScript) {
                 }
             }
         }
+    }
+}
+
+pub unsafe extern fn build_at(script: *mut bw::AiScript) {
+    // build_at(unit_group, pos, flags)
+    let mut read = ScriptData::new(script);
+    let units = read.read_unit_match();
+    let mut pos = read.read_position().center;
+    let flags = read.read_u32();
+
+    let town = match Town::from_ptr((*script).town) {
+        Some(s) => s,
+        None => return,
+    };
+    if pos.x as u16 == 65500 {
+        pos = (*town.0).position;
+    }
+    let mut globals = Globals::get("ais build_at");
+    let vec = globals.build_at.entry(town)
+        .or_insert_with(|| Vec::new());
+    if flags & 0x8000_0000 != 0 {
+        vec.retain(|x| {
+            x.position != pos || !x.unit_match.matches_match(&units)
+        })
+    } else {
+        vec.push(globals::BuildAt {
+            unit_match: units,
+            flags,
+            position: pos,
+        });
     }
 }
 

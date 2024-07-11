@@ -1054,6 +1054,21 @@ impl UnitId {
             _ => false,
         }
     }
+
+    pub fn matches_id(self, other: UnitId) -> bool {
+        self == other || match other {
+            unit::GROUP_MEN | unit::GROUP_BUILDINGS | unit::GROUP_FACTORIES => {
+                let flags = self.group_flags();
+                let mask = match other {
+                    unit::GROUP_MEN => 0x8,
+                    unit::GROUP_BUILDINGS => 0x10,
+                    unit::GROUP_FACTORIES | _ => 0x20,
+                };
+                flags & mask == mask
+            }
+            x => x == unit::ANY_UNIT,
+        }
+    }
 }
 
 impl FlingyId {

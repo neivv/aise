@@ -24,6 +24,7 @@ mod in_combat;
 mod list;
 mod order;
 mod pathing;
+mod placement;
 mod recurse_checked_mutex;
 mod rng;
 mod swap_retain;

@@ -1,6 +1,6 @@
 [package]
 name = "aise"
-version = "2.38.16"
+version = "2.39.0"
 authors = ["Markus Heikkinen <ittevien@gmail.com>"]
 edition = "2018"
 
@@ -26,13 +26,14 @@ bumpalo = { version = "3.7", features = ["collections"] }
 byteorder = "1.1"
 directories = "5.0"
 fern = "0.6"
-fxhash = "0.2.1"
+hashbrown = { version = "0.14", features = ["serde"], default-features = false }
 libc = "0.2"
 log = { version = "0.4", features = ["release_max_level_warn"] }
 once_cell = "1.12"
 parking_lot = "0.12"
 rand = { version = "0.8", default-features = false }
 rand_xoshiro = { version = "0.6", features = ["serde1"] }
+rustc-hash = "2.0"
 scopeguard = "1.0"
 serde = { version = "1.0.104", features = ["rc", "derive"] }
 smallvec = "1.0"
@@ -51,8 +52,8 @@ rev = "ccd95f5cfa37622bc3ec3d4b0974ab9b631b59b2"
 
 [target.'cfg(target_arch = "x86")'.dependencies.samase_shim]
 git = "https://github.com/neivv/samase_plugin"
-rev = "f952146e7cb657449765cc15af96a9ba0100af20"
+rev = "388cb2551d906b0e8e8a9ae161efc5c5f365bc61"
 
 [dependencies.samase_plugin]
 git = "https://github.com/neivv/samase_plugin"
-rev = "f952146e7cb657449765cc15af96a9ba0100af20"
+rev = "388cb2551d906b0e8e8a9ae161efc5c5f365bc61"

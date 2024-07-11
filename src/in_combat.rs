@@ -1,5 +1,5 @@
 use bw_dat::{Game, Unit, WeaponId};
-use fxhash::FxHashMap;
+use rustc_hash::FxHashMap;
 
 use crate::bw;
 use crate::unit::{self, HashableUnit};

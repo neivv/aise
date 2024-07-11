@@ -4,7 +4,7 @@ use std::ptr::null_mut;
 use libc::c_void;
 use winapi::um::processthreadsapi::{GetCurrentProcess, TerminateProcess};
 
-use samase_plugin::PluginApi;
+use samase_plugin::{FuncId, PluginApi};
 
 use crate::bw;
 use crate::order::OrderId;
@@ -306,6 +306,7 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
     aiscript_opcode(api, 0x9e, crate::aiscript::max_build);
     aiscript_opcode(api, 0x9f, crate::aiscript::attack_to_deaths);
     aiscript_opcode(api, 0xa0, crate::aiscript::bw_kills);
+    aiscript_opcode(api, 0xa1, crate::aiscript::build_at);
 
     GAME.init(((*api).game)().map(|x| mem::transmute(x)), "Game object");
     AI_REGIONS.init(
@@ -389,6 +390,16 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
         ((*api).hook_ai_focus_disabled)(crate::ai::focus_disabled_hook);
         ((*api).hook_ai_focus_air)(crate::ai::focus_air_hook);
     }
+
+    ((*api).hook_func)(
+        FuncId::AiPickBestPlacementPosition as u16,
+        crate::placement::placement_position_hook as _,
+    );
+    ((*api).hook_func)(
+        FuncId::AiPlacementFlags as u16,
+        crate::placement::placement_flags_hook as _,
+    );
+
     let mut dat_len = 0usize;
     let units_dat = ((*api).extended_dat)(0).expect("units.dat")(&mut dat_len);
     bw_dat::init_units(units_dat as *const _, dat_len);
