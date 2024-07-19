@@ -2707,8 +2707,7 @@ impl ScriptData {
     fn read_position(&mut self) -> Position {
         let x = self.read_u16();
         let y = self.read_u16();
-        if x == !0 {
-            assert!(y < 255);
+        if x == 65535 {
             let location = if y >= 255 {
                 bw_print!("Invalid location id 0x{:x} used", y);
                 bw::location(63)
@@ -2716,6 +2715,9 @@ impl ScriptData {
                 bw::location(y as u8)
             };
             Position::from_rect32(&location.area)
+        } else if x == 65534 {
+            let area = unsafe { (*self.script).area };
+            Position::from_rect32(&area)
         } else {
             // !1, !1 is used for inherit position in create_script
             Position::from_point(x as i16, y as i16)
