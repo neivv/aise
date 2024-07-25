@@ -192,7 +192,10 @@ pub struct OldSprite {
     pub index: u16,
     pub width: u8,
     pub height: u8,
-    pub rest: SpriteLegacy,
+    pub position: Point,
+    pub main_image: *mut Image,
+    pub first_image: *mut Image,
+    pub last_image: *mut Image,
 }
 
 #[repr(C)]
@@ -1202,7 +1205,7 @@ mod test {
         assert_eq!(mem::size_of::<Flingy>(), size(0x4c, 0x68));
         assert_eq!(mem::size_of::<Unit>(), size(0x150, 0x1e8));
         assert_eq!(mem::size_of::<Bullet>(), size(0x70, 0xa8));
-        assert_eq!(mem::size_of::<OldSprite>(), size(0x24, 0x40));
+        assert_eq!(mem::size_of::<OldSprite>(), size(0x24, 0x38));
         assert_eq!(mem::size_of::<Image>(), size(0x40, 0x58));
         assert_eq!(mem::size_of::<Pathing>(), size(0x97a20, 0xa1670));
         assert_eq!(mem::size_of::<Region>(), size(0x40, 0x48));

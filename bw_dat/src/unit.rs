@@ -117,7 +117,7 @@ impl Unit {
     }
 
     pub fn max_hp_displayed(self) -> i32 {
-        let hp = self.id().hitpoints().wrapping_add(0xff) >> 8;
+        let hp = self.id().hitpoints() >> 8;
         if hp != 0 {
             hp
         } else {
