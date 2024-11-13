@@ -421,6 +421,10 @@ impl Unit {
         }
     }
 
+    pub fn disabled_flag(self) -> bool {
+        self.flags() & 0x400 != 0
+    }
+
     pub fn is_blind(self) -> bool {
         unsafe { (**self).is_blind != 0 }
     }
