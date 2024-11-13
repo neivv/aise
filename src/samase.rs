@@ -1,38 +1,57 @@
 use std::mem;
 use std::ptr::null_mut;
+use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
 
 use libc::c_void;
 use winapi::um::processthreadsapi::{GetCurrentProcess, TerminateProcess};
 
-use samase_plugin::{FuncId, PluginApi};
+use samase_plugin::{FuncId, PluginApi, VarId};
 
 use crate::bw;
 use crate::order::OrderId;
 use crate::unit::UnitId;
 use crate::windows;
 
-struct GlobalFunc<T: Copy>(Option<T>);
+struct GlobalFunc<T: Copy>(AtomicUsize, std::marker::PhantomData<T>);
 
 impl<T: Copy> GlobalFunc<T> {
-    fn get(&self) -> T {
-        self.0.unwrap()
+    const fn new() -> GlobalFunc<T> {
+        GlobalFunc(AtomicUsize::new(0), std::marker::PhantomData)
     }
 
-    fn try_init(&mut self, val: Option<*mut c_void>) -> bool {
+    fn set(&self, val: T) {
+        unsafe {
+            self.0.store(mem::transmute_copy(&val), Ordering::Relaxed);
+        }
+    }
+
+    fn get(&self) -> T {
+        unsafe {
+            let value = self.0.load(Ordering::Relaxed);
+            debug_assert!(value != 0);
+            mem::transmute_copy(&value)
+        }
+    }
+
+    fn get_opt(&self) -> Option<T> {
+        unsafe {
+            mem::transmute_copy::<usize, Option<T>>(&self.0.load(Ordering::Relaxed))
+        }
+    }
+
+    fn try_init(&self, val: Option<*mut c_void>) -> bool {
         let val = match val {
             Some(s) => s,
             None => return false,
         };
         unsafe {
-            assert_eq!(mem::size_of::<T>(), mem::size_of::<*mut c_void>());
-            let mut typecast_hack: mem::MaybeUninit<T> = mem::MaybeUninit::uninit();
-            *(typecast_hack.as_mut_ptr() as *mut *mut c_void) = val;
-            self.0 = Some(typecast_hack.assume_init());
+            let value: usize = mem::transmute(val);
+            self.0.store(value, Ordering::Relaxed);
         }
         true
     }
 
-    fn init(&mut self, val: Option<*mut c_void>, desc: &str) {
+    fn init(&self, val: Option<*mut c_void>, desc: &str) {
         if !self.try_init(val) {
             fatal(&format!("Can't get {}", desc));
         }
@@ -48,115 +67,187 @@ fn fatal(text: &str) -> ! {
     unreachable!();
 }
 
-static mut CRASH_WITH_MESSAGE: GlobalFunc<unsafe extern fn(*const u8) -> !> = GlobalFunc(None);
+const GLOBALS: &[VarId] = &[
+    VarId::Game,
+    VarId::FirstActiveUnit,
+    VarId::FirstHiddenUnit,
+    VarId::Players,
+    VarId::MapTileFlags,
+    VarId::Pathing,
+    VarId::AiRegions,
+    VarId::PlayerAi,
+    VarId::ActiveAiTowns,
+    // Writable
+    VarId::FirstAiScript,
+    VarId::FirstFreeAiScript,
+    // Optional
+    VarId::RngSeed,
+    // Writable + Optional
+];
+
+const fn global_idx(var: VarId) -> usize {
+    let mut i = 0;
+    loop {
+        if GLOBALS[i] as u16 == var as u16 {
+            return i;
+        }
+        i += 1;
+    }
+}
+
+const FIRST_WRITABLE_GLOBAL: usize = global_idx(VarId::FirstAiScript);
+const FIRST_OPTIONAL_GLOBAL: usize = global_idx(VarId::RngSeed);
+
+const ZERO_U8: AtomicU8 = AtomicU8::new(0);
+static OPT_GLOBALS: [AtomicU8; GLOBALS.len() - FIRST_OPTIONAL_GLOBAL] = [
+    ZERO_U8; GLOBALS.len() - FIRST_OPTIONAL_GLOBAL
+];
+
+unsafe fn init_globals(api: *const samase_plugin::PluginApi) {
+    let mut result = [0u8; GLOBALS.len()];
+    ((*api).load_vars)(GLOBALS.as_ptr() as *const u16, result.as_mut_ptr(), GLOBALS.len());
+    let mut i = 0;
+    for (last, needed) in [(FIRST_WRITABLE_GLOBAL, 2), (FIRST_OPTIONAL_GLOBAL, 3)] {
+        while i < last {
+            if result[i] < needed {
+                if result[i] == 1 {
+                    fatal(
+                        &format!("Newer samase is required (Failed to get variable {:?})", GLOBALS[i])
+                    );
+                } else {
+                    fatal(&format!("Failed to get variable {:?}", GLOBALS[i]));
+                }
+            }
+            i += 1;
+        }
+    }
+    while i < GLOBALS.len() {
+        OPT_GLOBALS[i - FIRST_OPTIONAL_GLOBAL].store(result[i], Ordering::Relaxed);
+        i += 1;
+    }
+}
+
+static READ_VARS:
+    GlobalFunc<unsafe extern fn(*const u16, *mut usize, usize)> = GlobalFunc::new();
+fn read_var(var: VarId) -> usize {
+    unsafe {
+        let var = var as u16;
+        let mut out = 0usize;
+        READ_VARS.get()(&var, &mut out, 1);
+        out
+    }
+}
+
+static WRITE_VARS:
+    GlobalFunc<unsafe extern fn(*const u16, *const usize, usize)> = GlobalFunc::new();
+fn write_var(var: VarId, value: usize) {
+    unsafe {
+        let var = var as u16;
+        WRITE_VARS.get()(&var, &value, 1);
+    }
+}
+
+/// Returns result from samase api (0/1 = bad, 2 = read-only, 3 = read/write)
+macro_rules! opt_global {
+    ($id:expr) => {{
+        const IDX: usize = global_idx($id) - FIRST_OPTIONAL_GLOBAL;
+        OPT_GLOBALS[IDX].load(Ordering::Relaxed)
+    }}
+}
+
+static CRASH_WITH_MESSAGE: GlobalFunc<unsafe extern fn(*const u8) -> !> = GlobalFunc::new();
 pub fn crash_with_message(msg: &str) -> ! {
     let msg = format!("{}\0", msg);
     unsafe { CRASH_WITH_MESSAGE.get()(msg.as_bytes().as_ptr()) }
 }
 
-static mut GAME: GlobalFunc<extern fn() -> *mut bw::Game> = GlobalFunc(None);
 pub fn game() -> *mut bw::Game {
-    unsafe { GAME.get()() }
+    read_var(VarId::Game) as _
 }
 
-static mut AI_REGIONS: GlobalFunc<extern fn() -> *mut *mut bw::AiRegion> = GlobalFunc(None);
 pub fn ai_regions(player: u32) -> *mut bw::AiRegion {
     assert!(player < 8);
-    unsafe { *(AI_REGIONS.get()()).offset(player as isize) }
+    unsafe {
+        *(read_var(VarId::AiRegions) as *mut *mut bw::AiRegion).add(player as usize)
+    }
 }
 
-static mut PLAYER_AI: GlobalFunc<extern fn() -> *mut bw::PlayerAiData> = GlobalFunc(None);
 pub fn player_ai(player: u32) -> *mut bw::PlayerAiData {
     assert!(player < 8);
-    unsafe { (PLAYER_AI.get()()).offset(player as isize) }
+    unsafe {
+        (read_var(VarId::PlayerAi) as *mut bw::PlayerAiData).add(player as usize)
+    }
 }
 
-static mut FIRST_ACTIVE_UNIT: GlobalFunc<extern fn() -> *mut bw::Unit> = GlobalFunc(None);
 pub fn first_active_unit() -> *mut bw::Unit {
-    unsafe { FIRST_ACTIVE_UNIT.0.map(|x| x()).unwrap_or(null_mut()) }
+    read_var(VarId::FirstActiveUnit) as _
 }
 
-static mut FIRST_HIDDEN_UNIT: GlobalFunc<extern fn() -> *mut bw::Unit> = GlobalFunc(None);
 pub fn first_hidden_unit() -> *mut bw::Unit {
-    unsafe { FIRST_HIDDEN_UNIT.0.map(|x| x()).unwrap_or(null_mut()) }
+    read_var(VarId::FirstHiddenUnit) as _
 }
 
-static mut FIRST_AI_SCRIPT: GlobalFunc<extern fn() -> *mut bw::AiScript> = GlobalFunc(None);
 pub fn first_ai_script() -> *mut bw::AiScript {
-    unsafe { FIRST_AI_SCRIPT.0.map(|x| x()).unwrap_or(null_mut()) }
+    read_var(VarId::FirstAiScript) as _
 }
 
-static mut SET_FIRST_AI_SCRIPT: GlobalFunc<extern fn(*mut bw::AiScript)> = GlobalFunc(None);
 pub fn set_first_ai_script(value: *mut bw::AiScript) {
-    unsafe {
-        SET_FIRST_AI_SCRIPT.0.map(|x| x(value));
-    }
+    write_var(VarId::FirstAiScript, value as usize);
 }
 
-static mut FIRST_FREE_AI_SCRIPT: GlobalFunc<extern fn() -> *mut bw::AiScript> = GlobalFunc(None);
 pub fn first_free_ai_script() -> *mut bw::AiScript {
-    unsafe { FIRST_FREE_AI_SCRIPT.0.map(|x| x()).unwrap_or(null_mut()) }
+    read_var(VarId::FirstFreeAiScript) as _
 }
 
-static mut SET_FIRST_FREE_AI_SCRIPT: GlobalFunc<extern fn(*mut bw::AiScript)> = GlobalFunc(None);
 pub fn set_first_free_ai_script(value: *mut bw::AiScript) {
-    unsafe {
-        SET_FIRST_FREE_AI_SCRIPT.0.map(|x| x(value));
-    }
+    write_var(VarId::FirstFreeAiScript, value as usize);
 }
 
-static mut GUARD_AIS: GlobalFunc<extern fn() -> *mut bw::AiListHead<1000, bw::GuardAi>> =
-    GlobalFunc(None);
 pub fn guard_ais() -> *mut bw::AiListHead<1000, bw::GuardAi> {
-    unsafe { GUARD_AIS.0.map(|x| x()).unwrap_or(null_mut()) }
+    read_var(VarId::FirstGuardAi) as _
 }
 
-static mut PATHING: GlobalFunc<extern fn() -> *mut bw::Pathing> = GlobalFunc(None);
 pub fn pathing() -> *mut bw::Pathing {
-    unsafe { PATHING.0.map(|x| x()).unwrap_or(null_mut()) }
+    read_var(VarId::Pathing) as _
 }
 
-static mut PLAYER_AI_TOWNS: GlobalFunc<extern fn() -> *mut bw::AiListHead<100, bw::AiTown>> =
-    GlobalFunc(None);
 pub fn active_towns() -> *mut bw::AiListHead<100, bw::AiTown> {
-    unsafe { PLAYER_AI_TOWNS.0.map(|x| x()).unwrap_or(null_mut()) }
+    read_var(VarId::ActiveAiTowns) as _
 }
 
-static mut GET_REGION: GlobalFunc<extern fn(u32, u32) -> u32> = GlobalFunc(None);
+static GET_REGION: GlobalFunc<extern fn(u32, u32) -> u32> = GlobalFunc::new();
 pub fn get_region(x: u32, y: u32) -> u32 {
-    unsafe { GET_REGION.get()(x, y) }
+    GET_REGION.get()(x, y)
 }
 
-static mut DAT_REQUIREMENTS: GlobalFunc<extern fn(u32, u32) -> *const u16> = GlobalFunc(None);
+static DAT_REQUIREMENTS: GlobalFunc<extern fn(u32, u32) -> *const u16> = GlobalFunc::new();
 pub fn requirements(ty: u32, id: u32) -> *const u16 {
-    unsafe { DAT_REQUIREMENTS.get()(ty, id) }
+    DAT_REQUIREMENTS.get()(ty, id)
 }
 
-static mut CHANGE_AI_REGION_STATE: GlobalFunc<extern fn(*mut bw::AiRegion, u32)> = GlobalFunc(None);
+static CHANGE_AI_REGION_STATE: GlobalFunc<extern fn(*mut bw::AiRegion, u32)> = GlobalFunc::new();
 pub fn change_ai_region_state(region: *mut bw::AiRegion, state: u32) {
-    unsafe { CHANGE_AI_REGION_STATE.get()(region, state) }
+    CHANGE_AI_REGION_STATE.get()(region, state)
 }
 
-static mut PLAYERS: GlobalFunc<extern fn() -> *mut bw::Player> = GlobalFunc(None);
 pub fn players() -> *mut bw::Player {
-    unsafe { PLAYERS.get()() }
+    read_var(VarId::Players) as _
 }
 
-static mut MAP_TILE_FLAGS: GlobalFunc<extern fn() -> *mut u32> = GlobalFunc(None);
 pub fn map_tile_flags() -> *mut u32 {
-    unsafe { MAP_TILE_FLAGS.get()() }
+    read_var(VarId::MapTileFlags) as _
 }
 
-static mut UNIT_BASE_STRENGTH: GlobalFunc<extern fn(*mut *mut u32)> = GlobalFunc(None);
+static UNIT_BASE_STRENGTH: GlobalFunc<extern fn(*mut *mut u32)> = GlobalFunc::new();
 pub fn unit_base_strength() -> (*mut u32, *mut u32) {
     let mut out = [null_mut(); 2];
-    unsafe { UNIT_BASE_STRENGTH.get()(out.as_mut_ptr()) }
+    (UNIT_BASE_STRENGTH.get())(out.as_mut_ptr());
     (out[0], out[1])
 }
 
-static mut ISSUE_ORDER: GlobalFunc<
-    unsafe extern fn(*mut bw::Unit, u32, u32, u32, *mut bw::Unit, u32),
-> = GlobalFunc(None);
+static ISSUE_ORDER: GlobalFunc<
+    unsafe extern fn(*mut c_void, u32, u32, u32, *mut c_void, u32),
+> = GlobalFunc::new();
 
 pub fn issue_order(
     unit: *mut bw::Unit,
@@ -169,33 +260,37 @@ pub fn issue_order(
     assert!(x < 0x10000);
     assert!(y < 0x10000);
     assert!(unit != null_mut());
-    unsafe { ISSUE_ORDER.get()(unit, order.0 as u32, x, y, target, fow_unit.0 as u32) }
+    unsafe { ISSUE_ORDER.get()(
+        unit as *mut c_void,
+        order.0 as u32,
+        x,
+        y,
+        target as *mut c_void,
+        fow_unit.0 as u32,
+    ) }
 }
 
-static mut PRINT_TEXT: GlobalFunc<extern fn(*const u8)> = GlobalFunc(None);
+static PRINT_TEXT: GlobalFunc<unsafe extern fn(*const u8)> = GlobalFunc::new();
 // Too common to be inlined. Would be better if PRINT_TEXT were changed to always be valid
 // (But C ABI is still worse for binsize)
 #[inline(never)]
 pub fn print_text(msg: *const u8) {
-    unsafe {
-        if let Some(print) = PRINT_TEXT.0 {
+    if let Some(print) = PRINT_TEXT.get_opt() {
+        unsafe {
             print(msg);
         }
     }
 }
 
-static mut RNG_SEED: GlobalFunc<extern fn() -> u32> = GlobalFunc(None);
 pub fn rng_seed() -> Option<u32> {
-    unsafe {
-        if let Some(rng) = RNG_SEED.0 {
-            Some(rng())
-        } else {
-            None
-        }
+    if opt_global!(VarId::RngSeed) >= 2 {
+        Some(read_var(VarId::RngSeed) as u32)
+    } else {
+        None
     }
 }
 
-static mut READ_FILE: GlobalFunc<extern fn(*const u8, *mut usize) -> *mut u8> = GlobalFunc(None);
+static READ_FILE: GlobalFunc<unsafe extern fn(*const u8, *mut usize) -> *mut u8> = GlobalFunc::new();
 pub fn read_file(name: &str) -> Option<(*mut u8, usize)> {
     // Uh, should work fine
     let cstring = format!("{}\0", name);
@@ -208,17 +303,20 @@ pub fn read_file(name: &str) -> Option<(*mut u8, usize)> {
     }
 }
 
-static mut FREE_MEMORY: GlobalFunc<extern fn(*mut u8)> = GlobalFunc(None);
+static FREE_MEMORY: GlobalFunc<unsafe extern fn(*mut u8)> = GlobalFunc::new();
 pub unsafe fn free_memory(ptr: *mut u8) {
-    FREE_MEMORY.get()(ptr)
+    unsafe { FREE_MEMORY.get()(ptr) }
 }
 
-static mut UNIT_ARRAY_LEN: GlobalFunc<extern fn(*mut *mut bw::Unit, *mut usize)> = GlobalFunc(None);
+static UNIT_ARRAY_LEN:
+GlobalFunc<unsafe extern fn(*mut *mut c_void, *mut usize)> = GlobalFunc::new();
 pub unsafe fn unit_array() -> (*mut bw::Unit, usize) {
     let mut size = 0usize;
     let mut ptr = null_mut();
-    UNIT_ARRAY_LEN.get()(&mut ptr, &mut size);
-    (ptr, size)
+    unsafe {
+        UNIT_ARRAY_LEN.get()(&mut ptr, &mut size);
+    }
+    (ptr as *mut bw::Unit, size)
 }
 
 unsafe fn aiscript_opcode(
@@ -248,7 +346,10 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
     let ext_arrays_len = ((*api).extended_arrays)(&mut ext_arrays);
     bw_dat::set_extended_arrays(ext_arrays as *mut _, ext_arrays_len);
 
-    CRASH_WITH_MESSAGE.0 = Some((*api).crash_with_message);
+    CRASH_WITH_MESSAGE.set((*api).crash_with_message);
+    READ_VARS.set((*api).read_vars);
+    WRITE_VARS.set((*api).write_vars);
+    init_globals(api);
 
     aiscript_opcode(api, 0x00, crate::aiscript::goto);
     aiscript_opcode(api, 0x09, crate::aiscript::wait_build);
@@ -308,12 +409,6 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
     aiscript_opcode(api, 0xa0, crate::aiscript::bw_kills);
     aiscript_opcode(api, 0xa1, crate::aiscript::build_at);
 
-    GAME.init(((*api).game)().map(|x| mem::transmute(x)), "Game object");
-    AI_REGIONS.init(
-        ((*api).ai_regions)().map(|x| mem::transmute(x)),
-        "AI regions",
-    );
-    PLAYER_AI.init(((*api).player_ai)().map(|x| mem::transmute(x)), "Player AI");
     GET_REGION.init(
         ((*api).get_region)().map(|x| mem::transmute(x)),
         "get_region",
@@ -322,48 +417,16 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
         ((*api).dat_requirements)().map(|x| mem::transmute(x)),
         "dat_requirements",
     );
-    FIRST_ACTIVE_UNIT.init(
-        ((*api).first_active_unit)().map(|x| mem::transmute(x)),
-        "first active unit",
-    );
-    FIRST_HIDDEN_UNIT.init(
-        ((*api).first_hidden_unit)().map(|x| mem::transmute(x)),
-        "first hidden unit",
-    );
-    FIRST_AI_SCRIPT.init(
-        ((*api).first_ai_script)().map(|x| mem::transmute(x)),
-        "first_ai_script",
-    );
-    SET_FIRST_AI_SCRIPT.init(
-        ((*api).set_first_ai_script)().map(|x| mem::transmute(x)),
-        "set_first_ai_script",
-    );
-    FIRST_FREE_AI_SCRIPT.init(
-        ((*api).first_free_ai_script)().map(|x| mem::transmute(x)),
-        "first_free_ai_script",
-    );
-    SET_FIRST_FREE_AI_SCRIPT.init(
-        ((*api).set_first_free_ai_script)().map(|x| mem::transmute(x)),
-        "set_first_free_ai_script",
-    );
-    GUARD_AIS.init(
-        ((*api).first_guard_ai)().map(|x| mem::transmute(x)),
-        "guard ais",
-    );
-    PATHING.init(((*api).pathing)().map(|x| mem::transmute(x)), "pathing");
-    PLAYERS.init(((*api).players)().map(|x| mem::transmute(x)), "players");
-    MAP_TILE_FLAGS.init(
-        ((*api).map_tile_flags)().map(|x| mem::transmute(x)),
-        "map_tile_flags",
-    );
     UNIT_BASE_STRENGTH.init(((*api).unit_base_strength)().map(|x| mem::transmute(x)), "strength");
     match ((*api).issue_order)() {
         None => ((*api).warn_unsupported_feature)(b"Ai script issue_order\0".as_ptr()),
-        Some(s) => ISSUE_ORDER.0 = Some(mem::transmute(s)),
+        Some(s) => {
+            ISSUE_ORDER.set(s);
+        }
     }
     let read_file = ((*api).read_file)();
-    READ_FILE.0 = Some(mem::transmute(read_file));
-    FREE_MEMORY.0 = Some(mem::transmute((*api).free_memory));
+    READ_FILE.set(read_file);
+    FREE_MEMORY.set((*api).free_memory);
     CHANGE_AI_REGION_STATE.init(
         ((*api).change_ai_region_state)().map(|x| mem::transmute(x)),
         "change_ai_region_state",
@@ -412,9 +475,8 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
     let orders_dat = ((*api).extended_dat)(7).expect("orders.dat")(&mut dat_len);
     bw_dat::init_orders(orders_dat as *const _, dat_len);
 
-    UNIT_ARRAY_LEN.0 = Some(mem::transmute(((*api).unit_array_len)()));
-    PRINT_TEXT.0 = Some(mem::transmute(((*api).print_text)()));
-    RNG_SEED.0 = Some(mem::transmute(((*api).rng_seed)()));
+    UNIT_ARRAY_LEN.set(((*api).unit_array_len)().expect("unit_array_len"));
+    PRINT_TEXT.set(((*api).print_text)().expect("print_text"));
     let mut result = ((*api).extend_save)(
         "aise\0".as_ptr(),
         Some(crate::globals::save),
@@ -430,14 +492,6 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
                 nop_command_hook,
                 Some(mtl_rally_command_length),
             );
-        }
-    }
-    if result != 0 {
-        let ptr = ((*api).player_ai_towns)();
-        if ptr.is_none() {
-            result = 0;
-        } else {
-            PLAYER_AI_TOWNS.0 = Some(mem::transmute(ptr));
         }
     }
     if result == 0 {
