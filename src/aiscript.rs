@@ -946,12 +946,14 @@ pub unsafe extern fn call(script: *mut bw::AiScript) {
     }
     let ret = (*script).pos;
     (*script).pos = dest;
-    (*Script::ptr_from_bw(script)).call_stack.push(ret);
+    let globals = Globals::get("ais call");
+    (*Script::ptr_from_bw(script)).call_stack_push(ret, &globals.ai_scripts);
 }
 
 pub unsafe extern fn ret(script: *mut bw::AiScript) {
     let script = Script::ptr_from_bw(script);
-    match (*script).call_stack.pop() {
+    let globals = Globals::get("ais ret");
+    match (*script).call_stack_pop(&globals.ai_scripts) {
         Some(s) => {
             (*script).bw.pos = s;
         }
@@ -1235,7 +1237,7 @@ pub unsafe extern fn supply(script: *mut bw::AiScript) {
                     }
                 }
             }
-            read.compare_and_act(sum, amount, script, dest, old_pos);
+            read.compare_and_act(sum, amount, script, dest, old_pos, &globals.ai_scripts);
         }
         ModifierType::Write(write) => {
             let race_i = match race {
@@ -1305,7 +1307,7 @@ pub unsafe extern fn resources_command(script: *mut bw::AiScript) {
 
             let read_req = read.action.get_read_req();
             if jump == read_req {
-                read.action.do_action(script, dest, old_pos);
+                read.action.do_action(script, dest, old_pos, &globals.ai_scripts);
             }
         }
         ModifierType::Write(write) => {
@@ -1534,7 +1536,7 @@ unsafe fn add_bank_data(
     match modifier.ty {
         ModifierType::Read(read) => {
             let value = globals.bank.get(&key);
-            read.compare_and_act(value, amount, script, dest, old_pos);
+            read.compare_and_act(value, amount, script, dest, old_pos, &globals.ai_scripts);
         }
         ModifierType::Write(write) => {
             let rng = &mut globals.rng;
@@ -1654,7 +1656,8 @@ pub unsafe extern fn time_command(script: *mut bw::AiScript) {
             return;
         }
     };
-    read.compare_and_act(time, amount, script, dest, old_pos);
+    let globals = Globals::get("time_command");
+    read.compare_and_act(time, amount, script, dest, old_pos, &globals.ai_scripts);
 }
 
 pub unsafe extern fn attacking(script: *mut bw::AiScript) {
@@ -1668,7 +1671,8 @@ pub unsafe extern fn attacking(script: *mut bw::AiScript) {
     let ai = bw::player_ai((*script).player);
     let r_compare = ((*ai).attack_grouping_region != 0) == modifier.value;
     if r_compare == modifier.action.get_read_req() {
-        modifier.action.do_action(script, dest, old_pos);
+        let globals = Globals::get("attacking");
+        modifier.action.do_action(script, dest, old_pos, &globals.ai_scripts);
     }
 }
 
@@ -1874,7 +1878,7 @@ pub unsafe extern fn deaths(script: *mut bw::AiScript) {
                         .sum::<u32>()
                 })
                 .sum::<u32>();
-            read.compare_and_act(sum, amount, script, dest, old_pos);
+            read.compare_and_act(sum, amount, script, dest, old_pos, &globals.ai_scripts);
         }
         ModifierType::Write(write) => {
             for unit_id in units.iter_flatten_groups() {
@@ -1916,7 +1920,7 @@ pub unsafe extern fn bw_kills(script: *mut bw::AiScript) {
                         .sum::<u32>()
                 })
                 .sum::<u32>();
-            read.compare_and_act(sum, amount, script, dest, old_pos);
+            read.compare_and_act(sum, amount, script, dest, old_pos, &globals.ai_scripts);
         }
         ModifierType::Write(write) => {
             for unit_id in units.iter_flatten_groups() {
@@ -2006,7 +2010,7 @@ pub unsafe extern fn kills_command(script: *mut bw::AiScript) {
                         .sum::<u32>()
                 })
                 .sum::<u32>();
-            read.compare_and_act(sum, amount, script, dest, old_pos);
+            read.compare_and_act(sum, amount, script, dest, old_pos, &globals.ai_scripts);
         }
         ModifierType::Write(write) => {
             for unit_id in units.iter_flatten_groups() {
@@ -2133,7 +2137,8 @@ pub unsafe extern fn upgrade_jump(script: *mut bw::AiScript) {
             });
 
             if jump == read_req {
-                r.action.do_action(script, dest, old_pos);
+                let globals = Globals::get("ais upgrade jump");
+                r.action.do_action(script, dest, old_pos, &globals.ai_scripts);
             }
         }
         ModifierType::Write(w) => {
@@ -2204,7 +2209,7 @@ pub unsafe extern fn unit_avail(script: *mut bw::AiScript) {
                 r.compare(avail as u32, u32::from(avail_modifier))
             });
             if jump == read_req {
-                r.action.do_action(script, dest, old_pos);
+                r.action.do_action(script, dest, old_pos, &globals.ai_scripts);
             }
         }
         ModifierType::Write(w) => {
@@ -2243,7 +2248,8 @@ pub unsafe extern fn tech_jump(script: *mut bw::AiScript) {
                 r.compare(u32::from(up_lev), u32::from(level))
             });
             if jump == read_req {
-                r.action.do_action(script, dest, old_pos);
+                let globals = Globals::get("ais tech_jump");
+                r.action.do_action(script, dest, old_pos, &globals.ai_scripts);
             }
         }
         ModifierType::Write(w) => {
@@ -2277,7 +2283,8 @@ pub unsafe extern fn tech_avail(script: *mut bw::AiScript) {
                 r.compare(u32::from(up_lev), u32::from(level))
             });
             if jump == read_req {
-                r.action.do_action(script, dest, old_pos);
+                let globals = Globals::get("ais tech_avail");
+                r.action.do_action(script, dest, old_pos, &globals.ai_scripts);
             }
         }
         ModifierType::Write(w) => {
@@ -2304,7 +2311,7 @@ pub unsafe extern fn random_call(script: *mut bw::AiScript) {
     if u32::from(chance) > random {
         let ret = (*script).pos;
         (*script).pos = dest;
-        (*Script::ptr_from_bw(script)).call_stack.push(ret);
+        (*Script::ptr_from_bw(script)).call_stack_push(ret, &globals.ai_scripts);
     }
 }
 
@@ -2366,7 +2373,8 @@ pub unsafe extern fn bring_jump(script: *mut bw::AiScript) {
         .search_iter(&src.area)
         .filter(|u| players.matches(u.player()) && unit_id.matches(u))
         .count() as u32;
-    read.compare_and_act(count, amount, script, dest, old_pos);
+    let globals = Globals::get("ais bring_jump");
+    read.compare_and_act(count, amount, script, dest, old_pos, &globals.ai_scripts);
 }
 
 unsafe fn ai_region(player: u32, region: u16) -> *mut bw::AiRegion {
@@ -2464,10 +2472,11 @@ impl ReadModifier {
         script: *mut bw::AiScript,
         dest: u32,
         old_pos: u32,
+        scripts: &BlockAllocSet<Script>,
     ) {
         let read_req = self.action.get_read_req();
         if self.ty.compare(value, constant) == read_req {
-            self.action.do_action(script, dest, old_pos);
+            self.action.do_action(script, dest, old_pos, scripts);
         }
     }
 }
@@ -2528,7 +2537,13 @@ impl ModifierAction {
         }
     }
 
-    pub unsafe fn do_action(&self, script: *mut bw::AiScript, dest: u32, old_pos: u32) {
+    pub unsafe fn do_action(
+        &self,
+        script: *mut bw::AiScript,
+        dest: u32,
+        old_pos: u32,
+        scripts: &BlockAllocSet<Script>,
+    ) {
         match self {
             ModifierAction::Jump => {
                 (*script).pos = dest;
@@ -2536,7 +2551,7 @@ impl ModifierAction {
             ModifierAction::Call => {
                 let ret = (*script).pos;
                 (*script).pos = dest;
-                (*Script::ptr_from_bw(script)).call_stack.push(ret);
+                (*Script::ptr_from_bw(script)).call_stack_push(ret, scripts);
             }
             ModifierAction::Wait => {
                 (*script).pos = old_pos;
@@ -2917,6 +2932,20 @@ impl Script {
             self.bw.player, self.bw.center.x, self.bw.center.y,
         )
     }
+
+    fn call_stack_push(&mut self, pos: u32, scripts: &BlockAllocSet<Script>) {
+        if !scripts.contains(self as *const _ as *mut _) {
+            panic!("Aiscript call used on BW object.\nUse wait 1 before any calls.");
+        }
+        self.call_stack.push(pos);
+    }
+
+    fn call_stack_pop(&mut self, scripts: &BlockAllocSet<Script>) -> Option<u32> {
+        if !scripts.contains(self as *const _ as *mut _) {
+            return None;
+        }
+        self.call_stack.pop()
+    }
 }
 
 const AISCRIPT_LIMIT: usize = 8192;
@@ -2997,6 +3026,7 @@ unsafe fn clear_deleted_scripts(
     let mut script = bw_list;
     let mut count = 0;
     while script != null_mut() {
+        assert!(scripts.contains(Script::ptr_from_bw(script)));
         (*Script::ptr_from_bw(script)).delete_mark = false;
         script = (*script).next;
         count += 1;

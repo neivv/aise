@@ -1,6 +1,6 @@
 [package]
 name = "aise"
-version = "2.39.2"
+version = "2.40.0"
 authors = ["Markus Heikkinen <ittevien@gmail.com>"]
 edition = "2018"
 
@@ -48,12 +48,12 @@ features = ["serde"]
 
 [target.'cfg(target_arch = "x86")'.dependencies.whack]
 git = "https://github.com/neivv/whack/"
-rev = "ccd95f5cfa37622bc3ec3d4b0974ab9b631b59b2"
+rev = "2d1adbae09d75bdaa2af65b0af12760740cd3d2b"
 
 [target.'cfg(target_arch = "x86")'.dependencies.samase_shim]
 git = "https://github.com/neivv/samase_plugin"
-rev = "388cb2551d906b0e8e8a9ae161efc5c5f365bc61"
+rev = "83ff841d16b0f1abb3bf077ff116016acd3761bb"
 
 [dependencies.samase_plugin]
 git = "https://github.com/neivv/samase_plugin"
-rev = "388cb2551d906b0e8e8a9ae161efc5c5f365bc61"
+rev = "83ff841d16b0f1abb3bf077ff116016acd3761bb"
