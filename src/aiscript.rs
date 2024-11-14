@@ -2574,33 +2574,39 @@ pub struct ScriptData {
     length: u32,
     script: *mut bw::AiScript,
     invalid: bool,
+    mutate: bool,
 }
 
 impl ScriptData {
     pub unsafe fn new(script: *mut bw::AiScript) -> ScriptData {
+        Self::new_with_pos(script, (*script).pos, true)
+    }
+
+    pub unsafe fn new_with_pos(script: *mut bw::AiScript, pos: u32, mutate: bool) -> ScriptData {
         let (script_bytes, script_len) = match (*script).flags & 0x1 != 0 {
             false => bw::aiscript_bin(),
             true => bw::bwscript_bin(),
         };
-        let invalid = (*script).pos < 4 || (*script).pos >= script_len;
-        if invalid {
+        let invalid = pos < 4 || pos >= script_len;
+        if invalid && pos == (*script).pos && mutate {
             bw_print!(
                 "Invalid script pos {:x} / {}",
-                (*script).pos, (*Script::ptr_from_bw(script)).debug_string(),
+                pos, (*Script::ptr_from_bw(script)).debug_string(),
             );
             (*script).wait = !1;
         }
         ScriptData {
             start: script_bytes,
-            orig_pos: (*script).pos,
-            pos: script_bytes.offset((*script).pos as isize) as *const u8,
+            orig_pos: pos,
+            pos: script_bytes.add(pos as usize) as *const u8,
             length: script_len,
             script,
             invalid,
+            mutate,
         }
     }
 
-    fn is_invalid(&self) -> bool {
+    pub fn is_invalid(&self) -> bool {
         self.invalid
     }
 
@@ -2748,12 +2754,14 @@ impl ScriptData {
         };
 
         if pos >= self.length && !self.invalid {
-            unsafe {
-                bw_print!(
-                    "Invalid jump dest at offset {:x} / {}",
-                    self.orig_pos, (*Script::ptr_from_bw(self.script)).debug_string(),
-                );
-                (*self.script).wait = !1;
+            if self.mutate {
+                unsafe {
+                    bw_print!(
+                        "Invalid jump dest at offset {:x} / {}",
+                        self.orig_pos, (*Script::ptr_from_bw(self.script)).debug_string(),
+                    );
+                    (*self.script).wait = !1;
+                }
             }
             self.invalid = true;
             0x8000_0000
@@ -2781,7 +2789,9 @@ impl ScriptData {
             let size = mem::size_of::<T>();
             let val = (self.pos as *const T).read_unaligned();
             self.pos = self.pos.add(size);
-            (*self.script).pos = (*self.script).pos.wrapping_add(size as u32);
+            if self.mutate {
+                (*self.script).pos = (*self.script).pos.wrapping_add(size as u32);
+            }
             val
         }
     }
@@ -2790,7 +2800,9 @@ impl ScriptData {
         let length = (0usize..).position(|x| *self.pos.add(x) == 0).unwrap_or(0);
         let val = slice::from_raw_parts(self.pos, length);
         self.pos = self.pos.add(length + 1);
-        (*self.script).pos += length as u32 + 1;
+        if self.mutate {
+            (*self.script).pos += length as u32 + 1;
+        }
         val
     }
 }
@@ -2802,7 +2814,7 @@ pub struct Script {
     #[serde(deserialize_with = "deserialize_bw_script")]
     bw: bw::AiScript,
     delete_mark: bool,
-    call_stack: Vec<u32>,
+    pub call_stack: Vec<u32>,
 }
 
 #[derive(Serialize, Deserialize)]

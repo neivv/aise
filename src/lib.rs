@@ -18,6 +18,7 @@ mod aiscript;
 mod block_alloc;
 mod bw;
 mod datreq;
+mod debug_ui;
 mod globals;
 mod idle_orders;
 mod in_combat;

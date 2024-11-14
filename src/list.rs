@@ -97,6 +97,16 @@ impl ListEntry for bw::Unit {
     }
 }
 
+impl ListEntry for bw::AiScript {
+    unsafe fn next(x: *mut Self) -> *mut *mut Self {
+        &mut ((*x).next as *mut Self)
+    }
+
+    unsafe fn prev(x: *mut Self) -> *mut *mut Self {
+        &mut ((*x).prev as *mut Self)
+    }
+}
+
 pub struct ListIter<T: ListEntry>(pub *mut T);
 
 impl<T: ListEntry> Iterator for ListIter<T> {
