@@ -105,6 +105,11 @@ fn is_scr() -> bool {
     true
 }
 
+static DEBUG_UI_ACTIVE: AtomicBool = AtomicBool::new(false);
+fn debug_ui_active() -> bool {
+    DEBUG_UI_ACTIVE.load(Ordering::Relaxed)
+}
+
 #[cfg(debug_assertions)]
 fn feature_disabled(name: &str) -> bool {
     static DISABLED_FEATURES: parking_lot::Mutex<Option<Vec<String>>> =

@@ -2071,6 +2071,25 @@ pub unsafe extern fn aise_debug(script: *mut bw::AiScript) {
     debug!("{}", String::from_utf8_lossy(msg));
 }
 
+pub unsafe extern fn debug_name(script: *mut bw::AiScript) {
+    let mut read = ScriptData::new(script);
+    let name = read.read_string();
+    if read.is_invalid() {
+        return;
+    }
+
+    if crate::debug_ui_active() {
+        let globals = Globals::get("debug_name");
+        let script = Script::ptr_from_bw(script);
+        let name = String::from_utf8_lossy(name);
+        if globals.ai_scripts.contains(script) {
+            (*script).debug_name = name.into();
+        } else {
+            bw_print!("Wait 1 before using debug_name {}", name);
+        }
+    }
+}
+
 pub unsafe extern fn ping(script: *mut bw::AiScript) {
     #![cfg_attr(target_pointer_width = "64", allow(unused_variables))]
     let mut read = ScriptData::new(script);
@@ -2815,6 +2834,7 @@ pub struct Script {
     bw: bw::AiScript,
     delete_mark: bool,
     pub call_stack: Vec<u32>,
+    debug_name: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -2938,11 +2958,18 @@ impl Script {
         bw as *mut Script
     }
 
-    fn debug_string(&self) -> String {
-        format!(
-            "Player {}, pos {}, {}",
-            self.bw.player, self.bw.center.x, self.bw.center.y,
-        )
+    pub fn debug_string(&self) -> String {
+        if let Some(name) = self.debug_name() {
+            format!(
+                "'{}', player {}, pos {}, {}",
+                name, self.bw.player, self.bw.center.x, self.bw.center.y,
+            )
+        } else {
+            format!(
+                "Player {}, pos {}, {}",
+                self.bw.player, self.bw.center.x, self.bw.center.y,
+            )
+        }
     }
 
     fn call_stack_push(&mut self, pos: u32, scripts: &BlockAllocSet<Script>) {
@@ -2957,6 +2984,14 @@ impl Script {
             return None;
         }
         self.call_stack.pop()
+    }
+
+    pub fn debug_name(&self) -> Option<&str> {
+        if self.debug_name.len() != 0 {
+            Some(&self.debug_name)
+        } else {
+            None
+        }
     }
 }
 
@@ -3070,6 +3105,7 @@ unsafe fn take_bw_allocated_scripts(
                 bw: *script,
                 delete_mark: false,
                 call_stack: Vec::new(),
+                debug_name: String::new(),
             });
             if let Some(prev) = prev {
                 (*prev).next = &mut (*taken).bw;
@@ -3775,6 +3811,7 @@ pub unsafe extern fn create_script(script: *mut bw::AiScript) {
         },
         delete_mark: false,
         call_stack: Vec::new(),
+        debug_name: String::new(),
     });
     (*first_ai_script).prev = &mut (*script).bw;
     bw::set_first_ai_script(&mut (*script).bw);

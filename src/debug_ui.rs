@@ -190,6 +190,7 @@ static OPCODE_NAMES: &[&str] = &[
     "__9f",
     "bw_kills",             // 0xa0
     "build_at",             // 0xa1
+    "debug_name",           // 0xa2
 ];
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -488,6 +489,8 @@ static OPCODE_PARAMS: &[OpcodeParam] = &[
     OpcodeParam::five(OpParam::U8, OpParam::U8, OpParam::U32, OpParam::Unit, OpParam::Address),
     //  build_at
     OpcodeParam::three(OpParam::Unit, OpParam::Point, OpParam::U32),
+    // debug_name
+    OpcodeParam::one(OpParam::String),
 ];
 
 pub unsafe extern fn debug_tab_scripts(api: *const DebugUiDraw, _: *mut c_void) {
@@ -510,7 +513,14 @@ pub unsafe extern fn debug_tab_scripts(api: *const DebugUiDraw, _: *mut c_void) 
             let mut state = 1;
             let player = (*script).player as u8;
             let player_name = player_name(player);
-            let text = format!("({},{}) {}", (*script).center.x, (*script).center.y, player_name);
+            let mut text =
+                format!("({},{}) {}", (*script).center.x, (*script).center.y, player_name);
+            let aise_script = Script::ptr_from_bw(script);
+            if globals.ai_scripts.contains(aise_script) {
+                if let Some(name) = (*aise_script).debug_name() {
+                    let _ = write!(&mut text, " - {name}");
+                }
+            }
             let color = DebugUiColor::player(player);
             draw.clickable_label(&text, color, index, &mut state);
             if state == 0 {

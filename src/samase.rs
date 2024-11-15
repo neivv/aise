@@ -408,6 +408,7 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
     aiscript_opcode(api, 0x9f, crate::aiscript::attack_to_deaths);
     aiscript_opcode(api, 0xa0, crate::aiscript::bw_kills);
     aiscript_opcode(api, 0xa1, crate::aiscript::build_at);
+    aiscript_opcode(api, 0xa2, crate::aiscript::debug_name);
 
     GET_REGION.init(
         ((*api).get_region)().map(|x| mem::transmute(x)),
@@ -497,12 +498,13 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
     if result == 0 {
         ((*api).warn_unsupported_feature)(b"Saving\0".as_ptr());
     }
-    ((*api).debug_ui_add_tab)(
+    let ok = ((*api).debug_ui_add_tab)(
         &FfiStr::from_str("aise"),
         &FfiStr::from_str("Scripts"),
         crate::debug_ui::debug_tab_scripts,
         null_mut(),
     );
+    crate::DEBUG_UI_ACTIVE.store(ok != 0, Ordering::Relaxed);
     crate::init();
 }
 
