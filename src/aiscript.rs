@@ -4033,6 +4033,7 @@ mod test {
                 orig_pos: 4,
                 length: buf.len() as u32,
                 invalid: false,
+                mutate: true,
             };
             assert_eq!(read.read_u32(), 43242);
             assert_eq!(read.read_u16(), 12345);
@@ -4064,6 +4065,7 @@ mod test {
                 orig_pos: 4,
                 length: buf.len() as u32,
                 invalid: false,
+                mutate: true,
             };
             assert_eq!(read.read_unit_match().units, vec![UnitId(0x33)]);
             let eq = vec![UnitId(0x123), UnitId(0x110), UnitId(0x30), UnitId(0x70)];
@@ -4091,6 +4093,7 @@ mod test {
                 orig_pos: 4,
                 length: buf.len() as u32,
                 invalid: false,
+                mutate: true,
             };
             assert_eq!(read.read_jump_pos(), 0x0000_0005);
             assert_eq!(read.read_jump_pos(), 0x0000_0009);
@@ -4118,6 +4121,7 @@ mod test {
                 orig_pos: 4,
                 length: buf.len() as u32,
                 invalid: false,
+                mutate: true,
             };
             assert_eq!(read.read_jump_pos(), 0x0005);
             assert_eq!(read.read_jump_pos(), 0x0000);
