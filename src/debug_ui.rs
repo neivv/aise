@@ -17,6 +17,7 @@ struct DebugUi {
     /// If it gets reused by another script then oh well.
     current_script: *mut bw::AiScript,
     call_stack_frame: u32,
+    script_player_filter: Option<u8>,
 }
 
 unsafe impl Send for DebugUi {}
@@ -25,6 +26,7 @@ unsafe impl Sync for DebugUi {}
 static DEBUG_UI: Mutex<DebugUi> = Mutex::new(DebugUi {
     current_script: null_mut(),
     call_stack_frame: 0,
+    script_player_filter: None,
 });
 
 static OPCODE_NAMES: &[&str] = &[
@@ -504,6 +506,8 @@ pub unsafe extern fn debug_tab_scripts(api: *const DebugUiDraw, _: *mut c_void) 
     }
     // Draw script list
     draw.scroll_area(300, |draw| {
+        ui_player_filter(draw, &mut debug_ui.script_player_filter);
+        draw.separator();
         for script in ListIter(first_bw) {
             let index = if script == debug_ui.current_script {
                 1
@@ -512,6 +516,11 @@ pub unsafe extern fn debug_tab_scripts(api: *const DebugUiDraw, _: *mut c_void) 
             };
             let mut state = 1;
             let player = (*script).player as u8;
+            if let Some(filter) = debug_ui.script_player_filter {
+                if player != filter {
+                    continue;
+                }
+            }
             let player_name = player_name(player);
             let mut text =
                 format!("({},{}) {}", (*script).center.x, (*script).center.y, player_name);
@@ -568,6 +577,27 @@ pub unsafe extern fn debug_tab_scripts(api: *const DebugUiDraw, _: *mut c_void) 
         }
         draw.label("Next commands:");
         disasm_script(draw, script, disasm_pos);
+    }
+}
+
+unsafe fn ui_player_filter(draw: DebugUiDrawHelper, state: &mut Option<u8>) {
+    let mut state_u32 = match state {
+        Some(s) => *s as u32,
+        None => u32::MAX,
+    };
+    draw.clickable_label("All Players", DebugUiColor::rgb(0xffffff), u32::MAX, &mut state_u32);
+    let players = bw::players();
+    for i in 0..8 {
+        if (*players.add(i as usize)).player_type == 1 {
+            let name = player_name(i);
+            let color = DebugUiColor::player(i);
+            draw.clickable_label(&name, color, i as u32, &mut state_u32);
+        }
+    }
+    if state_u32 == u32::MAX {
+        *state = None;
+    } else {
+        *state = Some(state_u32 as u8);
     }
 }
 
