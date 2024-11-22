@@ -608,6 +608,7 @@ unsafe fn disasm_script(
 ) {
     let mut read = ScriptData::new_with_pos(script, pos, false);
     let buf = &mut String::new();
+    let mut unk_param = false;
     'op_loop: for _ in 0..20 {
         if read.is_invalid() {
             draw.label("INVALID");
@@ -701,12 +702,16 @@ unsafe fn disasm_script(
                 }
                 _ => {
                     buf.push_str("???");
+                    unk_param = true;
                     break 'param_loop;
                 }
             }
             pos = pos >> OP_PARAM_SHIFT;
         }
         draw.label(buf);
+        if unk_param {
+            break;
+        }
         match opcode {
             // goto, stop, race_jump, return
             0x00 | 0x24 | 0x39 | 0x41 => break,
