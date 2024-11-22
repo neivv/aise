@@ -39,71 +39,71 @@ pub trait ListEntry: Sized {
 
 impl ListEntry for bw::AiTown {
     unsafe fn next(x: *mut Self) -> *mut *mut Self {
-        &mut (*x).next
+        &raw mut (*x).next
     }
 
     unsafe fn prev(x: *mut Self) -> *mut *mut Self {
-        &mut (*x).prev
+        &raw mut (*x).prev
     }
 }
 
 impl ListEntry for bw::GuardAi {
     unsafe fn next(x: *mut Self) -> *mut *mut Self {
-        &mut (*x).next
+        &raw mut (*x).next
     }
 
     unsafe fn prev(x: *mut Self) -> *mut *mut Self {
-        &mut (*x).prev
+        &raw mut (*x).prev
     }
 }
 
 impl ListEntry for bw::WorkerAi {
     unsafe fn next(x: *mut Self) -> *mut *mut Self {
-        &mut (*x).next
+        &raw mut (*x).next
     }
 
     unsafe fn prev(x: *mut Self) -> *mut *mut Self {
-        &mut (*x).prev
+        &raw mut (*x).prev
     }
 }
 
 impl ListEntry for bw::BuildingAi {
     unsafe fn next(x: *mut Self) -> *mut *mut Self {
-        &mut (*x).next
+        &raw mut (*x).next
     }
 
     unsafe fn prev(x: *mut Self) -> *mut *mut Self {
-        &mut (*x).prev
+        &raw mut (*x).prev
     }
 }
 
 impl ListEntry for bw::MilitaryAi {
     unsafe fn next(x: *mut Self) -> *mut *mut Self {
-        &mut (*x).next
+        &raw mut (*x).next
     }
 
     unsafe fn prev(x: *mut Self) -> *mut *mut Self {
-        &mut (*x).prev
+        &raw mut (*x).prev
     }
 }
 
 impl ListEntry for bw::Unit {
     unsafe fn next(x: *mut Self) -> *mut *mut Self {
-        &mut ((*x).flingy.next as *mut Self)
+        (&raw mut (*x).flingy.next) as *mut *mut Self
     }
 
     unsafe fn prev(x: *mut Self) -> *mut *mut Self {
-        &mut ((*x).flingy.prev as *mut Self)
+        (&raw mut (*x).flingy.prev) as *mut *mut Self
     }
 }
 
 impl ListEntry for bw::AiScript {
     unsafe fn next(x: *mut Self) -> *mut *mut Self {
-        &mut ((*x).next as *mut Self)
+        &raw mut (*x).next
     }
 
     unsafe fn prev(x: *mut Self) -> *mut *mut Self {
-        &mut ((*x).prev as *mut Self)
+        &raw mut (*x).prev
     }
 }
 
