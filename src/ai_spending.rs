@@ -31,21 +31,28 @@ pub(crate) unsafe fn frame_hook(
             // Check can_satisfy_request before request cost so that any unsatisfiable requests
             // can be removed instead of stalling for resources and removing them afterwards.
             let cost = ai::request_cost(&request, level);
-            let can = can_satisfy_request(game, players, &ai, player, &request, ai_mode).is_ok();
+            let result = can_satisfy_request(game, players, &ai, player, &request, ai_mode);
             let mut handled = false;
-            if can {
-                if !remaining_money.has_enough_for_cost(&cost) {
-                    if ai_mode.wait_for_resources {
-                        try_handle_single_resource_request(players, &ai, ctx, ai_mode);
+            match result {
+                Ok(()) => {
+                    if !remaining_money.has_enough_for_cost(&cost) {
+                        if ai_mode.wait_for_resources {
+                            try_handle_single_resource_request(players, &ai, ctx, ai_mode);
+                            break;
+                        }
+                    }
+                    handled = try_handle_request(players, &ai, ctx, &request);
+                    if !handled {
+                        // Stop removing requests, let bw handle this one at its frame proceedings
                         break;
+                    } else {
+                        remaining_money.reduce_cost(&cost);
                     }
                 }
-                handled = try_handle_request(players, &ai, ctx, &request);
-                if !handled {
-                    // Stop removing requests, let bw handle this one at its frame proceedings
-                    break;
-                } else {
-                    remaining_money.reduce_cost(&cost);
+                Err(e) => {
+                    if crate::debug_ui_active() {
+                        crate::debug_ui::log_request_error(player, &request, &e);
+                    }
                 }
             }
             ai.remove_resource_need(&cost, handled);

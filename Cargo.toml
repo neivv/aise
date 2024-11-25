@@ -52,8 +52,8 @@ rev = "2d1adbae09d75bdaa2af65b0af12760740cd3d2b"
 
 [target.'cfg(target_arch = "x86")'.dependencies.samase_shim]
 git = "https://github.com/neivv/samase_plugin"
-rev = "4982d349f45dd45f2483d41ee64dbe2d4e862e9e"
+rev = "2da5d00fcde9ca1fd7755b9eada1c91b490c1de9"
 
 [dependencies.samase_plugin]
 git = "https://github.com/neivv/samase_plugin"
-rev = "4982d349f45dd45f2483d41ee64dbe2d4e862e9e"
+rev = "2da5d00fcde9ca1fd7755b9eada1c91b490c1de9"

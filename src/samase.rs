@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
 use libc::c_void;
 use winapi::um::processthreadsapi::{GetCurrentProcess, TerminateProcess};
 
-use samase_plugin::{FfiStr, FuncId, PluginApi, VarId};
+use samase_plugin::{FuncId, PluginApi, VarId};
 
 use crate::bw;
 use crate::order::OrderId;
@@ -333,7 +333,7 @@ unsafe fn aiscript_opcode(
 #[no_mangle]
 pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
     bw_dat::set_is_scr(crate::is_scr());
-    let required_version = 41;
+    let required_version = 42;
     if (*api).version < required_version {
         fatal(&format!(
             "Newer samase is required. (Plugin API version {}, this plugin requires version {})",
@@ -498,13 +498,7 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
     if result == 0 {
         ((*api).warn_unsupported_feature)(b"Saving\0".as_ptr());
     }
-    let ok = ((*api).debug_ui_add_tab)(
-        &FfiStr::from_str("aise"),
-        &FfiStr::from_str("Scripts"),
-        crate::debug_ui::debug_tab_scripts,
-        null_mut(),
-    );
-    crate::DEBUG_UI_ACTIVE.store(ok != 0, Ordering::Relaxed);
+    crate::debug_ui::init(api);
     crate::init();
 }
 

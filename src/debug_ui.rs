@@ -1,13 +1,18 @@
 use std::borrow::Cow;
 use std::fmt::Write;
-use std::mem;
+use std::mem::{self};
 use std::ptr::null_mut;
+use std::sync::atomic::Ordering;
 
+use bw_dat::{UnitId};
 use libc::c_void;
-use samase_plugin::{DebugUiDraw, DebugUiDrawHelper, DebugUiColor, ComplexLineParam};
+use samase_plugin::{
+    DebugUiDraw, DebugUiDrawHelper, DebugUiColor, DebugUiLog, FfiStr, PluginApi, ComplexLineParam,
+};
 use parking_lot::Mutex;
 
 use crate::aiscript::{Script, ScriptData};
+use crate::ai_spending::{DatReqSatisfyError, RequestSatisfyError};
 use crate::bw;
 use crate::globals::{Globals};
 use crate::list::ListIter;
@@ -18,16 +23,73 @@ struct DebugUi {
     current_script: *mut bw::AiScript,
     call_stack_frame: u32,
     script_player_filter: Option<u8>,
+    request_player_filter: Option<u8>,
+}
+
+struct DebugUiLogs {
+    add_data: unsafe extern fn(
+        *mut DebugUiLog, *const FfiStr, *const ComplexLineParam, usize, *mut c_void
+    ),
+    /// One per player
+    requests: [*mut DebugUiLog; 8],
 }
 
 unsafe impl Send for DebugUi {}
 unsafe impl Sync for DebugUi {}
+unsafe impl Send for DebugUiLogs {}
+unsafe impl Sync for DebugUiLogs {}
+
+static mut DEBUG_UI_LOGS: DebugUiLogs = DebugUiLogs {
+    add_data: log_add_data_nop,
+    requests: [null_mut(); 8],
+};
+
+unsafe extern fn log_add_data_nop(
+    _: *mut DebugUiLog,
+    _: *const FfiStr,
+    _: *const ComplexLineParam,
+    _: usize,
+    _: *mut c_void,
+) {
+}
 
 static DEBUG_UI: Mutex<DebugUi> = Mutex::new(DebugUi {
     current_script: null_mut(),
     call_stack_frame: 0,
     script_player_filter: None,
+    request_player_filter: None,
 });
+
+pub unsafe fn init(api: *const PluginApi) {
+    let ok = ((*api).debug_ui_add_tab)(
+        &FfiStr::from_str("aise"),
+        &FfiStr::from_str("Scripts"),
+        debug_tab_scripts,
+        null_mut(),
+    );
+    if ok == 0 {
+        return;
+    }
+    let ok = ((*api).debug_ui_add_tab)(
+        &FfiStr::from_str("aise"),
+        &FfiStr::from_str("Requests"),
+        debug_tab_requests,
+        null_mut(),
+    );
+    if ok == 0 {
+        return;
+    }
+    let logs = logs();
+    (*logs).add_data = (*api).debug_log_add_data;
+    for i in 0..8 {
+        (*logs).requests[i] = ((*api).debug_ui_add_log)();
+    }
+    crate::DEBUG_UI_ACTIVE.store(true, Ordering::Relaxed);
+}
+
+unsafe fn logs() -> *mut DebugUiLogs {
+    &raw mut DEBUG_UI_LOGS
+}
 
 static OPCODE_NAMES: &[&str] = &[
     "goto",                 // 0x00
@@ -495,7 +557,7 @@ static OPCODE_PARAMS: &[OpcodeParam] = &[
     OpcodeParam::one(OpParam::String),
 ];
 
-pub unsafe extern fn debug_tab_scripts(api: *const DebugUiDraw, _: *mut c_void) {
+unsafe extern fn debug_tab_scripts(api: *const DebugUiDraw, _: *mut c_void) {
     let draw = DebugUiDrawHelper(api);
     let globals = Globals::get("debug tab scripts");
     let mut debug_ui = DEBUG_UI.lock();
@@ -506,7 +568,7 @@ pub unsafe extern fn debug_tab_scripts(api: *const DebugUiDraw, _: *mut c_void) 
     }
     // Draw script list
     draw.scroll_area(300, |draw| {
-        ui_player_filter(draw, &mut debug_ui.script_player_filter);
+        ui_player_filter(draw, &mut debug_ui.script_player_filter, true);
         draw.separator();
         for script in ListIter(first_bw) {
             let index = if script == debug_ui.current_script {
@@ -580,12 +642,32 @@ pub unsafe extern fn debug_tab_scripts(api: *const DebugUiDraw, _: *mut c_void) 
     }
 }
 
-unsafe fn ui_player_filter(draw: DebugUiDrawHelper, state: &mut Option<u8>) {
+unsafe extern fn debug_tab_requests(api: *const DebugUiDraw, _: *mut c_void) {
+    let draw = DebugUiDrawHelper(api);
+    let mut debug_ui = DEBUG_UI.lock();
+    let debug_ui = &mut *debug_ui;
+    draw.label("Request discard log");
+    ui_player_filter(draw, &mut debug_ui.request_player_filter, false);
+    draw.separator();
+    if let Some(player) = debug_ui.request_player_filter {
+        let logs = logs();
+        if let Some(&log) = (*logs).requests.get(player as usize) {
+            draw.debug_log(log);
+        }
+    }
+}
+
+unsafe fn ui_player_filter(draw: DebugUiDrawHelper, state: &mut Option<u8>, allow_all: bool) {
     let mut state_u32 = match state {
         Some(s) => *s as u32,
         None => u32::MAX,
     };
-    draw.clickable_label("All Players", DebugUiColor::rgb(0xffffff), u32::MAX, &mut state_u32);
+    let text = if allow_all {
+        "All Players"
+    } else {
+        "None"
+    };
+    draw.clickable_label(text, DebugUiColor::rgb(0xffffff), u32::MAX, &mut state_u32);
     let players = bw::players();
     for i in 0..8 {
         if (*players.add(i as usize)).player_type == 1 {
@@ -720,6 +802,13 @@ unsafe fn disasm_script(
     }
 }
 
+fn complex_line_unit_id(id: UnitId) -> ComplexLineParam {
+    ComplexLineParam {
+        data: id.0 as *mut _,
+        ty: 1,
+    }
+}
+
 fn complex_line_town(town: *mut bw::AiTown) -> ComplexLineParam {
     ComplexLineParam {
         data: town as *mut _,
@@ -740,4 +829,86 @@ fn player_name(player: u8) -> Cow<'static, str> {
     } else {
         Cow::Owned(format!("Player {}", player + 1))
     }
+}
+
+#[cold]
+#[inline(never)]
+pub unsafe fn log_request_error(
+    player: u8,
+    request: &bw::AiSpendingRequest,
+    error: &RequestSatisfyError,
+) {
+    // TODO samase support for tech/upgrade ids or just integers
+    let mut params = [complex_line_unit_id(UnitId(0)); 4];
+    match request.ty {
+        1 | 2 | 3 | 4 | 7 | 8 => {
+            params[0] = complex_line_unit_id(UnitId(request.id));
+        }
+        _ => return,
+    }
+    let mut param_len = 1;
+    let mut format = match error {
+        RequestSatisfyError::Resources => "[] []: Not enough resources",
+        RequestSatisfyError::NotAvailable => "[] []: UMS disabled unit",
+        RequestSatisfyError::BuildLimit => "[] []: At define_max limit",
+        RequestSatisfyError::NeedDatReqs => "[] []: No dat requirements defined",
+        RequestSatisfyError::NoGeysers => "[] []: No empty vespene geysers",
+        RequestSatisfyError::DatReq(ref reqs) => {
+            if let Some(&err) = reqs.get(0) {
+                match err {
+                    DatReqSatisfyError::NeedUnit(id) => {
+                        params[1] = complex_line_unit_id(id);
+                        param_len = 2;
+                        "[] []: Need []"
+                    }
+                    DatReqSatisfyError::TooManyUnits(id) => {
+                        params[1] = complex_line_unit_id(id);
+                        param_len = 2;
+                        "[] []: Too many []"
+                    }
+                    DatReqSatisfyError::NeedTech(_id) => {
+                        "[] []: Need tech"
+                    }
+                    DatReqSatisfyError::NeedAddonless => {
+                        "[] []: No addonless parent"
+                    }
+                    DatReqSatisfyError::NeedEmptySilo => {
+                        "[] []: No empty silos"
+                    }
+                    DatReqSatisfyError::NeedHangarSpace => {
+                        "[] []: No hangar space"
+                    }
+                    DatReqSatisfyError::Disabled => {
+                        "[] []: Dat requirement contains disabled / blank"
+                    }
+                }
+            } else {
+                "???"
+            }
+        }
+    };
+    match request.ty {
+        3 | 4 | 5 | 6 | 7 => {
+            // Add town as param 0
+            params.rotate_right(1);
+            params[0] = complex_line_town((*request).val as *mut bw::AiTown);
+            param_len += 1;
+        }
+        _ => {
+            // Remove "[] " from the format string
+            format = format.trim_start_matches("[] ");
+        }
+    }
+    let logs = logs();
+    let log = match (*logs).requests.get(player as usize) {
+        Some(&s) => s,
+        None => return,
+    };
+    ((*logs).add_data)(
+        log,
+        &FfiStr::from_str(format),
+        params.as_ptr(),
+        param_len,
+        null_mut(),
+    );
 }
