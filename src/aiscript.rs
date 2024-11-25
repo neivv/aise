@@ -978,9 +978,14 @@ pub unsafe extern fn do_morph(script: *mut bw::AiScript) {
     let globals = Globals::get("ais do_morph");
     let unit_id = globals.unit_replace.replace_check(unit_id); // replace_requests
     let player = (*script).player as u8;
-    if ai::count_units(player, unit_id, bw::game()) < u32::from(amount) {
+    let game = bw::game();
+    if ai::count_units(player, unit_id, game) < u32::from(amount) {
         let ai = ai::PlayerAi::get(player);
-        (*ai.0).train_unit_id = unit_id.0 + 1;
+        // If the train will get ignored due to define_max limit, don't clobber train_unit_id
+        // in case there is another script issuing train too that is expected to success.
+        if !ai.is_at_limit(unit_id, game) {
+            (*ai.0).train_unit_id = unit_id.0 + 1;
+        }
     }
 }
 
@@ -994,9 +999,14 @@ pub unsafe extern fn train(script: *mut bw::AiScript) {
     let globals = Globals::get("ais train");
     let unit_id = globals.unit_replace.replace_check(unit_id); // replace_requests
     let player = (*script).player as u8;
-    if ai::count_units(player, unit_id, bw::game()) < u32::from(amount) {
+    let game = bw::game();
+    if ai::count_units(player, unit_id, game) < u32::from(amount) {
         let ai = ai::PlayerAi::get(player);
-        (*ai.0).train_unit_id = unit_id.0 + 1;
+        // If the train will get ignored due to define_max limit, don't clobber train_unit_id
+        // in case there is another script issuing train too that is expected to success.
+        if !ai.is_at_limit(unit_id, game) {
+            (*ai.0).train_unit_id = unit_id.0 + 1;
+        }
         (*script).pos -= 4;
         (*script).wait = 30;
     }
