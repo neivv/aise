@@ -463,10 +463,10 @@ impl Event {
 // Allocate a wrapper functions for converting 1161 fastcalls to cdecl as well
 // For SCR the wrapper just stores original event handler.
 
-pub type EventHandlerFn = unsafe extern fn(
+pub type EventHandlerFn = unsafe extern "C" fn(
     *mut bw::Control,
     *mut bw::ControlEvent,
-    unsafe extern fn(*mut bw::Control, *mut bw::ControlEvent) -> u32
+    unsafe extern "C" fn(*mut bw::Control, *mut bw::ControlEvent) -> u32
 ) -> u32;
 
 pub struct EventHandler {

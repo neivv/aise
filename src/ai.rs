@@ -1382,10 +1382,10 @@ pub fn remove_unit_ai(
     }
 }
 
-pub unsafe extern fn step_region_hook(
+pub unsafe extern "C" fn step_region_hook(
     player: u32,
     region_id: u32,
-    orig: unsafe extern fn(u32, u32),
+    orig: unsafe extern "C" fn(u32, u32),
 ) {
     let regions = bw::ai_regions(player);
     let region = regions.add(region_id as usize);
@@ -1402,7 +1402,7 @@ pub unsafe extern fn step_region_hook(
     }
 }
 
-pub unsafe extern fn focus_disabled_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_void)) {
+pub unsafe extern "C" fn focus_disabled_hook(u: *mut c_void, orig: unsafe extern "C" fn(*mut c_void)) {
     let skip = {
         let globals = Globals::get("focus_air");
         globals.global_ai_mode.disable_spell_focus
@@ -1412,7 +1412,7 @@ pub unsafe extern fn focus_disabled_hook(u: *mut c_void, orig: unsafe extern fn(
     }
 }
 
-pub unsafe extern fn focus_air_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_void)) {
+pub unsafe extern "C" fn focus_air_hook(u: *mut c_void, orig: unsafe extern "C" fn(*mut c_void)) {
     if let Some(unit) = Unit::from_ptr(u as *mut bw::Unit) {
         let globals = Globals::get("focus_air");
         if unit.acid_spore_count() >= 4 {

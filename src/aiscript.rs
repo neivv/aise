@@ -102,7 +102,7 @@ unsafe fn attack_to_pos(player: u8, grouping: bw::Point, target: bw::Point) {
     (*region).target_region_id = target_region; // Yes, 0-based
 }
 
-pub unsafe extern fn attack_to(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn attack_to(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let grouping = read.read_position();
     let target = read.read_position();
@@ -112,7 +112,7 @@ pub unsafe extern fn attack_to(script: *mut bw::AiScript) {
     attack_to_pos((*script).player as u8, grouping.center, target.center);
 }
 
-pub unsafe extern fn attack_to_deaths(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn attack_to_deaths(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let grouping_x_unit = read.read_u16();
     let grouping_x_player = read.read_u16() as u8;
@@ -156,7 +156,7 @@ impl AttackTimeoutState {
     }
 }
 
-pub unsafe extern fn attack_timeout(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn attack_timeout(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let timeout = read.read_u32();
     if feature_disabled("attack_timeout") || read.is_invalid() {
@@ -207,7 +207,7 @@ pub(crate) unsafe fn attack_timeouts_frame_hook_after(globals: &mut Globals) {
     }
 }
 
-pub unsafe extern fn issue_order(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn issue_order(script: *mut bw::AiScript) {
     // issue_order(order, count, unit_id, srcx, srcy, src_range, tgtx, tgty, tgt_range,
     //      tgt_param, flags)
     // Flag 0x1 = Target enemies,
@@ -334,7 +334,7 @@ pub unsafe extern fn issue_order(script: *mut bw::AiScript) {
     }
 }
 
-pub unsafe extern fn if_attacking(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn if_attacking(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let dest = read.read_jump_pos();
     if feature_disabled("if_attacking") || read.is_invalid() {
@@ -346,7 +346,7 @@ pub unsafe extern fn if_attacking(script: *mut bw::AiScript) {
     }
 }
 
-pub unsafe extern fn unstart_campaign(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn unstart_campaign(script: *mut bw::AiScript) {
     if feature_disabled("unstart_campaign") {
         return;
     }
@@ -488,7 +488,7 @@ impl<'de> Deserialize<'de> for Town {
     }
 }
 
-pub unsafe extern fn set_town_id(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn set_town_id(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let id = read.read_u8();
     if feature_disabled("set_town_id") || read.is_invalid() {
@@ -513,7 +513,7 @@ pub unsafe extern fn set_town_id(script: *mut bw::AiScript) {
     });
 }
 
-pub unsafe extern fn remove_build(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn remove_build(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let amount = read.read_u8();
     let mut unit_id = read.read_unit_match();
@@ -569,7 +569,7 @@ unsafe fn remove_build_from_town(town: Town, unit_id: &mut UnitMatch, amount: u8
     }
 }
 
-pub unsafe extern fn max_workers(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn max_workers(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let count = read.read_u8();
     if feature_disabled("max_workers") || read.is_invalid() {
@@ -600,7 +600,7 @@ pub(crate) fn max_workers_for(globals: &mut Globals, town: *mut bw::AiTown) -> O
         .map(|x| x.count)
 }
 
-pub unsafe extern fn under_attack(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn under_attack(script: *mut bw::AiScript) {
     // 0 = Never, 1 = Default, 2 = Always
     let mut read = ScriptData::new(script);
     let mode = read.read_u8();
@@ -898,7 +898,7 @@ impl GlobalAiMode {
     }
 }
 
-pub unsafe extern fn aicontrol(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn aicontrol(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let mode = read.read_u8();
     if feature_disabled("aicontrol") || read.is_invalid() {
@@ -929,7 +929,7 @@ pub unsafe extern fn aicontrol(script: *mut bw::AiScript) {
     };
 }
 
-pub unsafe extern fn goto(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn goto(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let new_pos = read.read_jump_pos();
     if read.is_invalid() {
@@ -938,7 +938,7 @@ pub unsafe extern fn goto(script: *mut bw::AiScript) {
     (*script).pos = new_pos;
 }
 
-pub unsafe extern fn call(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn call(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let dest = read.read_u16() as u32;
     if feature_disabled("everything_else") || read.is_invalid() {
@@ -950,7 +950,7 @@ pub unsafe extern fn call(script: *mut bw::AiScript) {
     (*Script::ptr_from_bw(script)).call_stack_push(ret, &globals.ai_scripts);
 }
 
-pub unsafe extern fn ret(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn ret(script: *mut bw::AiScript) {
     let script = Script::ptr_from_bw(script);
     let globals = Globals::get("ais ret");
     match (*script).call_stack_pop(&globals.ai_scripts) {
@@ -968,7 +968,7 @@ pub unsafe extern fn ret(script: *mut bw::AiScript) {
     }
 }
 
-pub unsafe extern fn do_morph(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn do_morph(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let amount = read.read_u8();
     let unit_id = UnitId(read.read_u16());
@@ -989,7 +989,7 @@ pub unsafe extern fn do_morph(script: *mut bw::AiScript) {
     }
 }
 
-pub unsafe extern fn train(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn train(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let amount = read.read_u8();
     let unit_id = UnitId(read.read_u16());
@@ -1150,7 +1150,7 @@ impl PlayerMatch {
     }
 }
 
-pub unsafe extern fn supply(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn supply(script: *mut bw::AiScript) {
     #[derive(Eq, PartialEq, Copy, Clone, Debug)]
     enum Race {
         Zerg,
@@ -1274,7 +1274,7 @@ pub unsafe extern fn supply(script: *mut bw::AiScript) {
     }
 }
 
-pub unsafe extern fn resources_command(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn resources_command(script: *mut bw::AiScript) {
     #[derive(Copy, Clone)]
     enum Resource {
         Ore,
@@ -1394,7 +1394,7 @@ unsafe fn reveal(
     }
 }
 
-pub unsafe extern fn reveal_area(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn reveal_area(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let game = bw::game();
     let mut globals = Globals::get("ais reveal_area");
@@ -1450,7 +1450,7 @@ fn get_bank_path(name: &str) -> Option<PathBuf> {
     Some(root.join("save").join(name))
 }
 
-pub unsafe extern fn save_bank(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn save_bank(script: *mut bw::AiScript) {
     let orig_pos = (*script).pos;
     let mut read = ScriptData::new(script);
     let name = read.read_string();
@@ -1490,7 +1490,7 @@ pub unsafe extern fn save_bank(script: *mut bw::AiScript) {
     }
 }
 
-pub unsafe extern fn load_bank(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn load_bank(script: *mut bw::AiScript) {
     let orig_pos = (*script).pos;
     let mut read = ScriptData::new(script);
     let name = read.read_string();
@@ -1557,7 +1557,7 @@ unsafe fn add_bank_data(
     }
 }
 
-pub unsafe extern fn bank_data_old(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn bank_data_old(script: *mut bw::AiScript) {
     let old_pos = (*script).pos - 1;
     let mut read = ScriptData::new(script);
     let modifier = read.read_modifier();
@@ -1575,7 +1575,7 @@ pub unsafe extern fn bank_data_old(script: *mut bw::AiScript) {
     add_bank_data(script, old_pos, modifier, key, amount, dest);
 }
 
-pub unsafe extern fn bank_data(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn bank_data(script: *mut bw::AiScript) {
     let old_pos = (*script).pos - 1;
     let mut read = ScriptData::new(script);
     let modifier = read.read_modifier();
@@ -1593,7 +1593,7 @@ pub unsafe extern fn bank_data(script: *mut bw::AiScript) {
     add_bank_data(script, old_pos, modifier, key, amount, dest);
 }
 
-pub unsafe extern fn remove_creep(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn remove_creep(script: *mut bw::AiScript) {
     #![cfg_attr(target_pointer_width = "64", allow(unused_variables, unused_mut))]
     let mut read = ScriptData::new(script);
     let mut src = read.read_position();
@@ -1630,7 +1630,7 @@ pub unsafe extern fn remove_creep(script: *mut bw::AiScript) {
     }
 }
 
-pub unsafe extern fn time_command(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn time_command(script: *mut bw::AiScript) {
     enum TimeType {
         Frames,
         Minutes,
@@ -1670,7 +1670,7 @@ pub unsafe extern fn time_command(script: *mut bw::AiScript) {
     read.compare_and_act(time, amount, script, dest, old_pos, &globals.ai_scripts);
 }
 
-pub unsafe extern fn attacking(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn attacking(script: *mut bw::AiScript) {
     let old_pos = (*script).pos - 1;
     let mut read = ScriptData::new(script);
     let modifier = read.read_bool_modifier();
@@ -1758,7 +1758,7 @@ pub unsafe fn unit_name_hook(unit_id: u32, orig: unsafe extern fn(u32) -> *const
     }
 }
 
-pub unsafe extern fn unit_name(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn unit_name(script: *mut bw::AiScript) {
     enum NameStatus {
         Enable,
         Disable,
@@ -1800,7 +1800,7 @@ pub unsafe extern fn unit_name(script: *mut bw::AiScript) {
         NameStatus::Disable => globals.renamed_units.try_remove(&rename_status),
     }
 }
-pub unsafe extern fn wait_build(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn wait_build(script: *mut bw::AiScript) {
     let old_pos = (*script).pos - 1;
     let mut read = ScriptData::new(script);
     let amount = read.read_u8();
@@ -1823,7 +1823,7 @@ pub unsafe extern fn wait_build(script: *mut bw::AiScript) {
         }
     }
 }
-pub unsafe extern fn wait_buildstart(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn wait_buildstart(script: *mut bw::AiScript) {
     let old_pos = (*script).pos - 1;
     let mut read = ScriptData::new(script);
     let amount = read.read_u8();
@@ -1860,7 +1860,7 @@ pub unsafe extern fn wait_buildstart(script: *mut bw::AiScript) {
     }
 }
 
-pub unsafe extern fn deaths(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn deaths(script: *mut bw::AiScript) {
     let old_pos = (*script).pos - 1;
     let game = bw::game();
     // deaths(player, modifier, amount, unit, dest)
@@ -1902,7 +1902,7 @@ pub unsafe extern fn deaths(script: *mut bw::AiScript) {
     }
 }
 
-pub unsafe extern fn bw_kills(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn bw_kills(script: *mut bw::AiScript) {
     let old_pos = (*script).pos - 1;
     let game = bw::game();
     // kills(player, modifier, amount, unit, dest)
@@ -1944,7 +1944,7 @@ pub unsafe extern fn bw_kills(script: *mut bw::AiScript) {
     }
 }
 
-pub unsafe extern fn build_at(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn build_at(script: *mut bw::AiScript) {
     // build_at(unit_group, pos, flags)
     let mut read = ScriptData::new(script);
     let units = read.read_unit_match();
@@ -1974,7 +1974,7 @@ pub unsafe extern fn build_at(script: *mut bw::AiScript) {
     }
 }
 
-pub unsafe extern fn wait_rand(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn wait_rand(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let mut r1 = read.read_u32();
     let mut r2 = read.read_u32();
@@ -1988,7 +1988,7 @@ pub unsafe extern fn wait_rand(script: *mut bw::AiScript) {
     (*script).wait = globals.rng.synced_rand(r1..r2 + 1);
 }
 
-pub unsafe extern fn kills_command(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn kills_command(script: *mut bw::AiScript) {
     let old_pos = (*script).pos - 1;
     let game = bw::game();
     // kills(player1, player2, modifier, amount, unit, dest)
@@ -2062,7 +2062,7 @@ pub unsafe fn increment_deaths(
     orig(target, attacker_p_id);
 }
 
-pub unsafe extern fn print_command(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn print_command(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let msg = read.read_string();
     if read.is_invalid() {
@@ -2072,7 +2072,7 @@ pub unsafe extern fn print_command(script: *mut bw::AiScript) {
     samase::print_text(msg.as_ptr());
 }
 
-pub unsafe extern fn aise_debug(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn aise_debug(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let msg = read.read_string();
     if read.is_invalid() {
@@ -2081,7 +2081,7 @@ pub unsafe extern fn aise_debug(script: *mut bw::AiScript) {
     debug!("{}", String::from_utf8_lossy(msg));
 }
 
-pub unsafe extern fn debug_name(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn debug_name(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let name = read.read_string();
     if read.is_invalid() {
@@ -2100,7 +2100,7 @@ pub unsafe extern fn debug_name(script: *mut bw::AiScript) {
     }
 }
 
-pub unsafe extern fn ping(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn ping(script: *mut bw::AiScript) {
     #![cfg_attr(target_pointer_width = "64", allow(unused_variables))]
     let mut read = ScriptData::new(script);
     let x = read.read_u16();
@@ -2114,7 +2114,7 @@ pub unsafe extern fn ping(script: *mut bw::AiScript) {
     bw::ping_minimap(x as u32, y as u32, color);
 }
 
-pub unsafe extern fn player_jump(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn player_jump(script: *mut bw::AiScript) {
     #![cfg_attr(target_pointer_width = "64", allow(unused_variables))]
     let mut read = ScriptData::new(script);
     let player = read.read_string();
@@ -2145,7 +2145,7 @@ pub unsafe extern fn player_jump(script: *mut bw::AiScript) {
     }
 }
 
-pub unsafe extern fn upgrade_jump(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn upgrade_jump(script: *mut bw::AiScript) {
     let old_pos = (*script).pos - 1;
     let game = bw::game();
     let mut read = ScriptData::new(script);
@@ -2181,7 +2181,7 @@ pub unsafe extern fn upgrade_jump(script: *mut bw::AiScript) {
     };
 }
 
-pub unsafe extern fn load_bunkers(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn load_bunkers(script: *mut bw::AiScript) {
     // load_bunkers(area, load_unit, quantity, bunker_unit, bunker_quantity, priority)
     let mut globals = Globals::get("ais load_bunkers");
     let mut read = ScriptData::new(script);
@@ -2213,7 +2213,7 @@ pub unsafe extern fn load_bunkers(script: *mut bw::AiScript) {
     globals.bunker_states.add(decl);
 }
 
-pub unsafe extern fn unit_avail(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn unit_avail(script: *mut bw::AiScript) {
     let old_pos = (*script).pos - 1;
     let game = bw::game();
     let mut globals = Globals::get("ais unit_avail");
@@ -2257,7 +2257,7 @@ pub unsafe extern fn unit_avail(script: *mut bw::AiScript) {
     };
 }
 
-pub unsafe extern fn tech_jump(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn tech_jump(script: *mut bw::AiScript) {
     let old_pos = (*script).pos - 1;
     let game = bw::game();
     let mut read = ScriptData::new(script);
@@ -2292,7 +2292,7 @@ pub unsafe extern fn tech_jump(script: *mut bw::AiScript) {
     };
 }
 
-pub unsafe extern fn tech_avail(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn tech_avail(script: *mut bw::AiScript) {
     let old_pos = (*script).pos - 1;
     let game = bw::game();
     let mut read = ScriptData::new(script);
@@ -2327,7 +2327,7 @@ pub unsafe extern fn tech_avail(script: *mut bw::AiScript) {
     };
 }
 
-pub unsafe extern fn random_call(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn random_call(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let chance = read.read_u8();
     let dest = read.read_jump_pos();
@@ -2344,7 +2344,7 @@ pub unsafe extern fn random_call(script: *mut bw::AiScript) {
     }
 }
 
-pub unsafe extern fn attack_rand(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn attack_rand(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let mut r1 = read.read_u8() as u32;
     let mut r2 = read.read_u8() as u32;
@@ -2374,7 +2374,7 @@ unsafe fn add_to_attack_force(globals: &Globals, player: u8, unit: UnitId, amoun
     }
 }
 
-pub unsafe extern fn bring_jump(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn bring_jump(script: *mut bw::AiScript) {
     let old_pos = (*script).pos - 1;
     let game = bw::game();
     let mut read = ScriptData::new(script);
@@ -3441,7 +3441,7 @@ unsafe fn town_from_id(script: *mut bw::AiScript, globals: &mut Globals, id: u8)
     town_src
 }
 
-pub unsafe extern fn max_build(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn max_build(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let mut globals = Globals::get("ais maxbuild");
     let town_id = read.read_u8();
@@ -3466,7 +3466,7 @@ pub unsafe extern fn max_build(script: *mut bw::AiScript) {
     globals.build_max.add(build);
 }
 
-pub unsafe extern fn queue(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn queue(script: *mut bw::AiScript) {
     #[derive(Eq, PartialEq, Copy, Clone, Debug)]
     enum LocalModifier {
         Local,
@@ -3520,7 +3520,7 @@ pub unsafe extern fn queue(script: *mut bw::AiScript) {
     globals.queues.add(queue);
 }
 
-pub unsafe extern fn defense_command(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn defense_command(script: *mut bw::AiScript) {
     #[derive(Eq, PartialEq, Copy, Clone, Debug)]
     enum DefenseType {
         Build,
@@ -3600,7 +3600,7 @@ pub unsafe extern fn defense_command(script: *mut bw::AiScript) {
         *defense_entry = unit.0 + 1;
     }
 }
-pub unsafe extern fn replace_requests(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn replace_requests(script: *mut bw::AiScript) {
     // Replacing guard, attack_add, defense, guard, do_morph, train, load_bunkers
     let mut read = ScriptData::new(script);
     let id_first = UnitId(read.read_u16());
@@ -3634,7 +3634,7 @@ pub unsafe extern fn replace_requests(script: *mut bw::AiScript) {
     }
 }
 
-pub unsafe extern fn lift_land(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn lift_land(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     //unitId quantity liftLocation landLocation lifttownid landtownid hpval
     let unit_id = UnitId(read.read_u16());
@@ -3675,7 +3675,7 @@ pub unsafe extern fn lift_land(script: *mut bw::AiScript) {
     }
 }
 
-pub unsafe extern fn base_layout(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn base_layout(script: *mut bw::AiScript) {
     // base_layout(unit, modifier, src_area, amount, town_id)
     let mut read = ScriptData::new(script);
     let unit = UnitId(read.read_u16());
@@ -3699,7 +3699,7 @@ pub unsafe extern fn base_layout(script: *mut bw::AiScript) {
         priority,
     );
 }
-pub unsafe extern fn base_layout_old(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn base_layout_old(script: *mut bw::AiScript) {
     // base_layout(unit, modifier, src_area, amount, town_id)
     let mut read = ScriptData::new(script);
     let unit = UnitId(read.read_u16());
@@ -3715,7 +3715,7 @@ pub unsafe extern fn base_layout_old(script: *mut bw::AiScript) {
     add_layout(script, unit, layout_modifier, src, amount, town_id, 50);
 }
 
-pub unsafe extern fn guard_command(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn guard_command(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let unit = read.read_u16();
     let target = read.read_position();
@@ -3765,7 +3765,7 @@ pub unsafe extern fn guard_command(script: *mut bw::AiScript) {
     }
 }
 
-pub unsafe extern fn create_script(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn create_script(script: *mut bw::AiScript) {
     // create_script(pos, player, area, town, resarea)
     let mut read = ScriptData::new(script);
     let pos = read.read_jump_pos();
@@ -4181,7 +4181,7 @@ mod test {
     }
 }
 
-pub unsafe extern fn panic_opcode(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn panic_opcode(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let offset = read.read_u16();
     if read.is_invalid() {

@@ -128,7 +128,7 @@ unsafe fn init_globals(api: *const samase_plugin::PluginApi) {
 }
 
 static READ_VARS:
-    GlobalFunc<unsafe extern fn(*const u16, *mut usize, usize)> = GlobalFunc::new();
+    GlobalFunc<unsafe extern "C" fn(*const u16, *mut usize, usize)> = GlobalFunc::new();
 fn read_var(var: VarId) -> usize {
     unsafe {
         let var = var as u16;
@@ -139,7 +139,7 @@ fn read_var(var: VarId) -> usize {
 }
 
 static WRITE_VARS:
-    GlobalFunc<unsafe extern fn(*const u16, *const usize, usize)> = GlobalFunc::new();
+    GlobalFunc<unsafe extern "C" fn(*const u16, *const usize, usize)> = GlobalFunc::new();
 fn write_var(var: VarId, value: usize) {
     unsafe {
         let var = var as u16;
@@ -155,7 +155,7 @@ macro_rules! opt_global {
     }}
 }
 
-static CRASH_WITH_MESSAGE: GlobalFunc<unsafe extern fn(*const u8) -> !> = GlobalFunc::new();
+static CRASH_WITH_MESSAGE: GlobalFunc<unsafe extern "C" fn(*const u8) -> !> = GlobalFunc::new();
 pub fn crash_with_message(msg: &str) -> ! {
     let msg = format!("{}\0", msg);
     unsafe { CRASH_WITH_MESSAGE.get()(msg.as_bytes().as_ptr()) }
@@ -215,17 +215,17 @@ pub fn active_towns() -> *mut bw::AiListHead<100, bw::AiTown> {
     read_var(VarId::ActiveAiTowns) as _
 }
 
-static GET_REGION: GlobalFunc<extern fn(u32, u32) -> u32> = GlobalFunc::new();
+static GET_REGION: GlobalFunc<extern "C" fn(u32, u32) -> u32> = GlobalFunc::new();
 pub fn get_region(x: u32, y: u32) -> u32 {
     GET_REGION.get()(x, y)
 }
 
-static DAT_REQUIREMENTS: GlobalFunc<extern fn(u32, u32) -> *const u16> = GlobalFunc::new();
+static DAT_REQUIREMENTS: GlobalFunc<extern "C" fn(u32, u32) -> *const u16> = GlobalFunc::new();
 pub fn requirements(ty: u32, id: u32) -> *const u16 {
     DAT_REQUIREMENTS.get()(ty, id)
 }
 
-static CHANGE_AI_REGION_STATE: GlobalFunc<extern fn(*mut bw::AiRegion, u32)> = GlobalFunc::new();
+static CHANGE_AI_REGION_STATE: GlobalFunc<extern "C" fn(*mut bw::AiRegion, u32)> = GlobalFunc::new();
 pub fn change_ai_region_state(region: *mut bw::AiRegion, state: u32) {
     CHANGE_AI_REGION_STATE.get()(region, state)
 }
@@ -238,7 +238,7 @@ pub fn map_tile_flags() -> *mut u32 {
     read_var(VarId::MapTileFlags) as _
 }
 
-static UNIT_BASE_STRENGTH: GlobalFunc<extern fn(*mut *mut u32)> = GlobalFunc::new();
+static UNIT_BASE_STRENGTH: GlobalFunc<extern "C" fn(*mut *mut u32)> = GlobalFunc::new();
 pub fn unit_base_strength() -> (*mut u32, *mut u32) {
     let mut out = [null_mut(); 2];
     (UNIT_BASE_STRENGTH.get())(out.as_mut_ptr());
@@ -246,7 +246,7 @@ pub fn unit_base_strength() -> (*mut u32, *mut u32) {
 }
 
 static ISSUE_ORDER: GlobalFunc<
-    unsafe extern fn(*mut c_void, u32, u32, u32, *mut c_void, u32),
+    unsafe extern "C" fn(*mut c_void, u32, u32, u32, *mut c_void, u32),
 > = GlobalFunc::new();
 
 pub fn issue_order(
@@ -270,7 +270,7 @@ pub fn issue_order(
     ) }
 }
 
-static PRINT_TEXT: GlobalFunc<unsafe extern fn(*const u8)> = GlobalFunc::new();
+static PRINT_TEXT: GlobalFunc<unsafe extern "C" fn(*const u8)> = GlobalFunc::new();
 // Too common to be inlined. Would be better if PRINT_TEXT were changed to always be valid
 // (But C ABI is still worse for binsize)
 #[inline(never)]
@@ -290,7 +290,7 @@ pub fn rng_seed() -> Option<u32> {
     }
 }
 
-static READ_FILE: GlobalFunc<unsafe extern fn(*const u8, *mut usize) -> *mut u8> = GlobalFunc::new();
+static READ_FILE: GlobalFunc<unsafe extern "C" fn(*const u8, *mut usize) -> *mut u8> = GlobalFunc::new();
 pub fn read_file(name: &str) -> Option<(*mut u8, usize)> {
     // Uh, should work fine
     let cstring = format!("{}\0", name);
@@ -303,13 +303,13 @@ pub fn read_file(name: &str) -> Option<(*mut u8, usize)> {
     }
 }
 
-static FREE_MEMORY: GlobalFunc<unsafe extern fn(*mut u8)> = GlobalFunc::new();
+static FREE_MEMORY: GlobalFunc<unsafe extern "C" fn(*mut u8)> = GlobalFunc::new();
 pub unsafe fn free_memory(ptr: *mut u8) {
     unsafe { FREE_MEMORY.get()(ptr) }
 }
 
 static UNIT_ARRAY_LEN:
-GlobalFunc<unsafe extern fn(*mut *mut c_void, *mut usize)> = GlobalFunc::new();
+GlobalFunc<unsafe extern "C" fn(*mut *mut c_void, *mut usize)> = GlobalFunc::new();
 pub unsafe fn unit_array() -> (*mut bw::Unit, usize) {
     let mut size = 0usize;
     let mut ptr = null_mut();
@@ -322,7 +322,7 @@ pub unsafe fn unit_array() -> (*mut bw::Unit, usize) {
 unsafe fn aiscript_opcode(
     api: *const PluginApi,
     opcode: u32,
-    hook: unsafe extern fn(*mut bw::AiScript),
+    hook: unsafe extern "C" fn(*mut bw::AiScript),
 ) {
     let ok = ((*api).hook_aiscript_opcode)(opcode, mem::transmute(hook));
     if ok == 0 {
@@ -331,7 +331,7 @@ unsafe fn aiscript_opcode(
 }
 
 #[no_mangle]
-pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
+pub unsafe extern "C" fn samase_plugin_init(api: *const PluginApi) {
     bw_dat::set_is_scr(crate::is_scr());
     let required_version = 42;
     if (*api).version < required_version {
@@ -502,17 +502,17 @@ pub unsafe extern fn samase_plugin_init(api: *const PluginApi) {
     crate::init();
 }
 
-pub unsafe extern fn nop_command_hook(
+pub unsafe extern "C" fn nop_command_hook(
     data: *const u8,
     len: u32,
     _player: u32,
     _unique_player: u32,
-    orig: unsafe extern fn(*const u8, u32),
+    orig: unsafe extern "C" fn(*const u8, u32),
 ) {
     orig(data, len)
 }
 
-pub unsafe extern fn mtl_rally_command_length(
+pub unsafe extern "C" fn mtl_rally_command_length(
     data: *const u8,
     max_len: u32,
 ) -> u32 {

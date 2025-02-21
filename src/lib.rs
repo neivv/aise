@@ -187,7 +187,7 @@ fn feature_disabled(_name: &str) -> bool {
 #[no_mangle]
 #[allow(non_snake_case)]
 #[cfg(target_pointer_width = "32")]
-pub extern fn Initialize() {
+pub extern "C" fn Initialize() {
     IS_1161.store(true, Ordering::Release);
     // 1.16.1 init
     unsafe {
@@ -231,7 +231,7 @@ struct StepUnitsCtx<'a> {
     pub unit_strength: &'a unit::LazyUnitStrengths,
 }
 
-unsafe extern fn frame_hook() {
+unsafe extern "C" fn frame_hook() {
     let search = unit_search::UnitSearch::from_bw();
     let game = bw::game();
     let mut globals = Globals::get("frame hook");
@@ -301,7 +301,7 @@ unsafe extern fn frame_hook() {
     FIRST_STEP_ORDER_OF_FRAME.store(true, Ordering::Relaxed);
 }
 
-unsafe extern fn frame_hook_after() {
+unsafe extern "C" fn frame_hook_after() {
     let mut globals = Globals::get("frame hook after");
     let game = bw::game();
     let tile_flags = bw::tile_flags();
@@ -315,7 +315,7 @@ unsafe extern fn frame_hook_after() {
 // extra times a frame.
 static FIRST_STEP_ORDER_OF_FRAME: AtomicBool = AtomicBool::new(false);
 
-unsafe extern fn step_order_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_void)) {
+unsafe extern "C" fn step_order_hook(u: *mut c_void, orig: unsafe extern "C" fn(*mut c_void)) {
     let unit_search = unit_search::LazyUnitSearch::new();
     let strength = unit::LazyUnitStrengths::new();
     if FIRST_STEP_ORDER_OF_FRAME.load(Ordering::Relaxed) {
@@ -502,7 +502,10 @@ unsafe extern fn step_order_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_v
     }
 }
 
-unsafe extern fn step_order_hidden_hook(u: *mut c_void, orig: unsafe extern fn(*mut c_void)) {
+unsafe extern "C" fn step_order_hidden_hook(
+    u: *mut c_void,
+    orig: unsafe extern "C" fn(*mut c_void),
+) {
     let unit = Unit::from_ptr(u as *mut bw::Unit).unwrap();
     match unit.order() {
         order::id::DIE => {

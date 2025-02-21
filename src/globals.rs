@@ -744,18 +744,18 @@ pub fn save_state(caller: &'static str) -> MutexGuard<'static, Option<SaveState>
     SAVE_STATE.lock(caller)
 }
 
-pub unsafe extern fn init_game() {
+pub unsafe extern "C" fn init_game() {
     aiscript::invalidate_cached_unit_search();
     bw::reset_ai_scripts();
     *Globals::get("init") = Globals::new();
 }
 
-pub unsafe extern fn wrap_save(
+pub unsafe extern "C" fn wrap_save(
     data: *const u8,
     len: u32,
     _player: u32,
     _unique_player: u32,
-    orig: unsafe extern fn(*const u8, u32),
+    orig: unsafe extern "C" fn(*const u8, u32),
 ) {
     trace!("Saving..");
     let mut globals = Globals::get("before save");
@@ -774,7 +774,7 @@ pub unsafe extern fn wrap_save(
     orig(data, len);
 }
 
-pub unsafe extern fn save(set_data: unsafe extern fn(*const u8, usize)) {
+pub unsafe extern "C" fn save(set_data: unsafe extern "C" fn(*const u8, usize)) {
     let globals = Globals::get("save");
     aiscript::init_save_mapping();
     defer!(aiscript::clear_save_mapping());
@@ -789,7 +789,7 @@ pub unsafe extern fn save(set_data: unsafe extern fn(*const u8, usize)) {
     }
 }
 
-pub unsafe extern fn load(ptr: *const u8, len: usize) -> u32 {
+pub unsafe extern "C" fn load(ptr: *const u8, len: usize) -> u32 {
     aiscript::invalidate_cached_unit_search();
     aiscript::init_load_mapping();
     defer!(aiscript::clear_load_mapping());

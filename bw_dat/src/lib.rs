@@ -133,15 +133,15 @@ fn is_scr() -> bool {
 }
 
 pub unsafe fn set_bw_malloc(
-    malloc: unsafe extern fn(usize) -> *mut u8,
-    free: unsafe extern fn(*mut u8),
+    malloc: unsafe extern "C" fn(usize) -> *mut u8,
+    free: unsafe extern "C" fn(*mut u8),
 ) {
     BW_MALLOC.store(malloc as usize, Ordering::Relaxed);
     BW_FREE.store(free as usize, Ordering::Relaxed);
 }
 
 pub unsafe fn set_bw_mouse_func(
-    mouse: unsafe extern fn(*mut i32, *mut i32),
+    mouse: unsafe extern "C" fn(*mut i32, *mut i32),
 ) {
     BW_MOUSE.store(mouse as usize, Ordering::Relaxed);
 }
@@ -152,13 +152,13 @@ pub unsafe fn set_extended_arrays(arrays: *const ExtendedArray, len: usize) {
 }
 
 unsafe fn bw_malloc(val: usize) -> *mut u8 {
-    let func: unsafe extern fn(usize) -> *mut u8 =
+    let func: unsafe extern "C" fn(usize) -> *mut u8 =
         mem::transmute(BW_MALLOC.load(Ordering::Relaxed));
     func(val)
 }
 
 unsafe fn bw_free(val: *mut u8) {
-    let func: unsafe extern fn(*mut u8) =
+    let func: unsafe extern "C" fn(*mut u8) =
         mem::transmute(BW_FREE.load(Ordering::Relaxed));
     func(val)
 }
@@ -178,7 +178,7 @@ fn bw_mouse() -> (i32, i32) {
     unsafe {
         let mut x = 0;
         let mut y = 0;
-        let func: Option<unsafe extern fn(*mut i32, *mut i32)> =
+        let func: Option<unsafe extern "C" fn(*mut i32, *mut i32)> =
             mem::transmute(BW_MOUSE.load(Ordering::Relaxed));
         if let Some(func) = func {
             func(&mut x, &mut y);

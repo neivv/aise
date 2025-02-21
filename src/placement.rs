@@ -4,7 +4,7 @@ use crate::aiscript::{Town};
 use crate::bw;
 use crate::globals::{Globals};
 
-pub unsafe extern fn placement_position_hook(
+pub unsafe extern "C" fn placement_position_hook(
     unit: *mut bw::Unit,
     state: *mut u8,
     player: u8,
@@ -12,7 +12,7 @@ pub unsafe extern fn placement_position_hook(
     state_center: u32,
     search_pos: u32,
     out: *mut u32,
-    orig: unsafe extern fn(*mut bw::Unit, *mut u8, u8, u16, u32, u32, *mut u32) -> u32,
+    orig: unsafe extern "C" fn(*mut bw::Unit, *mut u8, u8, u16, u32, u32, *mut u32) -> u32,
 ) -> u32 {
     let mut search_pos = search_pos;
     if let Some(unit) = Unit::from_ptr(unit) {
@@ -34,11 +34,11 @@ pub unsafe extern fn placement_position_hook(
     orig(unit, state, player, unit_id, state_center, search_pos, out)
 }
 
-pub unsafe extern fn placement_flags_hook(
+pub unsafe extern "C" fn placement_flags_hook(
     unit: *mut bw::Unit,
     player: u8,
     unit_id: u16,
-    orig: unsafe extern fn(*mut bw::Unit, u8, u16) -> u32,
+    orig: unsafe extern "C" fn(*mut bw::Unit, u8, u16) -> u32,
 ) -> u32 {
     let mut flags = orig(unit, player, unit_id);
     if let Some(unit) = Unit::from_ptr(unit) {

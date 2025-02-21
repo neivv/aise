@@ -27,7 +27,7 @@ struct DebugUi {
 }
 
 struct DebugUiLogs {
-    add_data: unsafe extern fn(
+    add_data: unsafe extern "C" fn(
         *mut DebugUiLog, *const FfiStr, *const ComplexLineParam, usize, *mut c_void
     ),
     /// One per player
@@ -44,7 +44,7 @@ static mut DEBUG_UI_LOGS: DebugUiLogs = DebugUiLogs {
     requests: [null_mut(); 8],
 };
 
-unsafe extern fn log_add_data_nop(
+unsafe extern "C" fn log_add_data_nop(
     _: *mut DebugUiLog,
     _: *const FfiStr,
     _: *const ComplexLineParam,
@@ -557,7 +557,7 @@ static OPCODE_PARAMS: &[OpcodeParam] = &[
     OpcodeParam::one(OpParam::String),
 ];
 
-unsafe extern fn debug_tab_scripts(api: *const DebugUiDraw, _: *mut c_void) {
+unsafe extern "C" fn debug_tab_scripts(api: *const DebugUiDraw, _: *mut c_void) {
     let draw = DebugUiDrawHelper(api);
     let globals = Globals::get("debug tab scripts");
     let mut debug_ui = DEBUG_UI.lock();
@@ -642,7 +642,7 @@ unsafe extern fn debug_tab_scripts(api: *const DebugUiDraw, _: *mut c_void) {
     }
 }
 
-unsafe extern fn debug_tab_requests(api: *const DebugUiDraw, _: *mut c_void) {
+unsafe extern "C" fn debug_tab_requests(api: *const DebugUiDraw, _: *mut c_void) {
     let draw = DebugUiDrawHelper(api);
     let mut debug_ui = DEBUG_UI.lock();
     let debug_ui = &mut *debug_ui;

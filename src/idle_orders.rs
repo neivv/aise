@@ -436,7 +436,7 @@ impl IdleOrderState {
     }
 }
 
-pub unsafe extern fn idle_orders(script: *mut bw::AiScript) {
+pub unsafe extern "C" fn idle_orders(script: *mut bw::AiScript) {
     // idle_orders(order, rate, count, unit_id, radius, target_id, priority, flags)
     // Flag 0x1 = Don't target enemies,
     //      0x2 = Target own,
