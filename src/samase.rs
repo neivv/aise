@@ -319,6 +319,70 @@ pub unsafe fn unit_array() -> (*mut bw::Unit, usize) {
     (ptr as *mut bw::Unit, size)
 }
 
+static AI_ADD_TO_ATTACK_FORCE: AtomicUsize = AtomicUsize::new(0);
+static AI_REMOVE_FROM_ATTACK_FORCE: AtomicUsize = AtomicUsize::new(0);
+
+static FUNCS: &[(&AtomicUsize, FuncId)] = &[
+];
+static OPTIONAL_FUNCS: &[(&AtomicUsize, FuncId)] = &[
+    (&AI_ADD_TO_ATTACK_FORCE, FuncId::AiAddToAttackForce),
+    (&AI_REMOVE_FROM_ATTACK_FORCE, FuncId::AiRemoveFromAttackForce),
+];
+
+#[inline]
+fn load_func_opt<T: Copy>(global: &AtomicUsize) -> Option<T> {
+    let value = global.load(Ordering::Relaxed);
+    if value == 0 {
+        return None;
+    }
+    assert!(mem::size_of::<T>() == mem::size_of::<fn()>());
+    unsafe {
+        mem::transmute_copy(&value)
+    }
+}
+
+unsafe fn init_funcs(api: *const samase_plugin::PluginApi) {
+    let max_func = FUNCS.iter().map(|x| x.1 as u16).max().unwrap_or(0);
+    if max_func >= (*api).max_func_id {
+        fatal(&format!(
+            "Newer samase is required. (Largest function id is {}, this plugin requires {})",
+            (*api).max_func_id, max_func,
+        ));
+    }
+    for &(global, func_id) in FUNCS {
+        let func = ((*api).get_func)(func_id as u16);
+        if let Some(f) = func {
+            global.store(f as usize, Ordering::Relaxed);
+        } else {
+            fatal(&format!("Func {} not found", func_id as u16));
+        }
+    }
+    for &(global, func_id) in OPTIONAL_FUNCS {
+        let func = ((*api).get_func)(func_id as u16);
+        if let Some(f) = func {
+            global.store(f as usize, Ordering::Relaxed);
+        }
+    }
+}
+
+pub unsafe fn ai_add_to_attack_force(player: u8, unit_id: UnitId, amount: u16) {
+    let func = load_func_opt::<unsafe extern "C" fn (u8, u16, u16)>(&AI_ADD_TO_ATTACK_FORCE);
+    if let Some(func) = func {
+        func(player, unit_id.0, amount)
+    } else {
+        crate::ai::default_add_to_attack_force(player, unit_id, amount);
+    }
+}
+
+pub unsafe fn ai_remove_from_attack_force(player: u8, unit_id: UnitId, amount: u16) {
+    let func = load_func_opt::<unsafe extern "C" fn (u8, u16, u16)>(&AI_REMOVE_FROM_ATTACK_FORCE);
+    if let Some(func) = func {
+        func(player, unit_id.0, amount)
+    } else {
+        crate::ai::default_remove_from_attack_force(player, unit_id, amount);
+    }
+}
+
 unsafe fn aiscript_opcode(
     api: *const PluginApi,
     opcode: u32,
@@ -455,6 +519,7 @@ pub unsafe extern "C" fn samase_plugin_init(api: *const PluginApi) {
         ((*api).hook_ai_focus_air)(crate::ai::focus_air_hook);
     }
 
+    init_funcs(api);
     ((*api).hook_func)(
         FuncId::AiPickBestPlacementPosition as u16,
         crate::placement::placement_position_hook as _,
@@ -462,6 +527,10 @@ pub unsafe extern "C" fn samase_plugin_init(api: *const PluginApi) {
     ((*api).hook_func)(
         FuncId::AiPlacementFlags as u16,
         crate::placement::placement_flags_hook as _,
+    );
+    ((*api).hook_func)(
+        FuncId::AiRemoveFromAttackForce as u16,
+        crate::ai::remove_from_attack_force_hook as _,
     );
 
     let mut dat_len = 0usize;

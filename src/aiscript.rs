@@ -1,3 +1,4 @@
+use std::convert::TryFrom;
 use std::ffi::CString;
 use std::fmt;
 use std::fs::{self, File};
@@ -2362,16 +2363,7 @@ pub unsafe extern "C" fn attack_rand(script: *mut bw::AiScript) {
 
 unsafe fn add_to_attack_force(globals: &Globals, player: u8, unit: UnitId, amount: u32) {
     let unit = globals.unit_replace.replace_check(unit);
-    let ai = ai::PlayerAi::get(player);
-    // Reuse slots that may have been deleted during the attack
-    let attack_force = &mut (*ai.0).attack_force[..];
-    let free_slots = attack_force
-        .iter_mut()
-        .filter(|&&mut x| x == 0 || x == unit::id::NONE.0 + 1)
-        .take(amount as usize);
-    for out in free_slots {
-        *out = unit.0 + 1;
-    }
+    samase::ai_add_to_attack_force(player, unit, u16::try_from(amount).unwrap_or(u16::MAX));
 }
 
 pub unsafe extern "C" fn bring_jump(script: *mut bw::AiScript) {

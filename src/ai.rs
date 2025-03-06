@@ -15,6 +15,7 @@ use crate::bw;
 use crate::globals::{Globals, RegionIdCycle};
 use crate::list::{ListEntry, ListIter};
 use crate::pathing;
+use crate::samase;
 use crate::unit::{active_units, UnitExt, LazyUnitStrengths, UnitStrengths};
 use crate::unit_search::{LazyUnitSearch, UnitSearch};
 
@@ -289,19 +290,60 @@ impl PlayerAi {
     }
 
     fn remove_from_attack_force(&self, unit_id: UnitId) {
-        let unit_id = if unit_id == unit::SIEGE_TANK_SIEGE {
-            unit::SIEGE_TANK_TANK
-        } else {
-            unit_id
-        };
         unsafe {
-            for val in (*self.0).attack_force.iter_mut() {
+            let unit_id = normalize_attack_force_unit_id(unit_id);
+            samase::ai_remove_from_attack_force(self.1, unit_id, 1);
+        }
+    }
+}
+
+pub fn default_add_to_attack_force(player: u8, unit: UnitId, amount: u16) {
+    unsafe {
+        let ai = PlayerAi::get(player);
+        // Reuse slots that may have been deleted during the attack
+        let attack_force = &mut (*ai.0).attack_force[..];
+        let free_slots = attack_force
+            .iter_mut()
+            .filter(|&&mut x| x == 0 || x == unit::NONE.0 + 1)
+            .take(amount as usize);
+        for out in free_slots {
+            *out = unit.0 + 1;
+        }
+    }
+}
+
+pub fn default_remove_from_attack_force(player: u8, unit_id: UnitId, amount: u16) {
+    for _ in 0..amount {
+        unsafe {
+            let ai = PlayerAi::get(player);
+            for val in (*ai.0).attack_force.iter_mut() {
                 if *val == unit_id.0 + 1 {
                     *val = unit::NONE.0 + 1;
-                    return;
+                    break;
                 }
             }
         }
+    }
+}
+
+/// Samase hook, (expected to be) only active with extended dats
+pub unsafe extern "C" fn remove_from_attack_force_hook(
+    player: u8,
+    unit: u16,
+    amount: u16,
+    orig: unsafe extern "C" fn(u8, u16, u16),
+) {
+    let unit = normalize_attack_force_unit_id(UnitId(unit));
+    orig(player, unit.0, amount)
+}
+
+/// BW doesn't do this but better than not doing it?
+/// Hardcoding these ids is bit ugh though.
+fn normalize_attack_force_unit_id(unit_id: UnitId) -> UnitId {
+    match unit_id {
+        unit::SIEGE_TANK_SIEGE => unit::SIEGE_TANK_TANK,
+        unit::EDMUND_DUKE_SIEGE => unit::EDMUND_DUKE_TANK,
+        _ => unit_id,
     }
 }
 
