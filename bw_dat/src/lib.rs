@@ -1072,8 +1072,35 @@ impl UnitId {
 }
 
 impl FlingyId {
+    pub fn optional(id: u32) -> Option<FlingyId> {
+        if id > u16::MAX as u32 || id >= Self::entry_amount() {
+            None
+        } else {
+            Some(FlingyId(id as u16))
+        }
+    }
+
+    fn global() -> &'static DatGlobal {
+        &DAT_GLOBALS[DatType::Flingy as usize]
+    }
+
     pub fn get(&self, id: u32) -> u32 {
-        unsafe { crate::dat_read(&DAT_GLOBALS[DatType::Flingy as usize], self.0 as u32, id) }
+        unsafe { crate::dat_read(Self::global(), self.0 as u32, id) }
+    }
+
+    pub fn get_opt(self, id: u32) -> Option<u32> {
+        unsafe { crate::dat_read_opt(Self::global(), self.0 as u32, id) }
+    }
+
+    pub fn entry_amount() -> u32 {
+        unsafe {
+            let dat = Self::global().arrays.load(Ordering::Relaxed);
+            if dat.is_null() {
+                u32::MAX
+            } else {
+                (*dat).entries as u32
+            }
+        }
     }
 
     pub fn sprite(self) -> SpriteId {
@@ -1098,8 +1125,35 @@ impl FlingyId {
 }
 
 impl SpriteId {
+    pub fn optional(id: u32) -> Option<SpriteId> {
+        if id > u16::MAX as u32 || id >= Self::entry_amount() {
+            None
+        } else {
+            Some(SpriteId(id as u16))
+        }
+    }
+
+    fn global() -> &'static DatGlobal {
+        &DAT_GLOBALS[DatType::Sprites as usize]
+    }
+
     pub fn get(&self, id: u32) -> u32 {
-        unsafe { crate::dat_read(&DAT_GLOBALS[DatType::Sprites as usize], self.0 as u32, id) }
+        unsafe { crate::dat_read(Self::global(), self.0 as u32, id) }
+    }
+
+    pub fn get_opt(self, id: u32) -> Option<u32> {
+        unsafe { crate::dat_read_opt(Self::global(), self.0 as u32, id) }
+    }
+
+    pub fn entry_amount() -> u32 {
+        unsafe {
+            let dat = Self::global().arrays.load(Ordering::Relaxed);
+            if dat.is_null() {
+                u32::MAX
+            } else {
+                (*dat).entries as u32
+            }
+        }
     }
 
     pub fn image(self) -> ImageId {
@@ -1120,6 +1174,39 @@ impl SpriteId {
 
     pub fn selection_y(self) -> i8 {
         self.get(0x05) as i8
+    }
+}
+
+impl ImageId {
+    pub fn optional(id: u32) -> Option<ImageId> {
+        if id > u16::MAX as u32 || id >= Self::entry_amount() {
+            None
+        } else {
+            Some(ImageId(id as u16))
+        }
+    }
+
+    fn global() -> &'static DatGlobal {
+        &DAT_GLOBALS[DatType::Images as usize]
+    }
+
+    pub fn get(&self, id: u32) -> u32 {
+        unsafe { crate::dat_read(Self::global(), self.0 as u32, id) }
+    }
+
+    pub fn get_opt(self, id: u32) -> Option<u32> {
+        unsafe { crate::dat_read_opt(Self::global(), self.0 as u32, id) }
+    }
+
+    pub fn entry_amount() -> u32 {
+        unsafe {
+            let dat = Self::global().arrays.load(Ordering::Relaxed);
+            if dat.is_null() {
+                u32::MAX
+            } else {
+                (*dat).entries as u32
+            }
+        }
     }
 }
 
@@ -1146,15 +1233,34 @@ impl DimensionRect {
 
 impl WeaponId {
     pub fn optional(id: u32) -> Option<WeaponId> {
-        if id > u16::MAX as u32 || id == weapon::NONE.0 as u32 {
+        if id > u16::MAX as u32 || id == weapon::NONE.0 as u32 || id >= Self::entry_amount() {
             None
         } else {
             Some(WeaponId(id as u16))
         }
     }
 
+    fn global() -> &'static DatGlobal {
+        &DAT_GLOBALS[DatType::Weapons as usize]
+    }
+
     pub fn get(&self, id: u32) -> u32 {
-        unsafe { crate::dat_read(&DAT_GLOBALS[DatType::Weapons as usize], self.0 as u32, id) }
+        unsafe { crate::dat_read(Self::global(), self.0 as u32, id) }
+    }
+
+    pub fn get_opt(self, id: u32) -> Option<u32> {
+        unsafe { crate::dat_read_opt(Self::global(), self.0 as u32, id) }
+    }
+
+    pub fn entry_amount() -> u32 {
+        unsafe {
+            let dat = Self::global().arrays.load(Ordering::Relaxed);
+            if dat.is_null() {
+                u32::MAX
+            } else {
+                (*dat).entries as u32
+            }
+        }
     }
 
     pub fn damage(&self) -> u32 {
@@ -1252,7 +1358,7 @@ impl WeaponId {
 
 impl UpgradeId {
     pub fn optional(id: u32) -> Option<UpgradeId> {
-        if id > u16::MAX as u32 || id == upgrade::NONE.0 as u32 {
+        if id > u16::MAX as u32 || id == upgrade::NONE.0 as u32 || id >= Self::entry_amount() {
             None
         } else {
             Some(UpgradeId(id as u16))
@@ -1276,6 +1382,10 @@ impl UpgradeId {
 
     pub fn get(&self, id: u32) -> u32 {
         unsafe { crate::dat_read(Self::global(), self.0 as u32, id) }
+    }
+
+    pub fn get_opt(self, id: u32) -> Option<u32> {
+        unsafe { crate::dat_read_opt(Self::global(), self.0 as u32, id) }
     }
 
     pub fn label(&self) -> u32 {
@@ -1317,7 +1427,7 @@ impl UpgradeId {
 
 impl TechId {
     pub fn optional(id: u32) -> Option<TechId> {
-        if id > u16::MAX as u32 || id == tech::NONE.0 as u32 {
+        if id > u16::MAX as u32 || id == tech::NONE.0 as u32 || id >= Self::entry_amount() {
             None
         } else {
             Some(TechId(id as u16))
@@ -1339,8 +1449,12 @@ impl TechId {
         }
     }
 
-    fn get(&self, id: u32) -> u32 {
+    pub fn get(&self, id: u32) -> u32 {
         unsafe { crate::dat_read(Self::global(), self.0 as u32, id) }
+    }
+
+    pub fn get_opt(self, id: u32) -> Option<u32> {
+        unsafe { crate::dat_read_opt(Self::global(), self.0 as u32, id) }
     }
 
     pub fn mineral_cost(&self) -> u32 {
@@ -1371,6 +1485,30 @@ impl TechId {
 }
 
 impl OrderId {
+    pub fn optional(id: u32) -> Option<OrderId> {
+        if id >= order::NONE.0 as u32 {
+            None
+        } else {
+            Some(OrderId(id as u8))
+        }
+    }
+
+    fn global() -> &'static DatGlobal {
+        &DAT_GLOBALS[DatType::Orders as usize]
+    }
+
+    pub fn get(&self, id: u32) -> u32 {
+        unsafe { crate::dat_read(Self::global(), self.0 as u32, id) }
+    }
+
+    pub fn get_opt(self, id: u32) -> Option<u32> {
+        unsafe { crate::dat_read_opt(Self::global(), self.0 as u32, id) }
+    }
+
+    pub fn entry_amount() -> u32 {
+        order::NONE.0 as u32
+    }
+
     pub fn is_secondary(&self) -> bool {
         use order::*;
         match *self {
@@ -1412,14 +1550,6 @@ impl OrderId {
             REVEAL_TRAP => true,
             _ => false,
         }
-    }
-
-    fn global() -> &'static DatGlobal {
-        &DAT_GLOBALS[DatType::Orders as usize]
-    }
-
-    fn get(&self, id: u32) -> u32 {
-        unsafe { crate::dat_read(Self::global(), self.0 as u32, id) }
     }
 
     pub fn tech(&self) -> Option<TechId> {
@@ -1480,6 +1610,14 @@ impl OrderId {
 }
 
 impl ButtonSetId {
+    pub fn optional(id: u32) -> Option<ButtonSetId> {
+        if id > u16::MAX as u32 || id >= Self::entry_amount() {
+            None
+        } else {
+            Some(Self(id as u16))
+        }
+    }
+
     fn global() -> &'static DatGlobal {
         &DAT_GLOBALS[DatType::Buttons as usize]
     }
@@ -1490,5 +1628,16 @@ impl ButtonSetId {
 
     pub fn get_opt(self, id: u32) -> Option<u32> {
         unsafe { crate::dat_read_opt(Self::global(), self.0 as u32, id) }
+    }
+
+    pub fn entry_amount() -> u32 {
+        unsafe {
+            let dat = Self::global().arrays.load(Ordering::Relaxed);
+            if dat.is_null() {
+                u32::MAX
+            } else {
+                (*dat).entries as u32
+            }
+        }
     }
 }
