@@ -235,7 +235,7 @@ pub struct Parser<'a, P: CustomParser> {
 }
 
 impl<'b, C: CustomState, P: CustomParser<State = C>> Parser<'b, P> {
-    pub fn new(custom_state: &mut P) -> Parser<P> {
+    pub fn new(custom_state: &mut P) -> Parser<'_, P> {
         Parser {
             maps: &PARSER_MAPS,
             custom_state,
@@ -688,7 +688,7 @@ impl<'b, C: CustomState, P: CustomParser<State = C>> Parser<'b, P> {
     }
 }
 
-fn parse_i32<C: CustomState>(input: &[u8]) -> Result<(i32, &[u8]), Error<C>> {
+fn parse_i32<C: CustomState>(input: &[u8]) -> Result<(i32, &[u8]), Error<'_, C>> {
     let (input, neg) = match input.get(0) {
         Some(b'-') => (&input[1..], true),
         Some(_) => (input, false),

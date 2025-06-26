@@ -611,7 +611,9 @@ unsafe extern "C" fn debug_tab_scripts(api: *const DebugUiDraw, _: *mut c_void) 
         let aise_script = Script::ptr_from_bw(script);
         let mut disasm_pos = (*script).pos;
         if globals.ai_scripts.contains(aise_script) {
-            let call_stack_size = (*aise_script).call_stack.len() as u32;
+            let call_stack: *const Vec<_> = &raw const (*aise_script).call_stack;
+            let call_stack: &[_] = &*call_stack;
+            let call_stack_size = call_stack.len() as u32;
             if call_stack_size != 0 {
                 draw.label("Call stack:");
                 draw.clickable_label(
@@ -621,7 +623,7 @@ unsafe extern "C" fn debug_tab_scripts(api: *const DebugUiDraw, _: *mut c_void) 
                     &mut debug_ui.call_stack_frame,
                 );
                 for i in 0..call_stack_size {
-                    let pos = (*aise_script).call_stack[i as usize];
+                    let pos = call_stack[i as usize];
                     draw.clickable_label(
                         &format!("{}: <{:x}>", i + 1, pos),
                         DebugUiColor::rgb(0xffffff),
@@ -821,9 +823,10 @@ fn player_name(player: u8) -> Cow<'static, str> {
         unsafe {
             let players = bw::players();
             let player = players.add(player as usize);
-            let name_len = (*player).name.iter().position(|&x| x == 0)
-                .unwrap_or_else(|| (*player).name.len());
-            let bytes = &(*player).name[..name_len];
+            let name = &(*player).name;
+            let name_len = name.iter().position(|&x| x == 0)
+                .unwrap_or_else(|| name.len());
+            let bytes = &name[..name_len];
             String::from_utf8_lossy(bytes)
         }
     } else {

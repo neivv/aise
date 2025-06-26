@@ -136,8 +136,8 @@ impl PlayerAi {
 
     fn push_request(&self, req: bw::AiSpendingRequest) {
         unsafe {
-            let requests = &mut (*self.0).requests[..];
             let request_count = usize::from((*self.0).request_count);
+            let requests = &mut (*self.0).requests;
             if request_count >= requests.len() {
                 return;
             }
@@ -199,7 +199,7 @@ impl PlayerAi {
         unsafe {
             let len = copy.count as usize;
             let slice = &copy.buffer[..len];
-            (&mut (*self.0).requests[..len]).copy_from_slice(slice);
+            (&mut (&mut (*self.0).requests)[..len]).copy_from_slice(slice);
             (*self.0).request_count = copy.count;
         }
     }
@@ -250,7 +250,8 @@ impl PlayerAi {
         let requests;
         let new_count;
         unsafe {
-            requests = &mut ((*self.0).requests)[..(*self.0).request_count as usize];
+            let request_count = (*self.0).request_count as usize;
+            requests = &mut (&mut (*self.0).requests)[..request_count];
             (*self.0).request_count -= 1;
             new_count = (*self.0).request_count as usize;
             if new_count == 0 {
@@ -261,7 +262,9 @@ impl PlayerAi {
     }
 
     fn is_guard_being_trained(&self, guard: *mut bw::GuardAi) -> bool {
-        let requests = unsafe { &mut ((*self.0).requests)[..(*self.0).request_count as usize] };
+        let request_count = unsafe { (*self.0).request_count as usize };
+        let requests = unsafe { &mut (*self.0).requests };
+        let requests = &mut requests[..request_count];
         if requests
             .iter()
             .any(|req| req.ty == 2 && req.val as *mut bw::GuardAi == guard)
@@ -301,7 +304,7 @@ pub fn default_add_to_attack_force(player: u8, unit: UnitId, amount: u16) {
     unsafe {
         let ai = PlayerAi::get(player);
         // Reuse slots that may have been deleted during the attack
-        let attack_force = &mut (*ai.0).attack_force[..];
+        let attack_force = &mut (*ai.0).attack_force;
         let free_slots = attack_force
             .iter_mut()
             .filter(|&&mut x| x == 0 || x == unit::NONE.0 + 1)
