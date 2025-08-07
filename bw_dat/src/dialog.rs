@@ -3,7 +3,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use once_cell::sync::OnceCell;
 
 use libc::c_void;
-use winapi::um::sysinfoapi::GetTickCount;
+use windows_sys::Win32::System::{
+    Memory::{HeapCreate, HeapAlloc, HEAP_CREATE_ENABLE_EXECUTE},
+    SystemInformation::{GetTickCount},
+};
 
 use crate::bw;
 
@@ -503,11 +506,8 @@ impl InitedEventHandler {
 static EXEC_HEAP: OnceCell<usize> = OnceCell::new();
 
 fn exec_alloc(size: usize) -> *mut u8 {
-    use winapi::um::heapapi::HeapAlloc;
     unsafe {
         let heap = EXEC_HEAP.get_or_init(|| {
-            use winapi::um::heapapi::HeapCreate;
-            use winapi::um::winnt::HEAP_CREATE_ENABLE_EXECUTE;
             let heap = HeapCreate(HEAP_CREATE_ENABLE_EXECUTE, 0, 0);
             assert!(heap.is_null() == false);
             heap as usize

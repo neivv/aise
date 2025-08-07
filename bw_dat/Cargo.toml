@@ -15,6 +15,9 @@ serde = { version = "1.0.124", optional = true, features = ["derive"] }
 default = []
 scr-only = []
 
-[dependencies.winapi]
-version = "0.3.3"
-features = ["heapapi", "sysinfoapi"]
+[dependencies.windows-sys]
+version = "0.60"
+features = [
+    "Win32_System_Memory",
+    "Win32_System_SystemInformation",
+]
