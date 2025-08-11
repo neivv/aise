@@ -1,7 +1,7 @@
 use std::ffi::c_void;
 use std::slice;
 
-use winapi::shared::windef::HWND;
+use windows_sys::Win32::Foundation::HWND;
 
 struct Module;
 

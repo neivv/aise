@@ -1,7 +1,7 @@
 use std::cell::UnsafeCell;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use winapi::um::processthreadsapi::GetCurrentThreadId;
+use windows_sys::Win32::System::Threading::GetCurrentThreadId;
 
 // Repr C to move the 3 metadata words first as a optimization, the mutex can be pretty big
 // since parking_lot is able to store T without boxing.

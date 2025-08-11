@@ -6,9 +6,9 @@ use std::ffi::{OsStr, OsString};
 use std::os::windows::ffi::{OsStrExt, OsStringExt};
 use std::ptr::null_mut;
 
-use winapi::um::minwinbase::{SYSTEMTIME};
-use winapi::um::sysinfoapi::GetLocalTime;
-use winapi::um::winuser::MessageBoxW;
+use windows_sys::Win32::Foundation::SYSTEMTIME;
+use windows_sys::Win32::System::SystemInformation::GetLocalTime;
+use windows_sys::Win32::UI::WindowsAndMessaging::MessageBoxW;
 
 pub fn winapi_str<T: AsRef<OsStr>>(input: T) -> Vec<u16> {
     let mut buf = Vec::with_capacity(input.as_ref().len());

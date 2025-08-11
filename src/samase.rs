@@ -3,7 +3,7 @@ use std::mem;
 use std::ptr::null_mut;
 use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
 
-use winapi::um::processthreadsapi::{GetCurrentProcess, TerminateProcess};
+use windows_sys::Win32::System::Threading::{GetCurrentProcess, TerminateProcess};
 
 use samase_plugin::{FuncId, PluginApi, VarId};
 

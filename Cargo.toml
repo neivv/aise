@@ -37,9 +37,13 @@ scopeguard = "1.0"
 serde = { version = "1.0.104", features = ["rc", "derive"] }
 smallvec = "1.0"
 
-[dependencies.winapi]
-version = "0.3.3"
-features = ["heapapi", "libloaderapi", "processthreadsapi", "sysinfoapi", "winuser", "wingdi"]
+[dependencies.windows-sys]
+version = "0.60"
+features = [
+    "Win32_System_Threading",
+    "Win32_System_SystemInformation",
+    "Win32_UI_WindowsAndMessaging",
+]
 
 [dependencies.bw_dat]
 path = "bw_dat"
