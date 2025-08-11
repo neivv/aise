@@ -7,7 +7,6 @@ edition = "2021"
 [dependencies]
 bitflags = "2.0"
 fxhash = "0.2"
-libc = "0.2"
 once_cell = "1.7"
 serde = { version = "1.0.124", optional = true, features = ["derive"] }
 

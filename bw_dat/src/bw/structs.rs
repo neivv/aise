@@ -1,6 +1,5 @@
+use std::ffi::c_void;
 use std::fmt;
-
-use libc::c_void;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -898,7 +897,7 @@ pub struct ResourceArea {
 }
 
 pub mod scr {
-    use libc::c_void;
+    use std::ffi::c_void;
     use super::{Rect, Surface};
 
     #[repr(C)]

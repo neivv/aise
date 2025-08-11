@@ -33,10 +33,9 @@ mod unit;
 mod unit_search;
 mod windows;
 
+use std::ffi::c_void;
 use std::ptr::null_mut;
 use std::sync::atomic::{AtomicBool, Ordering};
-
-use libc::c_void;
 
 use bw_dat::{Unit, Pathing};
 

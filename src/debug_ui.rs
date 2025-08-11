@@ -1,11 +1,11 @@
 use std::borrow::Cow;
+use std::ffi::c_void;
 use std::fmt::Write;
 use std::mem::{self};
 use std::ptr::null_mut;
 use std::sync::atomic::Ordering;
 
 use bw_dat::{UnitId};
-use libc::c_void;
 use samase_plugin::{
     DebugUiDraw, DebugUiDrawHelper, DebugUiColor, DebugUiLog, FfiStr, PluginApi, ComplexLineParam,
 };

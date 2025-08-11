@@ -1,6 +1,6 @@
+use std::ffi::c_void;
 use std::slice;
 
-use libc::c_void;
 use winapi::shared::windef::HWND;
 
 struct Module;

@@ -1,8 +1,8 @@
 use std::convert::TryFrom;
+use std::ffi::c_void;
 use std::mem;
 use std::ptr::null_mut;
 
-use libc::c_void;
 use serde::{Deserialize, Serialize};
 
 use bw_dat::{

@@ -271,7 +271,7 @@ whack_hooks!(stdcall, 0x00400000,
     0x004A13C0 => ai_spellcast(bool, @eax *mut Unit) -> u32;
     0x0047B090 => get_unit_name(@ecx u32) -> *const u8;
     0x0043FCF0 => ai_focus_unit_check(@ecx *mut Unit, @edx u32) -> u32;
-    0x00447980 => add_spending_request(u32, *mut libc::c_void, @eax u16, @ecx u32, @edx u8);
+    0x00447980 => add_spending_request(u32, *mut std::ffi::c_void, @eax u16, @ecx u32, @edx u8);
 );
 
 #[cfg(target_pointer_width = "32")]

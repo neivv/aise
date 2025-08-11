@@ -1,8 +1,8 @@
+use std::ffi::c_void;
 use std::ptr::{NonNull, null_mut};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use once_cell::sync::OnceCell;
 
-use libc::c_void;
 use windows_sys::Win32::System::{
     Memory::{HeapCreate, HeapAlloc, HEAP_CREATE_ENABLE_EXECUTE},
     SystemInformation::{GetTickCount},

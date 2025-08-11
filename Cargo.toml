@@ -27,7 +27,6 @@ byteorder = "1.1"
 directories = "5.0"
 fern = "0.6"
 hashbrown = { version = "0.14", features = ["serde"], default-features = false }
-libc = "0.2"
 log = { version = "0.4", features = ["release_max_level_warn"] }
 once_cell = "1.12"
 parking_lot = "0.12"

@@ -1,5 +1,5 @@
 use std::convert::TryFrom;
-use std::ffi::CString;
+use std::ffi::{CString};
 use std::fmt;
 use std::fs::{self, File};
 use std::mem;
@@ -1695,11 +1695,11 @@ fn unit_in_area(source: Unit, area: bw::Rect) -> bool {
 #[cfg(target_pointer_width = "32")]
 pub unsafe fn add_spending_request_hook(
     priority: u32,
-    c: *mut libc::c_void,
+    c: *mut std::ffi::c_void,
     unit_id: u16,
     ai_type: u32,
     player: u8,
-    orig: unsafe extern fn(u32, *mut libc::c_void, u16, u32, u8),
+    orig: unsafe extern fn(u32, *mut std::ffi::c_void, u16, u32, u8),
 ) {
     let mut globals = Globals::get("add_spending_request");
     let unit_id = UnitId(unit_id);

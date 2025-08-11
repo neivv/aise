@@ -1,8 +1,8 @@
+use std::ffi::c_void;
 use std::mem;
 use std::ptr::null_mut;
 use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
 
-use libc::c_void;
 use winapi::um::processthreadsapi::{GetCurrentProcess, TerminateProcess};
 
 use samase_plugin::{FuncId, PluginApi, VarId};
