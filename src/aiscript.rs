@@ -3842,6 +3842,15 @@ mod test {
         script
     }
 
+    fn default_test_script_struct() -> Script {
+        Script {
+            bw: unsafe { mem::zeroed() },
+            delete_mark: false,
+            call_stack: Vec::new(),
+            debug_name: "Test script".into(),
+        }
+    }
+
     unsafe fn dummy_list(amt: usize, base: u32) -> Vec<bw::AiScript> {
         let mut external = Vec::new();
         for i in 0..amt {
@@ -4123,14 +4132,17 @@ mod test {
         buf.write_u32::<LE>(0x0000_0009).unwrap();
         buf.write_u32::<LE>(0x3311_3322).unwrap();
         unsafe {
-            let mut script: bw::AiScript = mem::zeroed();
+            let mut script = default_test_script_struct();
+            let script = &mut script.bw;
+            let length = buf.len() as u32;
+            let buf_ptr = buf.as_ptr();
             script.pos = 4;
             let mut read = ScriptData {
-                start: buf.as_ptr(),
-                pos: buf.as_ptr().add(4),
-                script: &mut script,
+                start: buf_ptr,
+                pos: buf_ptr.add(4),
+                script: script,
                 orig_pos: 4,
-                length: buf.len() as u32,
+                length,
                 invalid: false,
                 mutate: true,
             };
@@ -4151,12 +4163,13 @@ mod test {
         buf.write_u32::<LE>(0x0000_0009).unwrap();
         buf.write_u32::<LE>(0x3311_3322).unwrap();
         unsafe {
-            let mut script: bw::AiScript = mem::zeroed();
+            let mut script = default_test_script_struct();
+            let script = &mut script.bw;
             script.pos = 4;
             let mut read = ScriptData {
                 start: buf.as_ptr(),
                 pos: buf.as_ptr().add(4),
-                script: &mut script,
+                script: script,
                 orig_pos: 4,
                 length: buf.len() as u32,
                 invalid: false,
