@@ -522,15 +522,15 @@ pub unsafe extern "C" fn samase_plugin_init(api: *const PluginApi) {
     init_funcs(api);
     ((*api).hook_func)(
         FuncId::AiPickBestPlacementPosition as u16,
-        crate::placement::placement_position_hook as _,
+        crate::placement::placement_position_hook as *const() as _,
     );
     ((*api).hook_func)(
         FuncId::AiPlacementFlags as u16,
-        crate::placement::placement_flags_hook as _,
+        crate::placement::placement_flags_hook as *const() as _,
     );
     ((*api).hook_func)(
         FuncId::AiRemoveFromAttackForce as u16,
-        crate::ai::remove_from_attack_force_hook as _,
+        crate::ai::remove_from_attack_force_hook as *const() as _,
     );
 
     let mut dat_len = 0usize;
