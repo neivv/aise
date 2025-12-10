@@ -603,7 +603,7 @@ pub mod order {
     pub const TRANSPORT_IDLE: OrderId = OrderId(0x5d);
     pub const LOAD_UNIT_TRANSPORT: OrderId = OrderId(0x5e);
     pub const LOAD_UNIT_BUNKER: OrderId = OrderId(0x5f);
-    pub const LOAD_UNIT_UNKNOWN: OrderId = OrderId(0x60);
+    pub const LOAD_UNIT_AI: OrderId = OrderId(0x60);
     pub const POWERUP: OrderId = OrderId(0x61);
     pub const SIEGE_MODE: OrderId = OrderId(0x62);
     pub const TANK_MODE: OrderId = OrderId(0x63);

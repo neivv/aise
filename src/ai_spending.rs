@@ -464,7 +464,21 @@ fn is_busy(unit: Unit) -> bool {
         }
         unit.tech_in_progress().is_some() || unit.upgrade_in_progress().is_some()
     } else {
-        // Don't consider workers ever busy for req satisfying
+        match unit.order() {
+            // LOAD_UNIT_AI may be set for a long time if ai has no transports and the worker
+            // is trying to travel to an island, count that as being busy.
+            // Also count SCVs that are building busy as they'll be occupied with that until
+            // building finishes.
+            // And same to count drones as they'll be permamently unavailable once building.
+            // (Drone land is the move-to-build order)
+            order::LOAD_UNIT_AI | order::CONSTRUCTING_BUILDING | order::DRONE_LAND |
+                order::DRONE_BUILD | order::DRONE_BUILD2 =>
+            {
+                return true;
+            }
+            _ => (),
+        }
+        // Other worker orders should be fine
         false
     }
 }
