@@ -235,7 +235,7 @@ impl PlayerAi {
     pub fn remove_resource_need(&self, cost: &Cost, spent_money: bool) {
         unsafe {
             (*self.0).mineral_need = (*self.0).mineral_need.saturating_sub(cost.minerals);
-            (*self.0).gas_need = (*self.0).gas_need.saturating_sub(cost.supply);
+            (*self.0).gas_need = (*self.0).gas_need.saturating_sub(cost.gas);
             (*self.0).supply_need = (*self.0).supply_need.saturating_sub(cost.supply);
             if spent_money {
                 (*self.0).minerals_available =
