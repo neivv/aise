@@ -3819,6 +3819,180 @@ pub unsafe extern "C" fn create_script(script: *mut bw::AiScript) {
     bw::set_first_ai_script(&mut (*script).bw);
 }
 
+pub unsafe extern "C" fn panic_opcode(script: *mut bw::AiScript) {
+    let mut read = ScriptData::new(script);
+    let offset = read.read_u16();
+    if read.is_invalid() {
+        return;
+    }
+    if (*script).flags & 0x1 != 0 {
+        let script = Script::ptr_from_bw(script);
+        bw_print!(
+            "Script {}: Cannot use panic in script placed to bwscript.bin",
+            (*script).debug_string(),
+        );
+        return;
+    }
+    let player = (*script).player as u8;
+    let ai = ai::PlayerAi::get(player);
+    (*ai.0).panic_script_pos = offset;
+}
+
+/// Not used; isn't supposed to change anything from BW, for reference
+pub unsafe extern "C" fn rush_command(script: *mut bw::AiScript) {
+    let mut read = ScriptData::new(script);
+    let mode = read.read_u8();
+    let offset = read.read_u16();
+    if read.is_invalid() {
+        return;
+    }
+    let player = (*script).player as u8;
+    if check_aiscript_rush(player, mode, (*script).center.x, (*script).center.y) {
+        (*script).pos = offset as u32;
+    }
+}
+
+unsafe fn check_aiscript_rush(player: u8, mode: u8, x: i32, y: i32) -> bool {
+    use bw_dat::unit;
+
+    fn bunker_marine_score(game: Game, player: u8) -> u32 {
+        let bunkers = game.completed_count(player, unit::BUNKER);
+        let marines = game.completed_count(player, unit::MARINE);
+        marines + (bunkers * 4).min(marines)
+    }
+    fn sunken_hydra_score(game: Game, player: u8) -> u32 {
+        game.completed_count(player, unit::SUNKEN_COLONY) * 2 +
+            game.completed_count(player, unit::HYDRALISK)
+    }
+    fn spore_hydra_muta_score(game: Game, player: u8) -> u32 {
+        game.completed_count(player, unit::SPORE_COLONY) * 2 +
+            game.completed_count(player, unit::HYDRALISK) +
+            game.completed_count(player, unit::MUTALISK)
+    }
+    fn scout_dragoon_score(game: Game, player: u8) -> u32 {
+        game.completed_count(player, unit::DRAGOON) +
+            game.completed_count(player, unit::SCOUT)
+    }
+
+    let failed = samase::ai_attack_prepare(player, x, y, false, false);
+    if failed != 0 {
+        return true;
+    }
+    let ai = ai::PlayerAi::get(player);
+    let region_id = match (*ai.0).attack_grouping_region.checked_sub(1) {
+        Some(s) => s,
+        None => return true,
+    };
+    let pathing = bw::pathing();
+    let game = bw::game();
+    let region = &raw mut (*pathing).regions[region_id as usize];
+    let center = (*region).center;
+    let center = bw::Point {
+        x: center[0] as i16,
+        y: center[1] as i16,
+    };
+    let mut best: Option<(u8, u32)> = None;
+    for unit in crate::unit::active_units() {
+        let other_player = unit.player();
+        if unit.is_dying() || unit.id().is_building() || game.allied(player, other_player) {
+            continue;
+        }
+        let distance = bw::distance(center, unit.position());
+        // Weird early exit logic where player must match the current best, but that's what
+        // bw seems to do
+        if distance < 0x140 && best.is_some_and(|x| x.0 == other_player) {
+            break;
+        }
+        let better = best.is_none_or(|x| distance <= x.1);
+        if better {
+            best = Some((other_player, distance));
+        }
+    }
+    let enemy = match best {
+        Some(s) => s.0,
+        None => {
+            // Should probably attack_clear here but bw won't.
+            // Though this is only reached when there are no enemies anyway so it's not going
+            // to matter.
+            return true;
+        }
+    };
+    samase::ai_attack_clear(player, true);
+    match mode {
+        0x0 => {
+            game.unit_count(enemy, unit::BARRACKS) > 0 ||
+                game.unit_count(enemy, unit::SPAWNING_POOL) > 0 ||
+                game.unit_count(enemy, unit::GATEWAY) > 0
+        }
+        0x1 => {
+            bunker_marine_score(game, enemy) > 16 ||
+                sunken_hydra_score(game, enemy) > 10 ||
+                game.completed_count(enemy, unit::ZEALOT) > 6
+        }
+        0x2 => {
+            bunker_marine_score(game, enemy) > 24 ||
+                spore_hydra_muta_score(game, enemy) > 10
+        }
+        0x3 => {
+            bunker_marine_score(game, enemy) > 5 ||
+                sunken_hydra_score(game, enemy) > 2 ||
+                game.completed_count(enemy, unit::HYDRALISK_DEN) > 0 ||
+                game.completed_count(enemy, unit::ZEALOT) > 1
+        }
+        0x4 => {
+            bunker_marine_score(game, enemy) > 16 ||
+                sunken_hydra_score(game, enemy) > 10 ||
+                game.completed_count(enemy, unit::ZEALOT) > 8
+        }
+        0x5 => {
+            bunker_marine_score(game, enemy) > 6 ||
+                sunken_hydra_score(game, enemy) > 6 ||
+                game.completed_count(enemy, unit::ZEALOT) > 3
+        }
+        0x6 => {
+            bunker_marine_score(game, enemy) > 12 ||
+                game.completed_count(enemy, unit::SUNKEN_COLONY) > 1 ||
+                game.completed_count(enemy, unit::DRAGOON) > 1
+        }
+        0x7 => {
+            game.completed_count(enemy, unit::SIEGE_TANK_TANK) > 0 ||
+                game.completed_count(enemy, unit::QUEEN) > 0 ||
+                game.completed_count(enemy, unit::ZEALOT) > 6
+        }
+        0x8 => {
+            bunker_marine_score(game, enemy) > 5 ||
+                sunken_hydra_score(game, enemy) > 2 ||
+                game.completed_count(enemy, unit::ZEALOT) > 1
+        }
+        0x9 => {
+            bunker_marine_score(game, enemy) > 9 ||
+                sunken_hydra_score(game, enemy) > 4 ||
+                game.completed_count(enemy, unit::ZEALOT) > 5
+        }
+        0xa => {
+            bunker_marine_score(game, enemy) > 4 ||
+                sunken_hydra_score(game, enemy) > 4 ||
+                game.completed_count(enemy, unit::ZEALOT) > 2
+        }
+        0xb => {
+            bunker_marine_score(game, enemy) > 10 ||
+                sunken_hydra_score(game, enemy) > 10 ||
+                game.completed_count(enemy, unit::ZEALOT) > 5
+        }
+        0xc => {
+            bunker_marine_score(game, enemy) > 16 ||
+                spore_hydra_muta_score(game, enemy) > 5 ||
+                scout_dragoon_score(game, enemy) > 2
+        }
+        0xd => {
+            bunker_marine_score(game, enemy) > 24 ||
+                spore_hydra_muta_score(game, enemy) > 10 ||
+                scout_dragoon_score(game, enemy) > 7
+        }
+        _ => true,
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -4184,23 +4358,4 @@ mod test {
             assert_eq!(script.pos, buf.len() as u32);
         }
     }
-}
-
-pub unsafe extern "C" fn panic_opcode(script: *mut bw::AiScript) {
-    let mut read = ScriptData::new(script);
-    let offset = read.read_u16();
-    if read.is_invalid() {
-        return;
-    }
-    if (*script).flags & 0x1 != 0 {
-        let script = Script::ptr_from_bw(script);
-        bw_print!(
-            "Script {}: Cannot use panic in script placed to bwscript.bin",
-            (*script).debug_string(),
-        );
-        return;
-    }
-    let player = (*script).player as u8;
-    let ai = ai::PlayerAi::get(player);
-    (*ai.0).panic_script_pos = offset;
 }

@@ -321,12 +321,16 @@ pub unsafe fn unit_array() -> (*mut bw::Unit, usize) {
 
 static AI_ADD_TO_ATTACK_FORCE: AtomicUsize = AtomicUsize::new(0);
 static AI_REMOVE_FROM_ATTACK_FORCE: AtomicUsize = AtomicUsize::new(0);
+static AI_ATTACK_PREPARE: AtomicUsize = AtomicUsize::new(0);
+static AI_ATTACK_CLEAR: AtomicUsize = AtomicUsize::new(0);
 
 static FUNCS: &[(&AtomicUsize, FuncId)] = &[
 ];
 static OPTIONAL_FUNCS: &[(&AtomicUsize, FuncId)] = &[
     (&AI_ADD_TO_ATTACK_FORCE, FuncId::AiAddToAttackForce),
     (&AI_REMOVE_FROM_ATTACK_FORCE, FuncId::AiRemoveFromAttackForce),
+    (&AI_ATTACK_PREPARE, FuncId::AiAttackPrepare),
+    (&AI_ATTACK_CLEAR, FuncId::AiAttackClear),
 ];
 
 #[inline]
@@ -380,6 +384,31 @@ pub unsafe fn ai_remove_from_attack_force(player: u8, unit_id: UnitId, amount: u
         func(player, unit_id.0, amount)
     } else {
         crate::ai::default_remove_from_attack_force(player, unit_id, amount);
+    }
+}
+
+pub unsafe fn ai_attack_clear(player: u8, zero_last_attack_second: bool) {
+    let func = load_func_opt::<unsafe extern "C" fn (u32, u32)>(&AI_ATTACK_CLEAR);
+    if let Some(func) = func {
+        func(player as u32, zero_last_attack_second as u32);
+    } else {
+        panic!("ai_attack_clear not supported");
+    }
+}
+
+pub unsafe fn ai_attack_prepare(
+    player: u8,
+    x: i32,
+    y: i32,
+    always_override: bool,
+    allow_air_fallback: bool,
+) -> u32 {
+    let func =
+        load_func_opt::<unsafe extern "C" fn (u32, i32, i32, u32, u32) -> u32>(&AI_ATTACK_PREPARE);
+    if let Some(func) = func {
+        func(player as u32, x, y, always_override as u32, allow_air_fallback as u32)
+    } else {
+        panic!("ai_attack_prepare not supported");
     }
 }
 
@@ -473,6 +502,9 @@ pub unsafe extern "C" fn samase_plugin_init(api: *const PluginApi) {
     aiscript_opcode(api, 0xa0, crate::aiscript::bw_kills);
     aiscript_opcode(api, 0xa1, crate::aiscript::build_at);
     aiscript_opcode(api, 0xa2, crate::aiscript::debug_name);
+    if false {
+        aiscript_opcode(api, 0x49, crate::aiscript::rush_command);
+    }
 
     GET_REGION.init(
         ((*api).get_region)().map(|x| mem::transmute(x)),
