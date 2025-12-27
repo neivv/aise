@@ -100,7 +100,7 @@ unsafe extern "stdcall" fn terminate_plugin(_plugin: *mut MpqdraftPlugin) -> u32
     1
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[allow(non_snake_case)]
 pub extern "stdcall" fn GetMPQDraftPlugin(out: *mut *mut MpqdraftPlugin) -> u32 {
     unsafe {

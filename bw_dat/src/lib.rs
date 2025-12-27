@@ -1,3 +1,5 @@
+#![allow(unsafe_op_in_unsafe_fn)]
+
 pub mod dialog;
 pub mod game;
 pub mod expr;

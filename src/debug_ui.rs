@@ -856,7 +856,7 @@ pub unsafe fn log_request_error(
         RequestSatisfyError::BuildLimit => "[] []: At define_max limit",
         RequestSatisfyError::NeedDatReqs => "[] []: No dat requirements defined",
         RequestSatisfyError::NoGeysers => "[] []: No empty vespene geysers",
-        RequestSatisfyError::DatReq(ref reqs) => {
+        RequestSatisfyError::DatReq(reqs) => {
             if let Some(&err) = reqs.get(0) {
                 match err {
                     DatReqSatisfyError::NeedUnit(id) => {

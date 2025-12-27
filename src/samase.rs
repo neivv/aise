@@ -423,7 +423,7 @@ unsafe fn aiscript_opcode(
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn samase_plugin_init(api: *const PluginApi) {
     bw_dat::set_is_scr(crate::is_scr());
     let required_version = 42;

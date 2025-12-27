@@ -2,7 +2,7 @@
 name = "aise"
 version = "2.41.2"
 authors = ["Markus Heikkinen <ittevien@gmail.com>"]
-edition = "2018"
+edition = "2024"
 
 [lib]
 name = "aise"
