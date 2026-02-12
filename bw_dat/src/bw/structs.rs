@@ -848,7 +848,7 @@ pub struct PlayerAiData {
     pub previous_nuke_timer: u32,
     pub flags: u16,
     pub panic_script_pos: u16,
-    pub max_ally_strength_in_region: u16,
+    pub max_region_strength_need: u16,
     pub attack_grouping_region: u16,
     pub train_unit_id: u16,
     pub default_min_strength_for_regions: u8,

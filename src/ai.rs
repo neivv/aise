@@ -1437,14 +1437,29 @@ pub unsafe extern "C" fn step_region_hook(
     if (*region).state == 6 {
         // Fix melee ai wanting to set attacked region need to 1000/1000
         // unconditionally, which is really dumb.
-        let old_needed_ground = (*region).needed_ground_strength;
-        let old_needed_air = (*region).needed_air_strength;
         orig(player, region_id);
-        (*region).needed_ground_strength = old_needed_ground;
-        (*region).needed_air_strength = old_needed_air;
+        let ai = PlayerAi::get(player as u8);
+        default_calculate_region_strength_need(&ai, region);
     } else {
         orig(player, region_id);
     }
+}
+
+/// Uses same logic what bw does in update_region_strengths, but only sets need values
+unsafe fn default_calculate_region_strength_need(ai: &PlayerAi, region: *mut bw::AiRegion) {
+    let mut ground_need = (*region).enemy_ground_strength;
+    let mut air_need = (*region).enemy_air_strength;
+    if !ai.is_campaign() {
+        ground_need = ground_need.saturating_add(ground_need / 2);
+        air_need = air_need.saturating_add(air_need / 2);
+    }
+    let limit = (*ai.0).max_region_strength_need;
+    if limit != 0 {
+        ground_need = ground_need.min(limit);
+        air_need = air_need.min(limit);
+    }
+    (*region).needed_ground_strength = ground_need;
+    (*region).needed_air_strength = air_need;
 }
 
 pub unsafe extern "C" fn focus_disabled_hook(u: *mut c_void, orig: unsafe extern "C" fn(*mut c_void)) {
