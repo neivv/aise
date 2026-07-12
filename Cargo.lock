@@ -3,14 +3,14 @@
 version = 4
 
 [[package]]
-name = "adler"
-version = "1.0.2"
+name = "adler2"
+version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f26201604c87b1e01bd3d98f8d5d9a8fcbb815e8cedb41ffccbeb4bf593a35fe"
+checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
 name = "aise"
-version = "2.41.3"
+version = "2.42.0"
 dependencies = [
  "bincode",
  "bitflags",
@@ -31,7 +31,7 @@ dependencies = [
  "scopeguard",
  "serde",
  "smallvec",
- "whack",
+ "whack 0.2.0 (git+https://github.com/neivv/whack/?rev=2d1adbae09d75bdaa2af65b0af12760740cd3d2b)",
  "windows-sys 0.60.2",
 ]
 
@@ -90,9 +90,9 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "crc32fast"
-version = "1.4.2"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a97769d94ddab943e4510d138150169a2758b5ef3eb191a9ee688de3e23ef7b3"
+checksum = "9481c1c90cbf2ac953f07c8d4a58aa3945c425b7185c9154d67a65e4230da511"
 dependencies = [
  "cfg-if",
 ]
@@ -129,9 +129,9 @@ dependencies = [
 
 [[package]]
 name = "flate2"
-version = "1.0.30"
+version = "1.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f54427cfd1c7829e2a139fcefea601bf088ebca651d2bf53ebc600eac295dae"
+checksum = "843fba2746e448b37e26a819579957415c8cef339bf08564fe8b7ddbd959573c"
 dependencies = [
  "crc32fast",
  "miniz_oxide",
@@ -206,11 +206,12 @@ checksum = "a7a70ba024b9dc04c27ea2f0c0548feb474ec5c54bba33a7f72f873a39d07b24"
 
 [[package]]
 name = "miniz_oxide"
-version = "0.7.4"
+version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b8a240ddb74feaf34a79a7add65a741f3167852fba007066dcac1ca548d89c08"
+checksum = "1fa76a2c86f704bdb222d66965fb3d63269ce38518b83cb0575fca855ebb6316"
 dependencies = [
- "adler",
+ "adler2",
+ "simd-adler32",
 ]
 
 [[package]]
@@ -326,11 +327,10 @@ checksum = "583034fd73374156e66797ed8e5b0d5690409c9226b22d87cb7f19821c05d152"
 [[package]]
 name = "samase_plugin"
 version = "0.5.0"
-source = "git+https://github.com/neivv/samase_plugin?rev=69d1e9ee3987d84e1ac78d1b1529fab94cfe766e#69d1e9ee3987d84e1ac78d1b1529fab94cfe766e"
+source = "git+https://github.com/neivv/samase_plugin?rev=67122bc05016efbcf9f8db6811ea381762c2cd81#67122bc05016efbcf9f8db6811ea381762c2cd81"
 dependencies = [
  "byteorder",
  "flate2",
- "libc",
  "lock_api",
  "log",
  "once_cell",
@@ -342,16 +342,14 @@ dependencies = [
 [[package]]
 name = "samase_shim"
 version = "0.5.0"
-source = "git+https://github.com/neivv/samase_plugin?rev=69d1e9ee3987d84e1ac78d1b1529fab94cfe766e#69d1e9ee3987d84e1ac78d1b1529fab94cfe766e"
+source = "git+https://github.com/neivv/samase_plugin?rev=67122bc05016efbcf9f8db6811ea381762c2cd81#67122bc05016efbcf9f8db6811ea381762c2cd81"
 dependencies = [
  "byteorder",
- "libc",
- "once_cell",
  "parking_lot",
  "samase_plugin",
  "thread_local",
- "whack",
- "winapi",
+ "whack 0.2.0 (git+https://github.com/neivv/whack/?rev=57c7bf5ab1161678e6d0437e071fdee655c6f28d)",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -379,6 +377,12 @@ dependencies = [
  "quote",
  "syn",
 ]
+
+[[package]]
+name = "simd-adler32"
+version = "0.3.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "703d5c7ef118737c72f1af64ad2f6f8c5e1921f818cdcb97b8fe6fc69bf66214"
 
 [[package]]
 name = "smallvec"
@@ -448,6 +452,17 @@ dependencies = [
  "lde",
  "smallvec",
  "winapi",
+]
+
+[[package]]
+name = "whack"
+version = "0.2.0"
+source = "git+https://github.com/neivv/whack/?rev=57c7bf5ab1161678e6d0437e071fdee655c6f28d#57c7bf5ab1161678e6d0437e071fdee655c6f28d"
+dependencies = [
+ "byteorder",
+ "lde",
+ "smallvec",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]

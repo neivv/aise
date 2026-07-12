@@ -1,6 +1,7 @@
-use std::ffi::CString;
+use std::ffi::{c_void, CString};
 use std::ptr::null_mut;
 use std::slice;
+use std::time::{Duration, Instant};
 
 use hashbrown::HashMap;
 use rustc_hash::{FxBuildHasher};
@@ -20,11 +21,21 @@ use crate::idle_orders::IdleOrders;
 use crate::pathing::RegionNeighbourSearch;
 use crate::recurse_checked_mutex::{Mutex, MutexGuard};
 use crate::rng::Rng;
+use crate::samase;
 use crate::swap_retain::SwapRetain;
 use crate::unit::{SerializableUnit};
 
 static GLOBALS: Mutex<Globals> = Mutex::new(Globals::new());
 static SAVE_STATE: Mutex<Option<SaveState>> = Mutex::new(None);
+// State for tracking game_elapsed_seconds in autosave,
+// as save contains roughly estimated real time with pauses (or lag time) subtracted out
+static GAME_ELAPSED_TIME: Mutex<Option<GameElapsedTime>> = Mutex::new(None);
+
+struct GameElapsedTime {
+    game_start: Instant,
+    pause_start: Option<Instant>,
+    paused_time: Duration,
+}
 
 pub struct SaveState {
     pub first_ai_script: SendPtr<bw::AiScript>,
@@ -748,29 +759,54 @@ pub unsafe extern "C" fn init_game() {
     aiscript::invalidate_cached_unit_search();
     bw::reset_ai_scripts();
     *Globals::get("init") = Globals::new();
+    *GAME_ELAPSED_TIME.lock("init") = Some(GameElapsedTime {
+        game_start: Instant::now(),
+        pause_start: None,
+        paused_time: Duration::ZERO,
+    });
 }
 
-pub unsafe extern "C" fn wrap_save(
+unsafe fn before_save(first_ai_script: *mut bw::AiScript) {
+    trace!("Saving..");
+    let mut globals = Globals::get("before save");
+    aiscript::claim_bw_allocated_scripts(&mut globals);
+
+    *save_state("init save state") = Some(SaveState {
+        first_ai_script: SendPtr(first_ai_script),
+    });
+}
+
+pub unsafe extern "C" fn hook_do_save(
+    handle: *mut c_void,
+    filename: *const i8,
+    time: u32,
+    name_unused: *const i8,
+    unk_unused: u32,
+    game_elapsed_seconds: u32,
+    orig: unsafe extern "C" fn(*mut c_void, *const i8, u32, *const i8, u32, u32) -> u32,
+) -> u32 {
+    let first_ai_script = bw::first_ai_script();
+    defer!({
+        bw::set_first_ai_script(first_ai_script);
+    });
+    before_save(first_ai_script);
+    bw::set_first_ai_script(null_mut());
+    orig(handle, filename, time, name_unused, unk_unused, game_elapsed_seconds)
+}
+
+pub unsafe extern "C" fn hook_save_command(
     data: *const u8,
     len: u32,
     _player: u32,
     _unique_player: u32,
     orig: unsafe extern "C" fn(*const u8, u32),
 ) {
-    trace!("Saving..");
-    let mut globals = Globals::get("before save");
-    aiscript::claim_bw_allocated_scripts(&mut globals);
-
     let first_ai_script = bw::first_ai_script();
-    bw::set_first_ai_script(null_mut());
     defer!({
         bw::set_first_ai_script(first_ai_script);
     });
-    *save_state("init save state") = Some(SaveState {
-        first_ai_script: SendPtr(first_ai_script),
-    });
-    drop(globals);
-
+    before_save(first_ai_script);
+    bw::set_first_ai_script(null_mut());
     orig(data, len);
 }
 
@@ -804,4 +840,34 @@ pub unsafe extern "C" fn load(ptr: *const u8, len: usize) -> u32 {
     };
     *Globals::get("load") = data;
     1
+}
+
+/// Only for tracking paused time for autosave's game elapsed seconds
+pub unsafe extern "C" fn step_game_loop_hook(orig: unsafe extern "C" fn()) {
+    if let Some(paused) = samase::is_paused() {
+        if let Some(ref mut time) = *GAME_ELAPSED_TIME.lock("step_game_loop_hook") {
+            if paused {
+                if time.pause_start.is_none() {
+                    time.pause_start = Some(Instant::now());
+                }
+            } else {
+                if let Some(start) = time.pause_start.take() {
+                    time.paused_time = time.paused_time.saturating_add(start.elapsed());
+                }
+            }
+        }
+    }
+    orig();
+}
+
+pub fn game_elapsed_seconds_for_save() -> u32 {
+    if let Some(ref time) = *GAME_ELAPSED_TIME.lock("game_elapsed_seconds_for_save") {
+        let mut offset = time.game_start.elapsed().saturating_sub(time.paused_time);
+        if let Some(start) = time.pause_start {
+            offset = offset.saturating_sub(start.elapsed());
+        }
+        offset.as_secs() as u32
+    } else {
+        0
+    }
 }

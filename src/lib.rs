@@ -30,6 +30,7 @@ mod pathing;
 mod placement;
 mod recurse_checked_mutex;
 mod rng;
+mod save;
 mod swap_retain;
 mod unit;
 mod unit_search;

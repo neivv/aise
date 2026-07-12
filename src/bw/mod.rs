@@ -292,6 +292,5 @@ whack_funcs!(stdcall, init_funcs, 0x00400000,
 #[cfg(target_pointer_width = "32")]
 whack_vars!(init_vars, 0x00400000,
     0x0057EE9C => player_name: [u8; 0x19];
-    0x0057F0B4 => is_multiplayer: u8;
     0x00597208 => client_selection: [*mut Unit; 0xc];
 );

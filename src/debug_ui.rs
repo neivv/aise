@@ -79,6 +79,15 @@ pub unsafe fn init(api: *const PluginApi) {
     if ok == 0 {
         return;
     }
+    let ok = ((*api).debug_ui_add_tab)(
+        &FfiStr::from_str("aise"),
+        &FfiStr::from_str("Misc"),
+        debug_tab_misc,
+        null_mut(),
+    );
+    if ok == 0 {
+        return;
+    }
     let logs = logs();
     (*logs).add_data = (*api).debug_log_add_data;
     for i in 0..8 {
@@ -914,4 +923,9 @@ pub unsafe fn log_request_error(
         param_len,
         null_mut(),
     );
+}
+
+unsafe extern "C" fn debug_tab_misc(api: *const DebugUiDraw, _: *mut c_void) {
+    let draw = DebugUiDrawHelper(api);
+    draw.label(&format!("Game elapsed seconds {}", crate::globals::game_elapsed_seconds_for_save()));
 }

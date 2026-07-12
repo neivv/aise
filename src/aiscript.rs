@@ -9,7 +9,6 @@ use std::slice;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use directories::UserDirs;
 use parking_lot::Mutex;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -1441,14 +1440,7 @@ fn get_bank_path(name: &str) -> Option<PathBuf> {
     if bad_path {
         return None;
     }
-    let root = if crate::is_scr() {
-        UserDirs::new()
-            .and_then(|user_dirs| user_dirs.document_dir().map(|s| s.join("Starcraft")))
-            .unwrap_or_else(|| ".".into())
-    } else {
-        ".".into()
-    };
-    Some(root.join("save").join(name))
+    Some(crate::save::get_save_dir().join(name))
 }
 
 pub unsafe extern "C" fn save_bank(script: *mut bw::AiScript) {
@@ -2101,6 +2093,22 @@ pub unsafe extern "C" fn debug_name(script: *mut bw::AiScript) {
     }
 }
 
+pub unsafe extern "C" fn autosave(script: *mut bw::AiScript) {
+    let mut read = ScriptData::new(script);
+    let name = read.read_string();
+    let amount = read.read_u8();
+    if read.is_invalid() {
+        return;
+    }
+    if samase::is_multiplayer() {
+        // Not doing multiplayer saves for now at least, as they are stored in a different path.
+        // save code needs to be changed to support that.
+        return;
+    }
+    let game = bw::game();
+    crate::save::do_autosave(name, amount as u32, game);
+}
+
 pub unsafe extern "C" fn ping(script: *mut bw::AiScript) {
     #![cfg_attr(target_pointer_width = "64", allow(unused_variables))]
     let mut read = ScriptData::new(script);
@@ -2129,7 +2137,7 @@ pub unsafe extern "C" fn player_jump(script: *mut bw::AiScript) {
     }
     #[cfg(target_pointer_width = "32")]
     {
-        if *bw::is_multiplayer != 0 {
+        if samase::is_multiplayer() {
             // Not doing this since it'd desync
             return;
         }

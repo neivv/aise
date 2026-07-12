@@ -1,6 +1,6 @@
 [package]
 name = "aise"
-version = "2.41.3"
+version = "2.42.0"
 authors = ["Markus Heikkinen <ittevien@gmail.com>"]
 edition = "2024"
 
@@ -55,8 +55,8 @@ rev = "2d1adbae09d75bdaa2af65b0af12760740cd3d2b"
 
 [target.'cfg(target_arch = "x86")'.dependencies.samase_shim]
 git = "https://github.com/neivv/samase_plugin"
-rev = "69d1e9ee3987d84e1ac78d1b1529fab94cfe766e"
+rev = "67122bc05016efbcf9f8db6811ea381762c2cd81"
 
 [dependencies.samase_plugin]
 git = "https://github.com/neivv/samase_plugin"
-rev = "69d1e9ee3987d84e1ac78d1b1529fab94cfe766e"
+rev = "67122bc05016efbcf9f8db6811ea381762c2cd81"
