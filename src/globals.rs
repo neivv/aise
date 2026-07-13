@@ -1,14 +1,16 @@
 use std::ffi::{c_void, CString};
+use std::mem;
 use std::ptr::null_mut;
 use std::slice;
 use std::time::{Duration, Instant};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use hashbrown::HashMap;
 use rustc_hash::{FxBuildHasher};
 use scopeguard::defer;
 use serde::{Deserialize, Serialize};
 
-use bw_dat::{Unit, UnitId};
+use bw_dat::{Game, Unit, UnitId};
 
 use crate::ai::GuardState;
 use crate::aiscript::{
@@ -30,6 +32,13 @@ static SAVE_STATE: Mutex<Option<SaveState>> = Mutex::new(None);
 // State for tracking game_elapsed_seconds in autosave,
 // as save contains roughly estimated real time with pauses (or lag time) subtracted out
 static GAME_ELAPSED_TIME: Mutex<Option<GameElapsedTime>> = Mutex::new(None);
+static QUEUED_AUTOSAVES: Mutex<Vec<QueuedAutosave>> = Mutex::new(Vec::new());
+static HAS_QUEUED_AUTOSAVES: AtomicBool = AtomicBool::new(false);
+
+struct QueuedAutosave {
+    name: &'static [u8],
+    cycle_size: u32,
+}
 
 struct GameElapsedTime {
     game_start: Instant,
@@ -869,5 +878,27 @@ pub fn game_elapsed_seconds_for_save() -> u32 {
         offset.as_secs() as u32
     } else {
         0
+    }
+}
+
+pub fn queue_autosave(name: &'static [u8], cycle_size: u32) {
+    QUEUED_AUTOSAVES.lock("queue_autosave").push(QueuedAutosave {
+        name,
+        cycle_size,
+    });
+    HAS_QUEUED_AUTOSAVES.store(true, Ordering::Relaxed);
+}
+
+pub fn do_autosaves(game: Game) {
+    if HAS_QUEUED_AUTOSAVES.load(Ordering::Relaxed) {
+        HAS_QUEUED_AUTOSAVES.store(false, Ordering::Relaxed);
+        let mut guard = QUEUED_AUTOSAVES.lock("do_autosaves");
+        let saves = mem::replace(&mut *guard, Vec::new());
+        drop(guard);
+        for save in &saves {
+            unsafe {
+                crate::save::do_autosave(save.name, save.cycle_size, game);
+            }
+        }
     }
 }

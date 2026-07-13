@@ -234,8 +234,14 @@ struct StepUnitsCtx<'a> {
 }
 
 unsafe extern "C" fn frame_hook() {
-    let search = unit_search::UnitSearch::from_bw();
+    // Usually saves can only be done during process_commands, this does them roughly at the
+    // spot after them.
+    // Saves should be done as early as possible at frame change so that when loaded the frame
+    // doesn't end up being stepped a second time.
     let game = bw::game();
+    globals::do_autosaves(game);
+
+    let search = unit_search::UnitSearch::from_bw();
     let mut globals = Globals::get("frame hook");
     let globals = &mut *globals;
     let player_ai = ai::PlayerAiArray::get();
