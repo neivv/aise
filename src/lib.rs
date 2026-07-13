@@ -186,7 +186,7 @@ fn feature_disabled(_name: &str) -> bool {
     false
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[allow(non_snake_case)]
 #[cfg(target_pointer_width = "32")]
 pub extern "C" fn Initialize() {
