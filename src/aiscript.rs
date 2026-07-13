@@ -2093,6 +2093,11 @@ pub unsafe extern "C" fn debug_name(script: *mut bw::AiScript) {
     }
 }
 
+pub unsafe extern "C" fn cmda3_unimpl(script: *mut bw::AiScript) {
+    let mut read = ScriptData::new(script);
+    let _ = read.read_jump_pos();
+}
+
 pub unsafe extern "C" fn autosave(script: *mut bw::AiScript) {
     let mut read = ScriptData::new(script);
     let name = read.read_string();
