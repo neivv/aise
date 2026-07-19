@@ -1,7 +1,6 @@
 use std::ops::Range;
 
-use byteorder::{WriteBytesExt, LE};
-use rand::distributions::{Distribution, Uniform};
+use rand::distr::{Distribution, Uniform};
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro128PlusPlus;
 use serde::{Deserialize, Serialize};
@@ -21,9 +20,15 @@ impl Rng {
     pub fn synced_rand(&mut self, range: Range<u32>) -> u32 {
         let rng = self.0.get_or_insert_with(|| {
             let mut buf = [0x42; 16];
-            (&mut buf[..]).write_u32::<LE>(bw::rng_seed()).unwrap();
+            buf[0..4].copy_from_slice(&bw::rng_seed().to_le_bytes());
             Xoshiro128PlusPlus::from_seed(buf)
         });
-        Uniform::from(range).sample(rng)
+        match Uniform::new(range.start, range.end) {
+            Ok(s) => s.sample(rng),
+            Err(_) => {
+                debug_assert!(false, "Invalid range to synced_rand");
+                range.start
+            }
+        }
     }
 }

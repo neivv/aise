@@ -15,7 +15,7 @@ default = []
 scr-only = []
 
 [dependencies.windows-sys]
-version = "0.60"
+version = ">=0.59, <=0.61"
 features = [
     "Win32_System_Memory",
     "Win32_System_SystemInformation",
