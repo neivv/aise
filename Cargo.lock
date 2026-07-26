@@ -31,7 +31,7 @@ dependencies = [
  "scopeguard",
  "serde",
  "smallvec",
- "whack 0.2.0 (git+https://github.com/neivv/whack/?rev=2d1adbae09d75bdaa2af65b0af12760740cd3d2b)",
+ "whack",
  "windows-sys 0.61.2",
 ]
 
@@ -320,7 +320,7 @@ checksum = "6b1e7f9a428571be2dc5bc0505c13fb6bf936822b894ec87abf8a08a4e51742d"
 [[package]]
 name = "samase_plugin"
 version = "0.5.0"
-source = "git+https://github.com/neivv/samase_plugin?rev=67122bc05016efbcf9f8db6811ea381762c2cd81#67122bc05016efbcf9f8db6811ea381762c2cd81"
+source = "git+https://github.com/neivv/samase_plugin?rev=c01a88f00b1aaf6286f96940b0f04498cea6c7b7#c01a88f00b1aaf6286f96940b0f04498cea6c7b7"
 dependencies = [
  "byteorder",
  "flate2",
@@ -335,13 +335,13 @@ dependencies = [
 [[package]]
 name = "samase_shim"
 version = "0.5.0"
-source = "git+https://github.com/neivv/samase_plugin?rev=67122bc05016efbcf9f8db6811ea381762c2cd81#67122bc05016efbcf9f8db6811ea381762c2cd81"
+source = "git+https://github.com/neivv/samase_plugin?rev=c01a88f00b1aaf6286f96940b0f04498cea6c7b7#c01a88f00b1aaf6286f96940b0f04498cea6c7b7"
 dependencies = [
  "byteorder",
  "parking_lot",
  "samase_plugin",
  "thread_local",
- "whack 0.2.0 (git+https://github.com/neivv/whack/?rev=57c7bf5ab1161678e6d0437e071fdee655c6f28d)",
+ "whack",
  "windows-sys 0.60.2",
 ]
 
@@ -448,46 +448,13 @@ checksum = "ccf3ec651a847eb01de73ccad15eb7d99f80485de043efb2f370cd654f4ea44b"
 [[package]]
 name = "whack"
 version = "0.2.0"
-source = "git+https://github.com/neivv/whack/?rev=2d1adbae09d75bdaa2af65b0af12760740cd3d2b#2d1adbae09d75bdaa2af65b0af12760740cd3d2b"
-dependencies = [
- "byteorder",
- "lde",
- "smallvec",
- "winapi",
-]
-
-[[package]]
-name = "whack"
-version = "0.2.0"
-source = "git+https://github.com/neivv/whack/?rev=57c7bf5ab1161678e6d0437e071fdee655c6f28d#57c7bf5ab1161678e6d0437e071fdee655c6f28d"
+source = "git+https://github.com/neivv/whack/?rev=03a8b0db17c40913b845987e0fe6ed0cdd8e71eb#03a8b0db17c40913b845987e0fe6ed0cdd8e71eb"
 dependencies = [
  "byteorder",
  "lde",
  "smallvec",
  "windows-sys 0.60.2",
 ]
-
-[[package]]
-name = "winapi"
-version = "0.3.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c839a674fcd7a98952e593242ea400abe93992746761e38641405d28b00f419"
-dependencies = [
- "winapi-i686-pc-windows-gnu",
- "winapi-x86_64-pc-windows-gnu",
-]
-
-[[package]]
-name = "winapi-i686-pc-windows-gnu"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac3b87c63620426dd9b991e5ce0329eff545bccbbb34f3be09ff6fb6ab51b7b6"
-
-[[package]]
-name = "winapi-x86_64-pc-windows-gnu"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
 
 [[package]]
 name = "windows-link"
